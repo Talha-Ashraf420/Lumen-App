@@ -10,6 +10,19 @@ import 'screens/shell.dart';
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized(); // libmpv — native TS/MKV/HLS playback
+
+  // Never show a blank/white error screen — paint errors on the dark canvas.
+  ErrorWidget.builder = (details) => Container(
+        color: bg,
+        alignment: Alignment.center,
+        padding: const EdgeInsets.all(24),
+        child: Text(
+          details.exceptionAsString(),
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: Color(0xFFFF8FA3), fontSize: 13),
+        ),
+      );
+
   runApp(const LumenApp());
 }
 

@@ -15,17 +15,15 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   int _index = 0;
-
   static const _tabs = [
-    (label: 'Live', icon: Icons.sensors_rounded, kind: 'live'),
-    (label: 'Movies', icon: Icons.theaters_rounded, kind: 'movie'),
-    (label: 'Series', icon: Icons.grid_view_rounded, kind: 'series'),
+    (label: 'Live TV', kind: 'live'),
+    (label: 'Movies', kind: 'movie'),
+    (label: 'Series', kind: 'series'),
   ];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      extendBody: true,
       body: Stack(
         children: [
           const Aurora(),
@@ -33,90 +31,81 @@ class _HomeShellState extends State<HomeShell> {
             bottom: false,
             child: Column(
               children: [
-                _TopBar(onLogout: widget.onLogout),
+                _header(),
+                _segmentedTabs(),
+                const SizedBox(height: 10),
                 Expanded(
                   child: IndexedStack(
                     index: _index,
-                    children: [
-                      for (final t in _tabs) CatalogScreen(client: widget.client, kind: t.kind),
-                    ],
+                    children: [for (final t in _tabs) CatalogScreen(client: widget.client, kind: t.kind)],
                   ),
                 ),
               ],
             ),
-          ),
-          // floating glass nav
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(28, 0, 28, 24),
-              child: Glass(
-                radius: 28,
-                blur: 24,
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [for (var i = 0; i < _tabs.length; i++) _navItem(i)],
-                ),
-              ),
-            ).animate().fadeIn(delay: 150.ms).slideY(begin: 0.4, end: 0, curve: Curves.easeOutBack),
           ),
         ],
       ),
     );
   }
 
-  Widget _navItem(int i) {
-    final t = _tabs[i];
-    final sel = i == _index;
-    return GestureDetector(
-      onTap: () => setState(() => _index = i),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeOut,
-        padding: EdgeInsets.symmetric(horizontal: sel ? 18 : 14, vertical: 11),
-        decoration: BoxDecoration(
-          gradient: sel ? accentGradient : null,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: sel ? glow(accent, blur: 18, y: 6, a: 0.5) : null,
-        ),
-        child: Row(
-          children: [
-            Icon(t.icon, size: 20, color: sel ? Colors.white : muted),
-            if (sel) ...[
-              const SizedBox(width: 8),
-              Text(t.label, style: const TextStyle(fontWeight: FontWeight.w700, color: Colors.white)),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _TopBar extends StatelessWidget {
-  final VoidCallback onLogout;
-  const _TopBar({required this.onLogout});
-  @override
-  Widget build(BuildContext context) {
+  Widget _header() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 14, 12, 6),
+      padding: const EdgeInsets.fromLTRB(20, 12, 12, 12),
       child: Row(
         children: [
           ShaderMask(
             shaderCallback: (r) => accentGradient.createShader(r),
             child: const Text('Lumen',
-                style: TextStyle(
-                    fontSize: 26, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: -0.5)),
+                style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: -0.6)),
           ),
           const Spacer(),
           IconButton(
-            onPressed: onLogout,
+            onPressed: widget.onLogout,
             icon: const Icon(Icons.logout_rounded, color: muted, size: 22),
             tooltip: 'Sign out',
           ),
         ],
       ),
     );
+  }
+
+  Widget _segmentedTabs() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Glass(
+        radius: 18,
+        blur: 16,
+        padding: const EdgeInsets.all(5),
+        child: Row(
+          children: [
+            for (var i = 0; i < _tabs.length; i++)
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => setState(() => _index = i),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 250),
+                    curve: Curves.easeOut,
+                    height: 40,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      gradient: i == _index ? accentGradient : null,
+                      borderRadius: BorderRadius.circular(13),
+                      boxShadow: i == _index ? glow(accent, blur: 14, y: 4, a: 0.5) : null,
+                    ),
+                    child: Text(
+                      _tabs[i].label,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                        color: i == _index ? Colors.white : muted,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    ).animate().fadeIn(duration: 350.ms).slideY(begin: -0.3, end: 0, curve: Curves.easeOut);
   }
 }

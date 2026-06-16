@@ -39,7 +39,7 @@ class Glass extends StatelessWidget {
   }
 }
 
-/// Ambient drifting aurora background (cheap, gradient blobs).
+/// Ambient drifting aurora background.
 class Aurora extends StatelessWidget {
   const Aurora({super.key});
   @override
@@ -48,9 +48,9 @@ class Aurora extends StatelessWidget {
       child: Stack(
         children: [
           const Positioned.fill(child: ColoredBox(color: bg)),
-          Positioned(top: -140, left: -100, child: _blob(accent.withValues(alpha: 0.30), 360)),
-          Positioned(top: 120, right: -120, child: _blob(accent2.withValues(alpha: 0.22), 320)),
-          Positioned(bottom: -120, left: 40, child: _blob(const Color(0xFF3B2D6B).withValues(alpha: 0.5), 300)),
+          Positioned(top: -160, left: -120, child: _blob(accent.withValues(alpha: 0.28), 380)),
+          Positioned(top: 80, right: -140, child: _blob(accent2.withValues(alpha: 0.20), 340)),
+          Positioned(bottom: -140, left: 20, child: _blob(const Color(0xFF3B2D6B).withValues(alpha: 0.45), 320)),
         ],
       ),
     );
@@ -59,20 +59,19 @@ class Aurora extends StatelessWidget {
   Widget _blob(Color c, double s) => Container(
         width: s,
         height: s,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: RadialGradient(colors: [c, c.withValues(alpha: 0)]),
-        ),
-      ).animate(onPlay: (c) => c.repeat(reverse: true)).moveY(begin: -16, end: 16, duration: 6.seconds, curve: Curves.easeInOut);
+        decoration: BoxDecoration(shape: BoxShape.circle, gradient: RadialGradient(colors: [c, c.withValues(alpha: 0)])),
+      ).animate(onPlay: (c) => c.repeat(reverse: true)).moveY(begin: -18, end: 18, duration: 7.seconds, curve: Curves.easeInOut);
 }
 
-/// Premium poster/channel card with depth, gradient scrim + entrance animation.
+/// Clean premium tile: image-only poster (depth + rating) with the title BELOW
+/// in crisp type — far less cluttered than text-on-image.
 class PosterCard extends StatelessWidget {
   final String name;
   final String image;
   final double rating;
+  final String? subtitle;
   final String? badge;
-  final bool circle; // live channels look better as rounded tiles
+  final bool live;
   final int index;
   final VoidCallback onTap;
   const PosterCard({
@@ -81,89 +80,108 @@ class PosterCard extends StatelessWidget {
     required this.image,
     required this.onTap,
     this.rating = 0,
+    this.subtitle,
     this.badge,
-    this.circle = false,
+    this.live = false,
     this.index = 0,
   });
 
   @override
   Widget build(BuildContext context) {
-    final card = GestureDetector(
-      onTap: onTap,
+    final art = AspectRatio(
+      aspectRatio: live ? 1 : 2 / 3,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: glow(Colors.black, blur: 18, y: 10, a: 0.5),
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: glow(Colors.black, blur: 16, y: 8, a: 0.5),
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(18),
           child: Stack(
             fit: StackFit.expand,
             children: [
-              const ColoredBox(color: surface),
+              const _Fallback(),
               if (image.isNotEmpty)
-                CachedNetworkImage(
-                  imageUrl: image,
-                  fit: circle ? BoxFit.contain : BoxFit.cover,
-                  errorWidget: (_, _, _) => const _Fallback(),
-                  placeholder: (_, _) => const ColoredBox(color: surfaceHi),
-                )
-              else
-                const _Fallback(),
-              const DecoratedBox(
+                Padding(
+                  padding: live ? const EdgeInsets.all(14) : EdgeInsets.zero,
+                  child: CachedNetworkImage(
+                    imageUrl: image,
+                    fit: live ? BoxFit.contain : BoxFit.cover,
+                    fadeInDuration: const Duration(milliseconds: 250),
+                    errorWidget: (_, _, _) => const SizedBox.shrink(),
+                  ),
+                ),
+              // subtle top sheen + inner border for a premium edge
+              DecoratedBox(
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.bottomCenter,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+                  gradient: const LinearGradient(
+                    begin: Alignment.topCenter,
                     end: Alignment.center,
-                    colors: [Color(0xE6000000), Colors.transparent],
+                    colors: [Color(0x22FFFFFF), Colors.transparent],
                   ),
                 ),
               ),
               if (rating > 0)
                 Positioned(
-                  left: 8,
-                  top: 8,
+                  left: 7,
+                  top: 7,
                   child: Glass(
-                    radius: 10,
-                    blur: 8,
-                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                    radius: 9,
+                    blur: 6,
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      const Icon(Icons.star_rounded, color: gold, size: 13),
+                      const Icon(Icons.star_rounded, color: gold, size: 12),
                       const SizedBox(width: 3),
                       Text(rating.toStringAsFixed(1),
-                          style: const TextStyle(color: gold, fontSize: 11, fontWeight: FontWeight.w700)),
+                          style: const TextStyle(color: gold, fontSize: 10.5, fontWeight: FontWeight.w800)),
                     ]),
                   ),
                 ),
               if (badge != null)
                 Positioned(
-                  right: 8,
-                  top: 8,
+                  left: 7,
+                  top: 7,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(gradient: accentGradient, borderRadius: BorderRadius.circular(8)),
-                    child: Text(badge!,
-                        style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFF3B5C),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Container(width: 5, height: 5, decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
+                      const SizedBox(width: 4),
+                      Text(badge!, style: const TextStyle(fontSize: 8.5, fontWeight: FontWeight.w800, letterSpacing: 0.4)),
+                    ]),
                   ),
                 ),
-              Positioned(
-                left: 10,
-                right: 10,
-                bottom: 10,
-                child: Text(name,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, height: 1.15)),
-              ),
             ],
           ),
         ),
       ),
     );
-    return card
+
+    final tile = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(child: art),
+        const SizedBox(height: 8),
+        Text(name,
+            maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+        if (subtitle != null && subtitle!.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text(subtitle!,
+                maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: subtle)),
+          ),
+      ],
+    );
+
+    return GestureDetector(onTap: onTap, child: tile)
         .animate()
-        .fadeIn(duration: 350.ms, delay: (index.clamp(0, 12) * 35).ms)
-        .slideY(begin: 0.12, end: 0, curve: Curves.easeOutCubic);
+        .fadeIn(duration: 300.ms, delay: (index.clamp(0, 12) * 30).ms)
+        .slideY(begin: 0.10, end: 0, curve: Curves.easeOutCubic);
   }
 }
 
@@ -171,7 +189,7 @@ class _Fallback extends StatelessWidget {
   const _Fallback();
   @override
   Widget build(BuildContext context) => const DecoratedBox(
-        decoration: BoxDecoration(gradient: LinearGradient(colors: [surfaceHi, surface])),
-        child: Center(child: Icon(Icons.movie_creation_outlined, color: subtle, size: 30)),
+        decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [surfaceHi, surface])),
+        child: Center(child: Icon(Icons.movie_creation_outlined, color: subtle, size: 28)),
       );
 }

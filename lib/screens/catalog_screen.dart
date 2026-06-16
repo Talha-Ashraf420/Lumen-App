@@ -1,6 +1,4 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -13,10 +11,12 @@ class _Item {
   final String name;
   final String image;
   final double rating;
-  final String? badge;
+  final String subtitle;
   final VoidCallback onTap;
-  _Item(this.name, this.image, this.rating, this.badge, this.onTap);
+  _Item(this.name, this.image, this.rating, this.subtitle, this.onTap);
 }
+
+String _year(String s) => RegExp(r'(19|20)\d{2}').firstMatch(s)?.group(0) ?? '';
 
 class CatalogScreen extends StatefulWidget {
   final XtreamClient client;
@@ -62,26 +62,25 @@ class _CatalogScreenState extends State<CatalogScreen> with AutomaticKeepAliveCl
       case 'live':
         final list = await c.liveStreams(cat);
         return list
-            .map((s) => _Item(s.name, s.icon, 0, 'LIVE',
+            .map((s) => _Item(s.name, s.icon, 0, '',
                 () => _open(PlayerScreen(url: c.streamUrl('live', s.streamId, ext: 'ts'), title: s.name))))
             .toList();
       case 'movie':
         final list = await c.vodStreams(cat);
         return list
-            .map((m) => _Item(m.name, m.icon, m.rating, null,
+            .map((m) => _Item(m.name, m.icon, m.rating, _year(m.name),
                 () => _open(MovieDetailScreen(client: c, movie: m))))
             .toList();
       default:
         final list = await c.series(cat);
         return list
-            .map((s) => _Item(s.name, s.cover, s.rating, null,
+            .map((s) => _Item(s.name, s.cover, s.rating, _year(s.releaseDate.isEmpty ? s.name : s.releaseDate),
                 () => _open(SeriesDetailScreen(client: c, seriesId: s.seriesId, title: s.name))))
             .toList();
     }
   }
 
-  void _open(Widget screen) =>
-      Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
+  void _open(Widget screen) => Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
 
   @override
   Widget build(BuildContext context) {
@@ -89,21 +88,22 @@ class _CatalogScreenState extends State<CatalogScreen> with AutomaticKeepAliveCl
     final isLive = widget.kind == 'live';
     return Column(
       children: [
+        _searchBar(),
+        const SizedBox(height: 12),
         _chipRail(),
         const SizedBox(height: 6),
-        _search(),
         Expanded(
           child: FutureBuilder<List<_Item>>(
             future: _items,
             builder: (context, snap) {
               if (snap.connectionState != ConnectionState.done) {
-                return const Center(child: CircularProgressIndicator(color: accent));
+                return const Center(child: CircularProgressIndicator(color: accent, strokeWidth: 2.5));
               }
               if (snap.hasError) {
                 return Center(
                   child: Padding(
                     padding: const EdgeInsets.all(24),
-                    child: Text('${snap.error}', style: const TextStyle(color: Color(0xFFFF8FA3))),
+                    child: Text('${snap.error}', textAlign: TextAlign.center, style: const TextStyle(color: Color(0xFFFF8FA3))),
                   ),
                 );
               }
@@ -115,38 +115,25 @@ class _CatalogScreenState extends State<CatalogScreen> with AutomaticKeepAliveCl
               if (items.isEmpty) {
                 return const Center(child: Text('Nothing here.', style: TextStyle(color: subtle)));
               }
-              final hasHero = !isLive && _query.trim().isEmpty && items.isNotEmpty;
-              final hero = hasHero ? items.first : null;
-              final grid = hasHero ? items.sublist(1) : items;
-
-              return CustomScrollView(
-                slivers: [
-                  if (hero != null)
-                    SliverToBoxAdapter(child: _Hero(item: hero)),
-                  SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
-                    sliver: SliverGrid(
-                      gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                        maxCrossAxisExtent: isLive ? 140 : 168,
-                        childAspectRatio: isLive ? 1 : 2 / 3,
-                        crossAxisSpacing: 14,
-                        mainAxisSpacing: 14,
-                      ),
-                      delegate: SliverChildBuilderDelegate(
-                        (context, i) => PosterCard(
-                          name: grid[i].name,
-                          image: grid[i].image,
-                          rating: grid[i].rating,
-                          badge: isLive ? grid[i].badge : null,
-                          circle: isLive,
-                          index: i,
-                          onTap: grid[i].onTap,
-                        ),
-                        childCount: grid.length,
-                      ),
-                    ),
-                  ),
-                ],
+              return GridView.builder(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 28),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  childAspectRatio: isLive ? 0.80 : 0.52,
+                  crossAxisSpacing: 13,
+                  mainAxisSpacing: 18,
+                ),
+                itemCount: items.length,
+                itemBuilder: (context, i) => PosterCard(
+                  name: items[i].name,
+                  image: items[i].image,
+                  rating: items[i].rating,
+                  subtitle: isLive ? null : items[i].subtitle,
+                  badge: isLive ? 'LIVE' : null,
+                  live: isLive,
+                  index: i,
+                  onTap: items[i].onTap,
+                ),
               );
             },
           ),
@@ -155,14 +142,50 @@ class _CatalogScreenState extends State<CatalogScreen> with AutomaticKeepAliveCl
     );
   }
 
+  Widget _searchBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+      child: Glass(
+        radius: 18,
+        blur: 14,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        child: Row(
+          children: [
+            const Icon(Icons.search_rounded, color: muted, size: 21),
+            const SizedBox(width: 10),
+            Expanded(
+              child: TextField(
+                onChanged: (v) => setState(() => _query = v),
+                style: const TextStyle(fontSize: 15),
+                decoration: InputDecoration(
+                  isCollapsed: true,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 15),
+                  border: InputBorder.none,
+                  hintText: 'Search ${widget.kind == "live" ? "channels" : widget.kind == "movie" ? "movies" : "series"}…',
+                  hintStyle: const TextStyle(color: subtle, fontSize: 15),
+                ),
+              ),
+            ),
+            if (_query.isNotEmpty)
+              GestureDetector(
+                onTap: () => setState(() => _query = ''),
+                child: const Icon(Icons.close_rounded, color: subtle, size: 18),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _chipRail() {
+    if (_cats.isEmpty) return const SizedBox(height: 38);
     return SizedBox(
-      height: 42,
+      height: 38,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16),
         itemCount: _cats.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
         itemBuilder: (_, i) {
           final c = _cats[i];
           final sel = c.id == _cat;
@@ -177,110 +200,16 @@ class _CatalogScreenState extends State<CatalogScreen> with AutomaticKeepAliveCl
               padding: const EdgeInsets.symmetric(horizontal: 16),
               decoration: BoxDecoration(
                 gradient: sel ? accentGradient : null,
-                color: sel ? null : surfaceHi.withValues(alpha: 0.6),
-                borderRadius: BorderRadius.circular(14),
+                color: sel ? null : surfaceHi.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(13),
                 border: Border.all(color: sel ? Colors.transparent : line),
               ),
-              child: Text(
-                c.name,
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
-                  color: sel ? Colors.white : muted,
-                ),
-              ),
+              child: Text(c.name,
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: sel ? Colors.white : muted)),
             ),
           );
         },
       ),
-    );
-  }
-
-  Widget _search() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-      child: TextField(
-        onChanged: (v) => setState(() => _query = v),
-        decoration: const InputDecoration(
-          hintText: 'Search…',
-          prefixIcon: Icon(Icons.search_rounded, color: subtle, size: 20),
-          isDense: true,
-        ),
-      ),
-    );
-  }
-}
-
-/// Cinematic featured banner for the first item in a movie/series category.
-class _Hero extends StatelessWidget {
-  final _Item item;
-  const _Hero({required this.item});
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-      child: GestureDetector(
-        onTap: item.onTap,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(26),
-          child: AspectRatio(
-            aspectRatio: 16 / 10,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                const ColoredBox(color: surfaceHi),
-                if (item.image.isNotEmpty)
-                  CachedNetworkImage(imageUrl: item.image, fit: BoxFit.cover),
-                const DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.bottomCenter,
-                      end: Alignment.topCenter,
-                      colors: [Color(0xF2000000), Colors.transparent],
-                    ),
-                  ),
-                ),
-                Positioned(
-                  left: 18,
-                  right: 18,
-                  bottom: 16,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(gradient: accentGradient, borderRadius: BorderRadius.circular(8)),
-                        child: const Text('FEATURED',
-                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1)),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(item.name,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, height: 1.1)),
-                      const SizedBox(height: 12),
-                      Row(children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 11),
-                          decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(14),
-                              boxShadow: glow(Colors.white, blur: 18, y: 4, a: 0.25)),
-                          child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                            Icon(Icons.play_arrow_rounded, color: bg, size: 22),
-                            SizedBox(width: 4),
-                            Text('Play', style: TextStyle(color: bg, fontWeight: FontWeight.w800)),
-                          ]),
-                        ),
-                      ]),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ).animate().fadeIn(duration: 450.ms).slideY(begin: 0.06, end: 0, curve: Curves.easeOut),
     );
   }
 }
