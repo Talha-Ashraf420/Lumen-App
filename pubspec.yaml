@@ -48,6 +48,7 @@ dependencies:
   google_fonts: ^8.1.0
   flutter_animate: ^4.5.2
   lottie: ^3.1.2
+  flutter_secure_storage: ^9.2.2
 
 dev_dependencies:
   flutter_test:

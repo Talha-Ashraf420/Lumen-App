@@ -1,15 +1,40 @@
 import 'dart:convert';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'models.dart';
 
 /// Local persistence for the active login + saved profiles.
+///
+/// Stored in the iOS Keychain (via flutter_secure_storage), which survives app
+/// uninstall/reinstall — so re-deploying a dev build doesn't force a re-login.
+/// Also more secure than plaintext SharedPreferences.
 class Store {
   static const _kActive = 'lumen_active';
   static const _kProfiles = 'lumen_profiles';
+  static const _s = FlutterSecureStorage();
+
+  static bool _migrated = false;
+
+  /// One-time migration of any creds left in the old SharedPreferences store
+  /// into the Keychain (so an existing login isn't lost on the next reinstall).
+  static Future<void> _migrate() async {
+    if (_migrated) return;
+    _migrated = true;
+    try {
+      final p = await SharedPreferences.getInstance();
+      for (final key in [_kActive, _kProfiles]) {
+        final old = p.getString(key);
+        if (old != null) {
+          if (await _s.read(key: key) == null) await _s.write(key: key, value: old);
+          await p.remove(key);
+        }
+      }
+    } catch (_) {}
+  }
 
   static Future<XtreamCredentials?> active() async {
-    final p = await SharedPreferences.getInstance();
-    final raw = p.getString(_kActive);
+    await _migrate();
+    final raw = await _s.read(key: _kActive);
     if (raw == null) return null;
     try {
       return XtreamCredentials.fromJson(jsonDecode(raw));
@@ -19,24 +44,22 @@ class Store {
   }
 
   static Future<void> setActive(XtreamCredentials c) async {
-    final p = await SharedPreferences.getInstance();
-    await p.setString(_kActive, jsonEncode(c.toJson()));
+    await _s.write(key: _kActive, value: jsonEncode(c.toJson()));
     // remember in profile list
     final profiles = await savedProfiles();
     if (!profiles.any((x) => x.baseUrl == c.baseUrl && x.username == c.username)) {
       profiles.insert(0, c);
-      await p.setString(_kProfiles, jsonEncode(profiles.map((e) => e.toJson()).toList()));
+      await _s.write(key: _kProfiles, value: jsonEncode(profiles.map((e) => e.toJson()).toList()));
     }
   }
 
   static Future<void> logout() async {
-    final p = await SharedPreferences.getInstance();
-    await p.remove(_kActive);
+    await _s.delete(key: _kActive);
   }
 
   static Future<List<XtreamCredentials>> savedProfiles() async {
-    final p = await SharedPreferences.getInstance();
-    final raw = p.getString(_kProfiles);
+    await _migrate();
+    final raw = await _s.read(key: _kProfiles);
     if (raw == null) return [];
     try {
       return (jsonDecode(raw) as List).map((e) => XtreamCredentials.fromJson(e)).toList();
