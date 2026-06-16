@@ -1,8 +1,11 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import '../models.dart';
 import '../theme.dart';
+import '../widgets.dart';
 import '../xtream.dart';
+import 'movie_detail_screen.dart';
 import 'player_screen.dart';
 import 'series_detail_screen.dart';
 
@@ -10,14 +13,14 @@ class _Item {
   final String name;
   final String image;
   final double rating;
+  final String? badge;
   final VoidCallback onTap;
-  _Item(this.name, this.image, this.rating, this.onTap);
+  _Item(this.name, this.image, this.rating, this.badge, this.onTap);
 }
 
-/// Browse screen for a content kind: 'live' | 'movie' | 'series'.
 class CatalogScreen extends StatefulWidget {
   final XtreamClient client;
-  final String kind;
+  final String kind; // 'live' | 'movie' | 'series'
   const CatalogScreen({super.key, required this.client, required this.kind});
   @override
   State<CatalogScreen> createState() => _CatalogScreenState();
@@ -59,54 +62,36 @@ class _CatalogScreenState extends State<CatalogScreen> with AutomaticKeepAliveCl
       case 'live':
         final list = await c.liveStreams(cat);
         return list
-            .map((s) => _Item(s.name, s.icon, 0, () => _play(c.streamUrl('live', s.streamId, ext: 'ts'), s.name)))
+            .map((s) => _Item(s.name, s.icon, 0, 'LIVE',
+                () => _open(PlayerScreen(url: c.streamUrl('live', s.streamId, ext: 'ts'), title: s.name))))
             .toList();
       case 'movie':
         final list = await c.vodStreams(cat);
         return list
-            .map((m) => _Item(m.name, m.icon, m.rating,
-                () => _play(c.streamUrl('movie', m.streamId, ext: m.containerExtension), m.name)))
+            .map((m) => _Item(m.name, m.icon, m.rating, null,
+                () => _open(MovieDetailScreen(client: c, movie: m))))
             .toList();
       default:
         final list = await c.series(cat);
         return list
-            .map((s) => _Item(s.name, s.cover, s.rating, () {
-                  Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => SeriesDetailScreen(client: c, seriesId: s.seriesId, title: s.name)));
-                }))
+            .map((s) => _Item(s.name, s.cover, s.rating, null,
+                () => _open(SeriesDetailScreen(client: c, seriesId: s.seriesId, title: s.name))))
             .toList();
     }
   }
 
-  void _play(String url, String title) {
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => PlayerScreen(url: url, title: title)));
-  }
+  void _open(Widget screen) =>
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
 
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    final aspect = widget.kind == 'live' ? 1.0 : 2 / 3;
+    final isLive = widget.kind == 'live';
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-          child: Row(
-            children: [
-              Expanded(child: _categoryDropdown()),
-              const SizedBox(width: 10),
-              Expanded(
-                child: TextField(
-                  onChanged: (v) => setState(() => _query = v),
-                  decoration: const InputDecoration(
-                    hintText: 'Filter…',
-                    prefixIcon: Icon(Icons.search, color: subtle, size: 20),
-                    isDense: true,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
+        _chipRail(),
+        const SizedBox(height: 6),
+        _search(),
         Expanded(
           child: FutureBuilder<List<_Item>>(
             future: _items,
@@ -116,10 +101,11 @@ class _CatalogScreenState extends State<CatalogScreen> with AutomaticKeepAliveCl
               }
               if (snap.hasError) {
                 return Center(
-                    child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Text('${snap.error}', style: const TextStyle(color: Color(0xFFFFB4B4))),
-                ));
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text('${snap.error}', style: const TextStyle(color: Color(0xFFFF8FA3))),
+                  ),
+                );
               }
               var items = snap.data ?? [];
               if (_query.trim().isNotEmpty) {
@@ -129,16 +115,38 @@ class _CatalogScreenState extends State<CatalogScreen> with AutomaticKeepAliveCl
               if (items.isEmpty) {
                 return const Center(child: Text('Nothing here.', style: TextStyle(color: subtle)));
               }
-              return GridView.builder(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                  maxCrossAxisExtent: 160,
-                  childAspectRatio: aspect,
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                ),
-                itemCount: items.length,
-                itemBuilder: (context, i) => _PosterCard(item: items[i]),
+              final hasHero = !isLive && _query.trim().isEmpty && items.isNotEmpty;
+              final hero = hasHero ? items.first : null;
+              final grid = hasHero ? items.sublist(1) : items;
+
+              return CustomScrollView(
+                slivers: [
+                  if (hero != null)
+                    SliverToBoxAdapter(child: _Hero(item: hero)),
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
+                    sliver: SliverGrid(
+                      gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                        maxCrossAxisExtent: isLive ? 140 : 168,
+                        childAspectRatio: isLive ? 1 : 2 / 3,
+                        crossAxisSpacing: 14,
+                        mainAxisSpacing: 14,
+                      ),
+                      delegate: SliverChildBuilderDelegate(
+                        (context, i) => PosterCard(
+                          name: grid[i].name,
+                          image: grid[i].image,
+                          rating: grid[i].rating,
+                          badge: isLive ? grid[i].badge : null,
+                          circle: isLive,
+                          index: i,
+                          onTap: grid[i].onTap,
+                        ),
+                        childCount: grid.length,
+                      ),
+                    ),
+                  ),
+                ],
               );
             },
           ),
@@ -147,110 +155,132 @@ class _CatalogScreenState extends State<CatalogScreen> with AutomaticKeepAliveCl
     );
   }
 
-  Widget _categoryDropdown() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: surfaceHi,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white12),
+  Widget _chipRail() {
+    return SizedBox(
+      height: 42,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: _cats.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        itemBuilder: (_, i) {
+          final c = _cats[i];
+          final sel = c.id == _cat;
+          return GestureDetector(
+            onTap: () => setState(() {
+              _cat = c.id;
+              _items = _load(c.id);
+            }),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              alignment: Alignment.center,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(
+                gradient: sel ? accentGradient : null,
+                color: sel ? null : surfaceHi.withValues(alpha: 0.6),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: sel ? Colors.transparent : line),
+              ),
+              child: Text(
+                c.name,
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                  color: sel ? Colors.white : muted,
+                ),
+              ),
+            ),
+          );
+        },
       ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          isExpanded: true,
-          value: _cat,
-          dropdownColor: surfaceHi,
-          icon: const Icon(Icons.expand_more, color: subtle),
-          items: _cats
-              .map((c) => DropdownMenuItem(
-                  value: c.id, child: Text(c.name, overflow: TextOverflow.ellipsis)))
-              .toList(),
-          onChanged: (v) => setState(() {
-            _cat = v;
-            _items = _load(v);
-          }),
+    );
+  }
+
+  Widget _search() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+      child: TextField(
+        onChanged: (v) => setState(() => _query = v),
+        decoration: const InputDecoration(
+          hintText: 'Search…',
+          prefixIcon: Icon(Icons.search_rounded, color: subtle, size: 20),
+          isDense: true,
         ),
       ),
     );
   }
 }
 
-class _PosterCard extends StatelessWidget {
+/// Cinematic featured banner for the first item in a movie/series category.
+class _Hero extends StatelessWidget {
   final _Item item;
-  const _PosterCard({required this.item});
+  const _Hero({required this.item});
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: item.onTap,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(color: Colors.black.withValues(alpha: 0.45), blurRadius: 14, offset: const Offset(0, 8)),
-          ],
-        ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      child: GestureDetector(
+        onTap: item.onTap,
         child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            Container(color: surface),
-            if (item.image.isNotEmpty)
-              CachedNetworkImage(
-                imageUrl: item.image,
-                fit: BoxFit.cover,
-                errorWidget: (_, __, ___) => const _Fallback(),
-                placeholder: (_, __) => const ColoredBox(color: surfaceHi),
-              )
-            else
-              const _Fallback(),
-            // gradient + title
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.bottomCenter,
-                    end: Alignment.center,
-                    colors: [Colors.black87, Colors.transparent],
+          borderRadius: BorderRadius.circular(26),
+          child: AspectRatio(
+            aspectRatio: 16 / 10,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                const ColoredBox(color: surfaceHi),
+                if (item.image.isNotEmpty)
+                  CachedNetworkImage(imageUrl: item.image, fit: BoxFit.cover),
+                const DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.topCenter,
+                      colors: [Color(0xF2000000), Colors.transparent],
+                    ),
                   ),
                 ),
-              ),
-            ),
-            if (item.rating > 0)
-              Positioned(
-                left: 6,
-                top: 6,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(8)),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    const Icon(Icons.star_rounded, color: accent2, size: 13),
-                    const SizedBox(width: 2),
-                    Text(item.rating.toStringAsFixed(1),
-                        style: const TextStyle(color: accent2, fontSize: 11, fontWeight: FontWeight.w600)),
-                  ]),
+                Positioned(
+                  left: 18,
+                  right: 18,
+                  bottom: 16,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(gradient: accentGradient, borderRadius: BorderRadius.circular(8)),
+                        child: const Text('FEATURED',
+                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1)),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(item.name,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, height: 1.1)),
+                      const SizedBox(height: 12),
+                      Row(children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 11),
+                          decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(14),
+                              boxShadow: glow(Colors.white, blur: 18, y: 4, a: 0.25)),
+                          child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                            Icon(Icons.play_arrow_rounded, color: bg, size: 22),
+                            SizedBox(width: 4),
+                            Text('Play', style: TextStyle(color: bg, fontWeight: FontWeight.w800)),
+                          ]),
+                        ),
+                      ]),
+                    ],
+                  ),
                 ),
-              ),
-            Positioned(
-              left: 8,
-              right: 8,
-              bottom: 8,
-              child: Text(item.name,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+              ],
             ),
-          ],
+          ),
         ),
-        ),
-      ),
+      ).animate().fadeIn(duration: 450.ms).slideY(begin: 0.06, end: 0, curve: Curves.easeOut),
     );
   }
-}
-
-class _Fallback extends StatelessWidget {
-  const _Fallback();
-  @override
-  Widget build(BuildContext context) =>
-      const ColoredBox(color: surfaceHi, child: Center(child: Icon(Icons.movie_rounded, color: subtle)));
 }
