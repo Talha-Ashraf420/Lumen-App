@@ -8,7 +8,7 @@ import 'xtream.dart';
 /// Taste = the categories of movies the user has favourited / recently watched.
 /// With no signal yet, falls back to a few random categories.
 class Discovery {
-  static Future<List<VodStream>> pool(XtreamClient c, {int size = 48}) async {
+  static Future<List<VodStream>> pool(XtreamClient c, {int size = 240}) async {
     final allCats = await CatalogCache.instance.vod(c);
     if (allCats.isEmpty) return [];
 
@@ -20,16 +20,16 @@ class Discovery {
       }
     }
 
-    List<String> chosen;
+    // Preferred categories first, then fill with random ones for a dense, varied globe.
+    final chosen = <String>[];
     if (freq.isNotEmpty) {
-      chosen = freq.keys.toList()..sort((a, b) => freq[b]!.compareTo(freq[a]!));
-      chosen = chosen.take(4).toList();
-      // mix in one random category for variety
-      final rest = allCats.where((cat) => !chosen.contains(cat.id)).toList()..shuffle();
-      if (rest.isNotEmpty) chosen.add(rest.first.id);
-    } else {
-      final shuffled = [...allCats]..shuffle();
-      chosen = shuffled.take(4).map((e) => e.id).toList();
+      final pref = freq.keys.toList()..sort((a, b) => freq[b]!.compareTo(freq[a]!));
+      chosen.addAll(pref.take(6));
+    }
+    final rest = allCats.where((cat) => !chosen.contains(cat.id)).toList()..shuffle();
+    for (final cat in rest) {
+      if (chosen.length >= 12) break;
+      chosen.add(cat.id);
     }
 
     final lists = await Future.wait(

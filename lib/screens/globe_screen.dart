@@ -10,9 +10,9 @@ import '../widgets.dart';
 import '../xtream.dart';
 import 'movie_detail_screen.dart';
 
-/// "Discover" — a rotatable 3D globe of movie posters. Drag to spin (with
-/// inertia), tap a poster to open it, or hit Surprise to fling and land on a
-/// random pick. The pool is taste-weighted by what the user has watched.
+/// "Discover" — a dense, rotatable 3D globe of movie posters. One finger spins
+/// it (with inertia); two fingers pinch to zoom in. Tap a poster to open it, or
+/// hit Surprise to fling to a random pick. The pool is taste-weighted.
 class GlobeScreen extends StatefulWidget {
   final XtreamClient client;
   const GlobeScreen({super.key, required this.client});
@@ -22,16 +22,16 @@ class GlobeScreen extends StatefulWidget {
 
 class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin {
   List<VodStream> _pool = [];
-  List<_P3> _base = []; // unit sphere positions
+  List<_P3> _base = [];
   bool _loading = true;
 
-  double _yaw = 0, _pitch = -0.15;
-  double _vYaw = 0.0045, _vPitch = 0; // gentle idle spin
-  bool _dragging = false;
+  double _yaw = 0, _pitch = -0.12;
+  double _vYaw = 0.04, _vPitch = 0; // initial intro spin, decays to rest
+  double _zoom = 1.0, _zoomStart = 1.0;
+  bool _interacting = false;
   int _front = 0;
 
   late final Ticker _ticker;
-  Duration _last = Duration.zero;
   final _rng = math.Random();
 
   @override
@@ -61,30 +61,23 @@ class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin
     super.dispose();
   }
 
+  // Spin via inertia only; rest (no rebuilds) once it slows — keeps a big globe smooth.
   void _tick(Duration elapsed) {
-    final dt = _last == Duration.zero ? 0.016 : (elapsed - _last).inMicroseconds / 1e6;
-    _last = elapsed;
-    if (_dragging || _pool.isEmpty) return;
-    // inertia + friction
+    if (_interacting || _pool.isEmpty) return;
+    if (_vYaw.abs() < 0.0009 && _vPitch.abs() < 0.0009) return;
     _yaw += _vYaw;
     _pitch = (_pitch + _vPitch).clamp(-1.1, 1.1);
-    _vYaw *= 0.95;
-    _vPitch *= 0.95;
-    // settle into a gentle idle spin once inertia fades
-    if (_vYaw.abs() < 0.004 && _vPitch.abs() < 0.002) {
-      _vYaw = _vYaw + (0.0045 - _vYaw) * 0.04;
-      _vPitch *= 0.9;
-    }
+    _vYaw *= 0.94;
+    _vPitch *= 0.94;
     setState(() {});
   }
 
   void _surprise() {
     HapticFeedback.mediumImpact();
-    _vYaw = (_rng.nextBool() ? 1 : -1) * (0.12 + _rng.nextDouble() * 0.08);
-    _vPitch = (_rng.nextDouble() - 0.5) * 0.05;
+    _vYaw = (_rng.nextBool() ? 1 : -1) * (0.16 + _rng.nextDouble() * 0.1);
+    _vPitch = (_rng.nextDouble() - 0.5) * 0.06;
   }
 
-  // Fibonacci sphere — even point distribution.
   List<_P3> _fibSphere(int n) {
     if (n == 0) return [];
     final pts = <_P3>[];
@@ -140,13 +133,12 @@ class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin
         padding: const EdgeInsets.fromLTRB(8, 6, 16, 0),
         child: Row(
           children: [
-            IconButton(
-              onPressed: () => Navigator.of(context).pop(),
-              icon: const Icon(Icons.arrow_back_rounded),
-            ),
+            IconButton(onPressed: () => Navigator.of(context).pop(), icon: const Icon(Icons.arrow_back_rounded)),
             const SizedBox(width: 4),
             const Text('Discover', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
             const Spacer(),
+            Text('${_pool.length}', style: TextStyle(color: subtle, fontWeight: FontWeight.w700)),
+            const SizedBox(width: 6),
             Icon(Icons.auto_awesome_rounded, color: accent, size: 20),
           ],
         ),
@@ -160,10 +152,9 @@ class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin
       builder: (context, constraints) {
         final w = constraints.maxWidth, h = constraints.maxHeight;
         final cx = w / 2, cy = h / 2;
-        final radius = math.min(w, h) * 0.40;
-        const pw = 58.0, ph = 86.0;
+        final radius = math.min(w, h) * 0.42 * _zoom;
+        final pw = 44.0 * _zoom, ph = 66.0 * _zoom;
 
-        // project + sort back-to-front
         final projected = <_Proj>[];
         var frontIdx = 0;
         var frontDepth = -2.0;
@@ -173,15 +164,8 @@ class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin
             frontDepth = r.z;
             frontIdx = i;
           }
-          final t = (r.z + 1) / 2; // 0 back .. 1 front
-          projected.add(_Proj(
-            i,
-            cx + r.x * radius,
-            cy + r.y * radius,
-            r.z,
-            0.55 + 0.55 * t,
-            0.30 + 0.70 * t,
-          ));
+          final t = (r.z + 1) / 2;
+          projected.add(_Proj(i, cx + r.x * radius, cy + r.y * radius, r.z, 0.6 + 0.5 * t, 0.28 + 0.72 * t));
         }
         if (frontIdx != _front) {
           _front = frontIdx;
@@ -191,60 +175,72 @@ class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin
         }
         projected.sort((a, b) => a.depth.compareTo(b.depth));
 
-        return GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onPanStart: (_) {
-            _dragging = true;
-            _vYaw = 0;
-            _vPitch = 0;
-          },
-          onPanUpdate: (d) {
-            setState(() {
-              _yaw += d.delta.dx * 0.008;
-              _pitch = (_pitch - d.delta.dy * 0.008).clamp(-1.1, 1.1);
-              _vYaw = d.delta.dx * 0.008;
-              _vPitch = -d.delta.dy * 0.008;
-            });
-          },
-          onPanEnd: (_) => _dragging = false,
-          child: Stack(
-            children: [
-              for (final p in projected)
-                Positioned(
-                  left: p.x - pw / 2,
-                  top: p.y - ph / 2,
-                  child: Opacity(
-                    opacity: p.opacity,
-                    child: Transform.scale(
-                      scale: p.scale,
-                      child: _poster(_pool[p.i], p.i == _front),
+        return ClipRect(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onScaleStart: (d) {
+              _interacting = true;
+              _vYaw = 0;
+              _vPitch = 0;
+              _zoomStart = _zoom;
+            },
+            onScaleUpdate: (d) {
+              if (d.pointerCount >= 2) {
+                setState(() {
+                  _zoom = (_zoomStart * d.scale).clamp(1.0, 3.0);
+                  _vYaw = 0;
+                  _vPitch = 0;
+                });
+              } else {
+                setState(() {
+                  _yaw += d.focalPointDelta.dx * 0.008;
+                  _pitch = (_pitch - d.focalPointDelta.dy * 0.008).clamp(-1.1, 1.1);
+                  _vYaw = d.focalPointDelta.dx * 0.008;
+                  _vPitch = -d.focalPointDelta.dy * 0.008;
+                });
+              }
+            },
+            onScaleEnd: (_) => _interacting = false,
+            child: Stack(
+              children: [
+                for (final p in projected)
+                  Positioned(
+                    left: p.x - pw / 2,
+                    top: p.y - ph / 2,
+                    child: Opacity(
+                      opacity: p.opacity,
+                      child: Transform.scale(
+                        scale: p.scale,
+                        child: _poster(_pool[p.i], pw, ph, p.i == _front),
+                      ),
                     ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
         );
       },
     );
   }
 
-  Widget _poster(VodStream m, bool focused) {
-    return GestureDetector(
-      onTap: () => _open(m),
-      child: Container(
-        width: 58,
-        height: 86,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(8),
-          color: surfaceHi,
-          border: focused ? Border.all(color: accent, width: 2) : null,
-          boxShadow: focused ? glow(accent) : null,
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: CachedNetworkImage(
-          imageUrl: m.icon,
-          fit: BoxFit.cover,
-          errorWidget: (_, _, _) => Icon(Icons.movie_outlined, color: subtle, size: 20),
+  Widget _poster(VodStream m, double w, double h, bool focused) {
+    return RepaintBoundary(
+      child: GestureDetector(
+        onTap: () => _open(m),
+        child: Container(
+          width: w,
+          height: h,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(7),
+            color: surfaceHi,
+            border: focused ? Border.all(color: accent, width: 2) : null,
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: CachedNetworkImage(
+            imageUrl: m.icon,
+            fit: BoxFit.cover,
+            errorWidget: (_, _, _) => Icon(Icons.movie_outlined, color: subtle, size: 18),
+          ),
         ),
       ),
     );
@@ -258,13 +254,11 @@ class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin
         mainAxisSize: MainAxisSize.min,
         children: [
           if (m != null)
-            Text(
-              m.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
-            ),
+            Text(m.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
           const SizedBox(height: 12),
           Row(
             children: [
@@ -273,7 +267,8 @@ class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin
                   onTap: _surprise,
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 15),
-                    decoration: BoxDecoration(color: surfaceHi.withValues(alpha: 0.8), borderRadius: BorderRadius.circular(16), border: Border.all(color: line)),
+                    decoration: BoxDecoration(
+                        color: surfaceHi.withValues(alpha: 0.8), borderRadius: BorderRadius.circular(16), border: Border.all(color: line)),
                     child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                       Icon(Icons.casino_rounded, color: accent, size: 20),
                       const SizedBox(width: 8),
