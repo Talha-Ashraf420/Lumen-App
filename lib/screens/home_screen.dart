@@ -7,6 +7,7 @@ import '../models.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import '../xtream.dart';
+import 'globe_screen.dart';
 import 'movie_detail_screen.dart';
 import 'player_screen.dart';
 import 'series_detail_screen.dart';
@@ -231,15 +232,31 @@ class _HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMi
   Widget _searchBar() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-      child: SearchField(
-        hint: 'Movies, series, channels…',
-        readOnly: true,
-        onTap: widget.onBrowse,
-        trailing: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(color: surface, borderRadius: BorderRadius.circular(11)),
-          child: Icon(Icons.tune_rounded, color: muted, size: 18),
-        ),
+      child: Row(
+        children: [
+          Expanded(
+            child: SearchField(
+              hint: 'Movies, series, channels…',
+              readOnly: true,
+              onTap: widget.onBrowse,
+              trailing: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(color: surface, borderRadius: BorderRadius.circular(11)),
+                child: Icon(Icons.tune_rounded, color: muted, size: 18),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          GestureDetector(
+            onTap: () => _push(GlobeScreen(client: widget.client)),
+            child: Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(16), boxShadow: glow(accent)),
+              child: const Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 22),
+            ),
+          ),
+        ],
       ),
     );
   }

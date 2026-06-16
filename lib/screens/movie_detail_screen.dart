@@ -44,7 +44,12 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
             ])));
   }
 
-  MediaRef _ref() => MediaRef(kind: 'movie', id: widget.movie.streamId, name: widget.movie.name, image: widget.movie.icon);
+  MediaRef _ref() => MediaRef(
+      kind: 'movie',
+      id: widget.movie.streamId,
+      name: widget.movie.name,
+      image: widget.movie.icon,
+      cat: widget.movie.categoryId);
 
   @override
   Widget build(BuildContext context) {

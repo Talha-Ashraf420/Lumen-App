@@ -9,12 +9,20 @@ class MediaRef {
   final String name;
   final String image;
   final String url; // direct play url (used for live channels)
-  const MediaRef({required this.kind, required this.id, required this.name, this.image = '', this.url = ''});
+  final String cat; // category id (used to infer taste for Discover)
+  const MediaRef(
+      {required this.kind, required this.id, required this.name, this.image = '', this.url = '', this.cat = ''});
   bool get isLive => kind == 'live';
   String get key => '$kind:$id';
-  Map<String, dynamic> toJson() => {'kind': kind, 'id': id, 'name': name, 'image': image, 'url': url};
-  factory MediaRef.fromJson(Map<String, dynamic> j) =>
-      MediaRef(kind: j['kind'], id: j['id'], name: j['name'], image: j['image'] ?? '', url: j['url'] ?? '');
+  Map<String, dynamic> toJson() => {'kind': kind, 'id': id, 'name': name, 'image': image, 'url': url, 'cat': cat};
+  factory MediaRef.fromJson(Map<String, dynamic> j) => MediaRef(
+        kind: j['kind'],
+        id: j['id'],
+        name: j['name'],
+        image: j['image'] ?? '',
+        url: j['url'] ?? '',
+        cat: j['cat'] ?? '',
+      );
 }
 
 /// Saved playback progress for continue-watching.
