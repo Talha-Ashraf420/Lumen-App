@@ -5,6 +5,7 @@ import 'epg_cache.dart';
 import 'home_config.dart';
 import 'models.dart';
 import 'playback.dart';
+import 'stats.dart';
 import 'store.dart';
 import 'library.dart';
 import 'theme.dart';
@@ -84,6 +85,7 @@ class _GateState extends State<_Gate> {
     super.initState();
     Library.instance.load();
     HomeConfig.instance.load();
+    WatchStats.instance.load();
     ThemeController.instance.load();
     Store.active().then((c) => setState(() {
           _creds = c;

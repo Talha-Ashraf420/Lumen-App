@@ -8,6 +8,7 @@ import '../widgets.dart';
 import '../xtream.dart';
 import 'customize_home_screen.dart';
 import 'login_screen.dart';
+import 'stats_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final XtreamClient client;
@@ -155,6 +156,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
               const SizedBox(width: 6),
+              Icon(Icons.chevron_right_rounded, color: subtle),
+            ]),
+          ),
+        ),
+        const SizedBox(height: 10),
+        GestureDetector(
+          onTap: () =>
+              Navigator.of(context).push(MaterialPageRoute(builder: (_) => StatsScreen(client: widget.client))),
+          child: Glass(
+            radius: 18,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+            child: Row(children: [
+              Icon(Icons.insights_rounded, color: accent, size: 20),
+              const SizedBox(width: 14),
+              const Expanded(child: Text('Your Lumen', style: TextStyle(fontWeight: FontWeight.w700))),
               Icon(Icons.chevron_right_rounded, color: subtle),
             ]),
           ),

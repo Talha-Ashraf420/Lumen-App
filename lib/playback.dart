@@ -5,6 +5,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'library.dart';
 import 'models.dart';
+import 'stats.dart';
 
 /// Root navigator key so the floating mini-player overlay (which lives above the
 /// Navigator) can push the full player route.
@@ -43,6 +44,7 @@ class PlaybackController extends ChangeNotifier {
   int _lastSave = 0;
   StreamSubscription<Duration>? _posSub;
   StreamSubscription<bool>? _completedSub;
+  Timer? _statsTimer;
 
   bool get hasMedia => player != null && items.isNotEmpty;
   PlayerItem get item => items[index];
@@ -59,6 +61,7 @@ class PlaybackController extends ChangeNotifier {
       _completedSub = player!.stream.completed.listen((done) {
         if (done && !isLive && hasNext) go(index + 1);
       });
+      _statsTimer = Timer.periodic(const Duration(seconds: 15), (_) => _tickStats());
     }
     items = newItems;
     index = i.clamp(0, newItems.length - 1);
@@ -127,6 +130,21 @@ class PlaybackController extends ChangeNotifier {
     }
   }
 
+  void _tickStats() {
+    if (player == null || items.isEmpty || !(player!.state.playing)) return;
+    final kind = isLive ? 'live' : ((item.progressKey?.startsWith('ep:') ?? false) ? 'series' : 'movie');
+    final now = DateTime.now();
+    String two(int n) => n.toString().padLeft(2, '0');
+    final day = '${now.year}-${two(now.month)}-${two(now.day)}';
+    WatchStats.instance.add(
+      seconds: 15,
+      kind: kind,
+      cat: item.favRef?.cat ?? '',
+      titleKey: item.favRef?.key ?? item.progressKey ?? '',
+      day: day,
+    );
+  }
+
   void persistProgress() {
     if (player == null || isLive || item.progressKey == null) return;
     final dur = player!.state.duration, pos = player!.state.position;
@@ -160,6 +178,8 @@ class PlaybackController extends ChangeNotifier {
     _posSub = null;
     _completedSub?.cancel();
     _completedSub = null;
+    _statsTimer?.cancel();
+    _statsTimer = null;
     player?.dispose();
     player = null;
     controller = null;
