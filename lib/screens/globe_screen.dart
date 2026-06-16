@@ -3,11 +3,13 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/scheduler.dart';
+import '../catalog_cache.dart';
 import '../discovery.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import '../xtream.dart';
+import 'category_sheet.dart';
 import 'movie_detail_screen.dart';
 
 /// "Discover" — a dense, rotatable 3D globe of movie posters. One finger spins
@@ -24,6 +26,8 @@ class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin
   List<VodStream> _pool = [];
   List<_P3> _base = [];
   bool _loading = true;
+  List<Category> _cats = [];
+  String? _cat; // null = "For you" (taste-weighted mix)
 
   double _yaw = 0, _pitch = -0.12;
   double _vYaw = 0.04, _vPitch = 0; // initial intro spin, decays to rest
@@ -38,21 +42,39 @@ class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin
   void initState() {
     super.initState();
     _ticker = createTicker(_tick)..start();
+    CatalogCache.instance.vod(widget.client).then((c) => mounted ? setState(() => _cats = c) : null);
     _load();
   }
 
   Future<void> _load() async {
     try {
-      final pool = await Discovery.pool(widget.client);
+      final pool = await Discovery.pool(widget.client, categoryId: _cat);
       if (!mounted) return;
       setState(() {
         _pool = pool;
         _base = _fibSphere(pool.length);
         _loading = false;
+        _yaw = 0;
+        _pitch = -0.12;
+        _vYaw = 0.04;
+        _zoom = 1.0;
       });
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  String get _genreLabel =>
+      _cat == null ? 'For you' : _cats.firstWhere((c) => c.id == _cat, orElse: () => Category(_cat!, 'Genre')).name;
+
+  Future<void> _pickGenre() async {
+    final r = await showCategorySheet(context, categories: _cats, selected: _cat ?? 'all');
+    if (r == null || !mounted) return;
+    setState(() {
+      _cat = (r == 'all') ? null : r;
+      _loading = true;
+    });
+    _load();
   }
 
   @override
@@ -118,6 +140,7 @@ class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin
             child: Column(
               children: [
                 _header(),
+                _genreBar(),
                 Expanded(child: _loading ? const BrandedLoading() : _globe()),
                 _footer(),
                 const SizedBox(height: 12),
@@ -141,6 +164,30 @@ class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin
             const SizedBox(width: 6),
             Icon(Icons.auto_awesome_rounded, color: accent, size: 20),
           ],
+        ),
+      );
+
+  Widget _genreBar() => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+        child: GestureDetector(
+          onTap: _cats.isEmpty ? null : _pickGenre,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: surfaceHi.withValues(alpha: 0.7),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: line),
+            ),
+            child: Row(children: [
+              Icon(Icons.theaters_rounded, size: 18, color: accent),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(_genreLabel,
+                    maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700)),
+              ),
+              Icon(Icons.keyboard_arrow_down_rounded, color: muted),
+            ]),
+          ),
         ),
       );
 

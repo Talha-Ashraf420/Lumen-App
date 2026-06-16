@@ -12,7 +12,14 @@ class Discovery {
   /// sequential batches with retry (providers reject big concurrent bursts),
   /// accumulating de-duplicated items until [target] is reached or categories
   /// run out.
-  static Future<List<VodStream>> pool(XtreamClient c, {int target = 1000}) async {
+  static Future<List<VodStream>> pool(XtreamClient c, {int target = 250, String? categoryId}) async {
+    // A specific genre/category was chosen — just that one.
+    if (categoryId != null) {
+      final r = await _fetch(c, categoryId);
+      final items = r.where((m) => m.icon.isNotEmpty).toList()..shuffle();
+      return items.length > target ? items.sublist(0, target) : items;
+    }
+
     final allCats = await CatalogCache.instance.vod(c);
     if (allCats.isEmpty) return [];
 
