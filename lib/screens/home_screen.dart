@@ -51,7 +51,7 @@ class _HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMi
   HItem _series(Series s) => HItem(s.name, s.cover, s.rating, _year(s.releaseDate.isEmpty ? s.name : s.releaseDate),
       () => _push(SeriesDetailScreen(client: widget.client, seriesId: s.seriesId, title: s.name)));
   HItem _live(LiveStream s) => HItem(s.name, s.icon, 0, 'Live',
-      () => _push(PlayerScreen(url: widget.client.streamUrl('live', s.streamId, ext: 'ts'), title: s.name)));
+      () => _push(PlayerScreen(url: widget.client.streamUrl('live', s.streamId, ext: 'ts'), title: s.name, isLive: true)));
 
   void _push(Widget w) => Navigator.of(context).push(MaterialPageRoute(builder: (_) => w));
 

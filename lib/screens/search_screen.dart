@@ -106,7 +106,7 @@ class SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClien
   _Res _ser(Series s) => _Res(s.name, s.cover, s.rating, _year(s.releaseDate.isEmpty ? s.name : s.releaseDate), false,
       () => _push(SeriesDetailScreen(client: widget.client, seriesId: s.seriesId, title: s.name)));
   _Res _liv(LiveStream s) => _Res(s.name, s.icon, 0, '', true,
-      () => _push(PlayerScreen(url: widget.client.streamUrl('live', s.streamId, ext: 'ts'), title: s.name)));
+      () => _push(PlayerScreen(url: widget.client.streamUrl('live', s.streamId, ext: 'ts'), title: s.name, isLive: true)));
 
   void _push(Widget w) => Navigator.of(context).push(MaterialPageRoute(builder: (_) => w));
 
