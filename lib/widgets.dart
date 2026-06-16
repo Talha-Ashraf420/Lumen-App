@@ -72,14 +72,14 @@ class SearchField extends StatelessWidget {
                     onChanged: onChanged,
                     style: const TextStyle(fontSize: 15.5),
                     cursorColor: accent,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       isCollapsed: true,
                       filled: false,
                       border: InputBorder.none,
                       enabledBorder: InputBorder.none,
                       focusedBorder: InputBorder.none,
-                      hintText: 'Search movies, series, channels…',
-                      hintStyle: TextStyle(color: subtle, fontSize: 15),
+                      hintText: hint,
+                      hintStyle: const TextStyle(color: subtle, fontSize: 15),
                     ),
                   ),
           ),

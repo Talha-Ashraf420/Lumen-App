@@ -183,7 +183,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   Widget _overlay() {
+    // Guarantee insets so controls clear the notch / home indicator in landscape.
     return SafeArea(
+      minimum: EdgeInsets.symmetric(horizontal: _fullscreen ? 28 : 4, vertical: _fullscreen ? 12 : 0),
       child: Column(children: [_topBar(), const Spacer(), _centerControls(), const Spacer(), _bottomBar()]),
     );
   }

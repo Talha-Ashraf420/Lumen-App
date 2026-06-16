@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models.dart';
 import '../theme.dart';
+import '../widgets.dart';
 
 /// A searchable category picker shown as a bottom sheet.
 /// Returns the chosen category id, 'all', or null if dismissed.
@@ -57,30 +58,10 @@ class _CategorySheetState extends State<_CategorySheet> {
                   child: Text('Categories', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
                 ),
               ),
-              // search categories
+              // search categories (unified field — single border)
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
-                  decoration: BoxDecoration(color: surfaceHi, borderRadius: BorderRadius.circular(14), border: Border.all(color: line)),
-                  child: Row(children: [
-                    const Icon(Icons.search_rounded, color: muted, size: 20),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: TextField(
-                        autofocus: false,
-                        onChanged: (v) => setState(() => _q = v),
-                        decoration: const InputDecoration(
-                          isCollapsed: true,
-                          contentPadding: EdgeInsets.symmetric(vertical: 14),
-                          border: InputBorder.none,
-                          hintText: 'Search categories…',
-                          hintStyle: TextStyle(color: subtle),
-                        ),
-                      ),
-                    ),
-                  ]),
-                ),
+                child: SearchField(hint: 'Search categories…', onChanged: (v) => setState(() => _q = v)),
               ),
               Expanded(
                 child: ListView(
