@@ -111,7 +111,8 @@ class Series {
   final String genre;
   final double rating;
   final String releaseDate;
-  Series(this.seriesId, this.name, this.cover, this.plot, this.genre, this.rating, this.releaseDate);
+  final String categoryId;
+  Series(this.seriesId, this.name, this.cover, this.plot, this.genre, this.rating, this.releaseDate, this.categoryId);
   factory Series.fromJson(Map<String, dynamic> j) => Series(
         _toInt(j['series_id']),
         _toStr(j['name']),
@@ -120,6 +121,7 @@ class Series {
         _toStr(j['genre']),
         _toDouble(j['rating']),
         _toStr(j['releaseDate'] ?? j['release_date']),
+        _toStr(j['category_id']),
       );
 }
 

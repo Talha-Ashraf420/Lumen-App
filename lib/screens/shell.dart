@@ -3,10 +3,10 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import '../xtream.dart';
-import 'browse_screen.dart';
 import 'home_screen.dart';
 import 'mylist_screen.dart';
 import 'profile_screen.dart';
+import 'search_screen.dart';
 
 class HomeShell extends StatefulWidget {
   final XtreamClient client;
@@ -21,7 +21,7 @@ class _HomeShellState extends State<HomeShell> {
 
   static const _nav = [
     (icon: Icons.home_rounded, label: 'Home'),
-    (icon: Icons.search_rounded, label: 'Browse'),
+    (icon: Icons.search_rounded, label: 'Search'),
     (icon: Icons.favorite_rounded, label: 'My List'),
     (icon: Icons.person_rounded, label: 'Profile'),
   ];
@@ -30,7 +30,7 @@ class _HomeShellState extends State<HomeShell> {
   Widget build(BuildContext context) {
     final pages = [
       HomeScreen(client: widget.client, onBrowse: () => setState(() => _index = 1)),
-      BrowseScreen(client: widget.client),
+      SearchScreen(client: widget.client),
       const MyListScreen(),
       ProfileScreen(client: widget.client, onLogout: widget.onLogout),
     ];
