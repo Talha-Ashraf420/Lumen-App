@@ -4,12 +4,14 @@ import 'catalog_cache.dart';
 import 'epg_cache.dart';
 import 'home_config.dart';
 import 'models.dart';
+import 'playback.dart';
 import 'store.dart';
 import 'library.dart';
 import 'theme.dart';
 import 'widgets.dart';
 import 'xtream.dart';
 import 'screens/login_screen.dart';
+import 'screens/mini_player.dart';
 import 'screens/shell.dart';
 
 void main() {
@@ -45,12 +47,20 @@ class LumenApp extends StatelessWidget {
         return MaterialApp(
           title: 'Lumen',
           debugShowCheckedModeBanner: false,
+          navigatorKey: rootNavKey,
           theme: buildTheme(lightPalette),
           darkTheme: buildTheme(darkPalette),
           themeMode: mode,
           // Flip instantly (no lerp) — our global palette getters switch at once,
           // and a non-const home forces the whole subtree to re-read them.
           themeAnimationDuration: Duration.zero,
+          // Float the mini-player above every screen.
+          builder: (context, child) => Stack(
+            children: [
+              child ?? const SizedBox.shrink(),
+              const Positioned.fill(child: MiniPlayer()),
+            ],
+          ),
           home: _Gate(),
         );
       },
@@ -87,6 +97,7 @@ class _GateState extends State<_Gate> {
   void _activate(XtreamCredentials c) => setState(() {
         _creds = c;
         _client = null;
+        PlaybackController.instance.stop();
         CatalogCache.instance.clear();
         EpgCache.instance.clear();
       });
@@ -101,6 +112,7 @@ class _GateState extends State<_Gate> {
   void _onLogout() => setState(() {
         _creds = null;
         _client = null;
+        PlaybackController.instance.stop();
         CatalogCache.instance.clear();
         EpgCache.instance.clear();
       });

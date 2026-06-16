@@ -6,46 +6,29 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 import '../library.dart';
 import '../models.dart';
+import '../playback.dart';
 import '../theme.dart';
 
-/// A playable entry (episode / channel / movie).
-class PlayerItem {
-  final String url;
-  final String title;
-  final bool isLive;
-  final String? progressKey; // continue-watching key, e.g. 'movie:123' / 'ep:456'
-  final String poster; // thumbnail for continue-watching / recents
-  final String ext;
-  final MediaRef? favRef; // what the heart toggles (movie/series/channel)
-  final Future<List<EpgEntry>> Function()? epg; // now/next for live channels (lazy)
-  const PlayerItem(this.url, this.title,
-      {this.isLive = false, this.progressKey, this.poster = '', this.ext = '', this.favRef, this.epg});
-}
+export '../playback.dart' show PlayerItem;
 
-/// Native playback (libmpv) with a full custom control set + playlist
-/// (next/previous episode or channel, with auto-advance for VOD).
+/// Full-screen player — a view over the app-level [PlaybackController] so video
+/// keeps running when minimised. Pass [items] to start new playback, or no
+/// items to re-attach (expand) the current session.
 class PlayerScreen extends StatefulWidget {
-  final List<PlayerItem> items;
+  final List<PlayerItem>? items;
   final int index;
-  const PlayerScreen({super.key, required this.items, this.index = 0});
+  const PlayerScreen({super.key, this.items, this.index = 0});
   @override
   State<PlayerScreen> createState() => _PlayerScreenState();
 }
 
 class _PlayerScreenState extends State<PlayerScreen> {
-  late final Player _player = Player();
-  late final VideoController _controller = VideoController(_player);
-  late int _index = widget.index;
-  StreamSubscription<bool>? _completedSub;
+  final pc = PlaybackController.instance;
 
   bool _controls = true;
   bool _fullscreen = false;
   bool _muted = false;
-  bool _resumed = false;
-  int _lastSave = 0;
   Timer? _hideTimer;
-  StreamSubscription<Duration>? _posSub;
-  List<EpgEntry> _epg = const [];
   BoxFit _fit = BoxFit.contain;
   double _rate = 1.0;
   double _zoomScale = 1.0, _zoomStart = 1.0;
@@ -63,122 +46,65 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Timer? _hudTimer;
 
   // sleep timer
-  Timer? _sleepTimer;
   int _sleepMin = 0;
 
-  PlayerItem get _item => widget.items[_index];
-  bool get _isLive => _item.isLive;
-  bool get _hasNext => _index < widget.items.length - 1;
-  bool get _hasPrev => _index > 0;
+  PlayerItem get _item => pc.item;
+  bool get _isLive => pc.isLive;
+  bool get _hasNext => pc.hasNext;
+  bool get _hasPrev => pc.hasPrev;
 
   @override
   void initState() {
     super.initState();
-    _openCurrent();
-    _completedSub = _player.stream.completed.listen((done) {
-      if (done && !_isLive && _hasNext) _go(_index + 1);
-    });
-    _posSub = _player.stream.position.listen(_onPosition);
+    if (widget.items != null) {
+      pc.open(widget.items!, widget.index);
+    } else {
+      pc.expand();
+    }
+    pc.addListener(_onPc);
     ScreenBrightness.instance.current.then((b) => _curBri = b).catchError((_) => _curBri = 0.5);
     _scheduleHide();
   }
 
+  void _onPc() {
+    if (mounted) setState(() {});
+  }
+
   @override
   void dispose() {
+    pc.removeListener(_onPc);
     _hideTimer?.cancel();
-    _completedSub?.cancel();
-    _posSub?.cancel();
-    _persistProgress();
     _hudTimer?.cancel();
-    _sleepTimer?.cancel();
     ScreenBrightness.instance.resetApplicationScreenBrightness().catchError((_) {});
-    _player.dispose();
     SystemChrome.setPreferredOrientations(DeviceOrientation.values);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
   }
 
-  void _openCurrent() {
-    _resumed = false;
-    _epg = const [];
-    _player.open(Media(_item.url, httpHeaders: const {'User-Agent': 'VLC/3.0.20 LibVLC/3.0.20'}));
-    if (_item.favRef != null) Library.instance.addRecent(_item.favRef!);
-    _loadEpg();
+  /// Leave the full player but keep playing in the floating mini-player.
+  void _minimize() {
+    pc.minimize();
+    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    Navigator.of(context).pop();
   }
 
-  void _loadEpg() {
-    final fetch = _item.epg;
-    if (fetch == null) return;
-    fetch().then((list) {
-      if (mounted) setState(() => _epg = list);
-    }).catchError((_) {});
-  }
-
-  EpgEntry? get _epgNow {
-    for (final e in _epg) {
-      if (e.isNow) return e;
-    }
-    return _epg.isNotEmpty ? _epg.first : null;
-  }
-
-  EpgEntry? get _epgNext {
-    final now = _epgNow;
-    if (now == null) return null;
-    final i = _epg.indexOf(now);
-    return (i >= 0 && i + 1 < _epg.length) ? _epg[i + 1] : null;
-  }
-
-  void _onPosition(Duration pos) {
-    if (_isLive || _item.progressKey == null) return;
-    final dur = _player.state.duration;
-    if (dur.inSeconds <= 0) return;
-    // resume once
-    if (!_resumed) {
-      _resumed = true;
-      final saved = Library.instance.progress[_item.progressKey];
-      if (saved != null && saved.position > 10 && saved.position < dur.inSeconds * 0.95) {
-        _player.seek(Duration(seconds: saved.position));
-      }
-      return;
-    }
-    // throttled progress save
-    final now = DateTime.now().millisecondsSinceEpoch;
-    if (now - _lastSave > 5000) {
-      _lastSave = now;
-      _persistProgress();
-    }
-  }
-
-  void _persistProgress() {
-    if (_isLive || _item.progressKey == null) return;
-    final dur = _player.state.duration, pos = _player.state.position;
-    if (dur.inSeconds <= 0) return;
-    Library.instance.saveProgress(Progress(
-      key: _item.progressKey!,
-      title: _item.title,
-      poster: _item.poster,
-      url: _item.url,
-      ext: _item.ext,
-      position: pos.inSeconds,
-      duration: dur.inSeconds,
-      updatedAt: DateTime.now().millisecondsSinceEpoch,
-    ));
+  /// Stop playback entirely and leave the player.
+  void _close() {
+    pc.stop();
+    Navigator.of(context).pop();
   }
 
   void _go(int i) {
-    if (i < 0 || i >= widget.items.length) return;
-    setState(() {
-      _index = i;
-      _controls = true;
-    });
-    _openCurrent();
+    pc.go(i);
+    setState(() => _controls = true);
     _scheduleHide();
   }
 
   void _scheduleHide() {
     _hideTimer?.cancel();
     _hideTimer = Timer(const Duration(seconds: 4), () {
-      if (mounted && _player.state.playing) setState(() => _controls = false);
+      if (mounted && (pc.player?.state.playing ?? false)) setState(() => _controls = false);
     });
   }
 
@@ -188,8 +114,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _seekBy(int secs) {
-    final p = _player.state.position + Duration(seconds: secs);
-    _player.seek(p < Duration.zero ? Duration.zero : p);
+    final p = pc.player!.state.position + Duration(seconds: secs);
+    pc.player!.seek(p < Duration.zero ? Duration.zero : p);
     _scheduleHide();
   }
 
@@ -207,18 +133,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   void _toggleMute() {
     _muted = !_muted;
-    _player.setVolume(_muted ? 0 : 100);
+    pc.player!.setVolume(_muted ? 0 : 100);
     setState(() {});
   }
 
   Future<void> _pickSubtitles() async {
-    final subs = _player.state.tracks.subtitle.where((t) => t.id != 'auto').toList();
+    final subs = pc.player!.state.tracks.subtitle.where((t) => t.id != 'auto').toList();
     await showModalBottomSheet(
       context: context,
       backgroundColor: surface,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (_) {
-        final current = _player.state.track.subtitle;
+        final current = pc.player!.state.track.subtitle;
         final real = subs.where((t) => t.id != 'no').toList();
         return SafeArea(
           child: Column(
@@ -229,13 +155,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 child: Align(alignment: Alignment.centerLeft, child: Text('Subtitles', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800))),
               ),
               _subRow('Off', current.id == 'no', () {
-                _player.setSubtitleTrack(SubtitleTrack.no());
+                pc.player!.setSubtitleTrack(SubtitleTrack.no());
                 Navigator.pop(context);
               }),
               ...real.map((t) {
                 final label = [t.title, t.language].whereType<String>().where((e) => e.isNotEmpty).join(' · ');
                 return _subRow(label.isEmpty ? 'Track ${t.id}' : label, current.id == t.id, () {
-                  _player.setSubtitleTrack(t);
+                  pc.player!.setSubtitleTrack(t);
                   Navigator.pop(context);
                 });
               }),
@@ -266,10 +192,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
       builder: (_) {
         return StatefulBuilder(
           builder: (ctx, setSheet) {
-            final audio = _player.state.tracks.audio.where((t) => t.id != 'auto' && t.id != 'no').toList();
-            final curAudio = _player.state.track.audio;
-            final subs = _player.state.tracks.subtitle.where((t) => t.id != 'auto' && t.id != 'no').toList();
-            final curSub = _player.state.track.subtitle;
+            final audio = pc.player!.state.tracks.audio.where((t) => t.id != 'auto' && t.id != 'no').toList();
+            final curAudio = pc.player!.state.track.audio;
+            final subs = pc.player!.state.tracks.subtitle.where((t) => t.id != 'auto' && t.id != 'no').toList();
+            final curSub = pc.player!.state.track.subtitle;
             return SafeArea(
               child: SingleChildScrollView(
                 child: Column(
@@ -292,7 +218,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       _chipRow([
                         for (final r in const [0.5, 1.0, 1.25, 1.5, 2.0])
                           ('${r}x', _rate == r, () {
-                            _player.setRate(r);
+                            pc.player!.setRate(r);
                             setSheet(() => setState(() => _rate = r));
                           }),
                       ]),
@@ -309,19 +235,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       ...audio.map((t) {
                         final label = [t.title, t.language].whereType<String>().where((e) => e.isNotEmpty).join(' · ');
                         return _trackRow(label.isEmpty ? 'Track ${t.id}' : label, curAudio.id == t.id, () {
-                          _player.setAudioTrack(t);
+                          pc.player!.setAudioTrack(t);
                           setSheet(() {});
                         });
                       }),
                     _settingLabel('Subtitles'),
                     _trackRow('Off', curSub.id == 'no', () {
-                      _player.setSubtitleTrack(SubtitleTrack.no());
+                      pc.player!.setSubtitleTrack(SubtitleTrack.no());
                       setSheet(() {});
                     }),
                     ...subs.map((t) {
                       final label = [t.title, t.language].whereType<String>().where((e) => e.isNotEmpty).join(' · ');
                       return _trackRow(label.isEmpty ? 'Track ${t.id}' : label, curSub.id == t.id, () {
-                        _player.setSubtitleTrack(t);
+                        pc.player!.setSubtitleTrack(t);
                         setSheet(() {});
                       });
                     }),
@@ -374,6 +300,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (!pc.hasMedia) {
+      return const Scaffold(backgroundColor: Colors.black, body: SizedBox.shrink());
+    }
     return Scaffold(
       backgroundColor: Colors.black,
       body: GestureDetector(
@@ -387,16 +316,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // One finger swipes (brightness / volume / seek); two fingers pinch-zoom.
             Center(
               child: Transform.scale(
                 scale: _zoomScale,
-                child: Video(controller: _controller, controls: NoVideoControls, fit: _fit),
+                child: Video(controller: pc.controller!, controls: NoVideoControls, fit: _fit),
               ),
             ),
             _hudOverlay(),
             StreamBuilder<bool>(
-              stream: _player.stream.buffering,
+              stream: pc.player!.stream.buffering,
               builder: (_, s) => (s.data ?? false)
                   ? Center(child: CircularProgressIndicator(color: accent, strokeWidth: 2.6))
                   : const SizedBox.shrink(),
@@ -427,7 +355,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _seekBy(10);
       _flashHud('+10s', Icons.forward_10_rounded);
     } else {
-      _player.playOrPause();
+      pc.player!.playOrPause();
       _scheduleHide();
     }
   }
@@ -436,8 +364,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _gMode = null;
     _gAccum = 0;
     _zoomStart = _zoomScale;
-    _gStartPos = _player.state.position;
-    _curVol = _player.state.volume;
+    _gStartPos = pc.player!.state.position;
+    _curVol = pc.player!.state.volume;
   }
 
   void _onScaleUpdate(ScaleUpdateDetails d) {
@@ -447,7 +375,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
     final w = MediaQuery.of(context).size.width;
     final dx = d.focalPointDelta.dx, dy = d.focalPointDelta.dy;
-    // Lock the gesture to an axis/side on first meaningful movement.
     _gMode ??= dx.abs() > dy.abs()
         ? (_isLive ? 'none' : 'seek')
         : (d.localFocalPoint.dx < w / 2 ? 'bri' : 'vol');
@@ -455,7 +382,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     switch (_gMode) {
       case 'seek':
         _gAccum += dx;
-        final dur = _player.state.duration.inSeconds;
+        final dur = pc.player!.state.duration.inSeconds;
         var target = (_gStartPos.inSeconds + (_gAccum * 0.25)).round();
         if (dur > 0) target = target.clamp(0, dur);
         if (target < 0) target = 0;
@@ -466,7 +393,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
             persist: true);
       case 'vol':
         _curVol = (_curVol - dy * 0.4).clamp(0.0, 100.0);
-        _player.setVolume(_curVol);
+        pc.player!.setVolume(_curVol);
         _muted = _curVol == 0;
         _flashHud('${_curVol.round()}%', _curVol == 0 ? Icons.volume_off_rounded : Icons.volume_up_rounded,
             value: _curVol / 100, persist: true);
@@ -478,7 +405,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _onScaleEnd(ScaleEndDetails d) {
-    if (_gMode == 'seek') _player.seek(_gSeekTarget);
+    if (_gMode == 'seek') pc.player!.seek(_gSeekTarget);
     _gMode = null;
     _hideHud();
     _scheduleHide();
@@ -532,12 +459,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
+  Timer? _sleepTimer;
+
   void _setSleep(int minutes) {
-    _sleepTimer?.cancel();
     _sleepMin = minutes;
+    _sleepTimer?.cancel();
     if (minutes > 0) {
       _sleepTimer = Timer(Duration(minutes: minutes), () {
-        _player.pause();
+        pc.player?.pause();
         if (mounted) setState(() => _sleepMin = 0);
       });
     }
@@ -545,8 +474,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   Widget _overlay() {
-    // Bars bleed to the screen edges (no black margins); the SafeArea lives
-    // inside each bar so only the controls clear the notch / home indicator.
     return Column(children: [_topBar(), const Spacer(), _centerControls(), const Spacer(), _bottomBar()]);
   }
 
@@ -560,74 +487,75 @@ class _PlayerScreenState extends State<PlayerScreen> {
         minimum: const EdgeInsets.only(left: 8, right: 16, top: 8, bottom: 8),
         child: Row(
           children: [
-          IconButton(onPressed: () => Navigator.of(context).pop(), icon: const Icon(Icons.arrow_back_rounded, color: Colors.white)),
-          if (_isLive)
-            Container(
-              margin: const EdgeInsets.only(right: 10),
-              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-              decoration: BoxDecoration(color: const Color(0xFFFF3B5C), borderRadius: BorderRadius.circular(8)),
-              child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(Icons.circle, color: Colors.white, size: 7),
-                SizedBox(width: 5),
-                Text('LIVE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
-              ]),
-            ),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(_item.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w700, shadows: [Shadow(color: Colors.black, blurRadius: 8)])),
-                if (_isLive && _epgNow != null) ...[
-                  const SizedBox(height: 3),
-                  Row(
-                    children: [
-                      Flexible(
-                        child: Text('Now · ${_epgNow!.title}',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 11.5, color: Colors.white70, fontWeight: FontWeight.w600)),
-                      ),
-                      if (_epgNext != null) ...[
-                        const SizedBox(width: 8),
+            IconButton(onPressed: _minimize, icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.white, size: 30)),
+            if (_isLive)
+              Container(
+                margin: const EdgeInsets.only(right: 10),
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                decoration: BoxDecoration(color: const Color(0xFFFF3B5C), borderRadius: BorderRadius.circular(8)),
+                child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.circle, color: Colors.white, size: 7),
+                  SizedBox(width: 5),
+                  Text('LIVE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
+                ]),
+              ),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(_item.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w700, shadows: [Shadow(color: Colors.black, blurRadius: 8)])),
+                  if (_isLive && pc.epgNow != null) ...[
+                    const SizedBox(height: 3),
+                    Row(
+                      children: [
                         Flexible(
-                          child: Text('Next · ${_epgNext!.title}',
+                          child: Text('Now · ${pc.epgNow!.title}',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontSize: 11.5, color: Colors.white38)),
+                              style: const TextStyle(fontSize: 11.5, color: Colors.white70, fontWeight: FontWeight.w600)),
                         ),
+                        if (pc.epgNext != null) ...[
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text('Next · ${pc.epgNext!.title}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 11.5, color: Colors.white38)),
+                          ),
+                        ],
                       ],
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(2),
-                    child: LinearProgressIndicator(
-                      value: _epgNow!.progress.toDouble(),
-                      minHeight: 2.5,
-                      backgroundColor: Colors.white24,
-                      valueColor: AlwaysStoppedAnimation(accent),
                     ),
-                  ),
+                    const SizedBox(height: 4),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(2),
+                      child: LinearProgressIndicator(
+                        value: pc.epgNow!.progress.toDouble(),
+                        minHeight: 2.5,
+                        backgroundColor: Colors.white24,
+                        valueColor: AlwaysStoppedAnimation(accent),
+                      ),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
-          ),
-          if (_item.favRef != null)
-            AnimatedBuilder(
-              animation: Library.instance,
-              builder: (_, __) {
-                final fav = Library.instance.isFav(_item.favRef!.key);
-                return IconButton(
-                  onPressed: () => Library.instance.toggleFav(_item.favRef!),
-                  icon: Icon(fav ? Icons.favorite_rounded : Icons.favorite_border_rounded, color: fav ? accent2 : Colors.white),
-                );
-              },
-            ),
-        ],
+            if (_item.favRef != null)
+              AnimatedBuilder(
+                animation: Library.instance,
+                builder: (_, __) {
+                  final fav = Library.instance.isFav(_item.favRef!.key);
+                  return IconButton(
+                    onPressed: () => Library.instance.toggleFav(_item.favRef!),
+                    icon: Icon(fav ? Icons.favorite_rounded : Icons.favorite_border_rounded, color: fav ? accent2 : Colors.white),
+                  );
+                },
+              ),
+            IconButton(onPressed: _close, icon: const Icon(Icons.close_rounded, color: Colors.white)),
+          ],
         ),
       ),
     );
@@ -637,17 +565,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        _smallBtn(Icons.skip_previous_rounded, _hasPrev ? () => _go(_index - 1) : null),
+        _smallBtn(Icons.skip_previous_rounded, _hasPrev ? () => _go(pc.index - 1) : null),
         const SizedBox(width: 18),
         if (!_isLive) _roundBtn(Icons.replay_10_rounded, () => _seekBy(-10)),
         const SizedBox(width: 22),
         StreamBuilder<bool>(
-          stream: _player.stream.playing,
+          stream: pc.player!.stream.playing,
           builder: (_, s) {
             final playing = s.data ?? false;
             return GestureDetector(
               onTap: () {
-                _player.playOrPause();
+                pc.player!.playOrPause();
                 _scheduleHide();
               },
               child: Container(
@@ -662,7 +590,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         const SizedBox(width: 22),
         if (!_isLive) _roundBtn(Icons.forward_10_rounded, () => _seekBy(10)),
         const SizedBox(width: 18),
-        _smallBtn(Icons.skip_next_rounded, _hasNext ? () => _go(_index + 1) : null),
+        _smallBtn(Icons.skip_next_rounded, _hasNext ? () => _go(pc.index + 1) : null),
       ],
     );
   }
@@ -721,10 +649,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   Widget _seekBar() {
     return StreamBuilder<Duration>(
-      stream: _player.stream.position,
+      stream: pc.player!.stream.position,
       builder: (_, posSnap) {
         final pos = posSnap.data ?? Duration.zero;
-        final dur = _player.state.duration;
+        final dur = pc.player!.state.duration;
         final max = dur.inMilliseconds.toDouble();
         final val = max <= 0 ? 0.0 : pos.inMilliseconds.toDouble().clamp(0, max);
         return Row(
@@ -744,7 +672,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 child: Slider(
                   value: val.toDouble(),
                   max: max <= 0 ? 1 : max,
-                  onChanged: max <= 0 ? null : (v) => _player.seek(Duration(milliseconds: v.round())),
+                  onChanged: max <= 0 ? null : (v) => pc.player!.seek(Duration(milliseconds: v.round())),
                   onChangeEnd: (_) => _scheduleHide(),
                 ),
               ),
