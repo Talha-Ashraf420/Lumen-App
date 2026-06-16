@@ -42,7 +42,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: Container(
             width: 88,
             height: 88,
-            decoration: BoxDecoration(gradient: accentGradient, shape: BoxShape.circle, boxShadow: glow(accent, a: 0.5)),
+            decoration: BoxDecoration(color: accent, shape: BoxShape.circle, boxShadow: glow(accent)),
             child: const Icon(Icons.person_rounded, size: 46, color: Colors.white),
           ),
         ),
@@ -50,7 +50,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         Center(child: Text(c.username, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800))),
         Center(
           child: Text(c.baseUrl.replaceFirst(RegExp(r'^https?://'), ''),
-              style: const TextStyle(color: subtle)),
+              style: TextStyle(color: subtle)),
         ),
         const SizedBox(height: 24),
         Glass(
@@ -67,6 +67,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ],
           ),
         ),
+        const SizedBox(height: 20),
+        const Padding(
+          padding: EdgeInsets.fromLTRB(4, 0, 4, 10),
+          child: Text('Appearance', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+        ),
+        const _ThemeSelector(),
         const SizedBox(height: 20),
         GestureDetector(
           onTap: widget.onLogout,
@@ -94,10 +100,66 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: Row(children: [
           Icon(icon, color: accent, size: 20),
           const SizedBox(width: 14),
-          Text(label, style: const TextStyle(color: muted)),
+          Text(label, style: TextStyle(color: muted)),
           const Spacer(),
           Text(value, style: const TextStyle(fontWeight: FontWeight.w700)),
         ]),
       );
-  Widget _divider() => Divider(height: 1, color: Colors.white.withValues(alpha: 0.06), indent: 12, endIndent: 12);
+  Widget _divider() => Divider(height: 1, color: line, indent: 12, endIndent: 12);
+}
+
+/// Dark / Light / System segmented selector wired to ThemeController.
+class _ThemeSelector extends StatelessWidget {
+  const _ThemeSelector();
+
+  static const _opts = [
+    (mode: ThemeMode.dark, icon: Icons.dark_mode_rounded, label: 'Dark'),
+    (mode: ThemeMode.light, icon: Icons.light_mode_rounded, label: 'Light'),
+    (mode: ThemeMode.system, icon: Icons.brightness_auto_rounded, label: 'System'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: ThemeController.instance.mode,
+      builder: (context, current, _) {
+        return Container(
+          padding: const EdgeInsets.all(5),
+          decoration: BoxDecoration(color: surfaceHi.withValues(alpha: 0.7), borderRadius: BorderRadius.circular(18)),
+          child: Row(
+            children: [
+              for (final o in _opts)
+                Expanded(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => ThemeController.instance.set(o.mode),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 220),
+                      curve: Curves.easeOut,
+                      margin: const EdgeInsets.symmetric(horizontal: 2),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      decoration: BoxDecoration(
+                        color: current == o.mode ? accent : Colors.transparent,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Column(
+                        children: [
+                          Icon(o.icon, size: 20, color: current == o.mode ? Colors.white : muted),
+                          const SizedBox(height: 5),
+                          Text(o.label,
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: current == o.mode ? Colors.white : muted)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 }

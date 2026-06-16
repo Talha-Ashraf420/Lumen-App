@@ -232,7 +232,7 @@ class _HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMi
         trailing: Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(color: surface, borderRadius: BorderRadius.circular(11)),
-          child: const Icon(Icons.tune_rounded, color: muted, size: 18),
+          child: Icon(Icons.tune_rounded, color: muted, size: 18),
         ),
       ),
     );
@@ -274,7 +274,7 @@ class _HeroCarouselState extends State<_HeroCarousel> {
             margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
             decoration: BoxDecoration(color: surface, borderRadius: BorderRadius.circular(24)),
             child: snap.connectionState != ConnectionState.done
-                ? const Center(child: CircularProgressIndicator(color: accent, strokeWidth: 2))
+                ? Center(child: CircularProgressIndicator(color: accent, strokeWidth: 2))
                 : null,
           );
         }
@@ -303,8 +303,7 @@ class _HeroCarouselState extends State<_HeroCarousel> {
                     width: i == _page ? 18 : 6,
                     height: 6,
                     decoration: BoxDecoration(
-                      gradient: i == _page ? accentGradient : null,
-                      color: i == _page ? null : subtle.withValues(alpha: 0.5),
+                      color: i == _page ? accent : subtle.withValues(alpha: 0.5),
                       borderRadius: BorderRadius.circular(3),
                     ),
                   ),
@@ -330,7 +329,7 @@ class _HeroCard extends StatelessWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            const ColoredBox(color: surfaceHi),
+            ColoredBox(color: surfaceHi),
             if (item.image.isNotEmpty) CachedNetworkImage(imageUrl: item.image, fit: BoxFit.cover),
             const DecoratedBox(
               decoration: BoxDecoration(
@@ -359,13 +358,13 @@ class _HeroCard extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: accent,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                        Icon(Icons.play_arrow_rounded, color: bg, size: 20),
+                        Icon(Icons.play_arrow_rounded, color: Colors.white, size: 20),
                         SizedBox(width: 4),
-                        Text('Play', style: TextStyle(color: bg, fontWeight: FontWeight.w800)),
+                        Text('Play', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
                       ]),
                     ),
                     const SizedBox(width: 10),
@@ -375,10 +374,10 @@ class _HeroCard extends StatelessWidget {
                         blur: 8,
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                         child: Row(mainAxisSize: MainAxisSize.min, children: [
-                          const Icon(Icons.star_rounded, color: gold, size: 15),
+                          Icon(Icons.star_rounded, color: gold, size: 15),
                           const SizedBox(width: 3),
                           Text(item.rating.toStringAsFixed(1),
-                              style: const TextStyle(color: gold, fontWeight: FontWeight.w700, fontSize: 13)),
+                              style: TextStyle(color: gold, fontWeight: FontWeight.w700, fontSize: 13)),
                         ]),
                       ),
                   ]),
@@ -418,9 +417,9 @@ class _ContinueCard extends StatelessWidget {
                         ? CachedNetworkImage(
                             imageUrl: progress.poster,
                             fit: BoxFit.cover,
-                            errorWidget: (_, _, _) => const ColoredBox(color: surfaceHi),
+                            errorWidget: (_, _, _) => ColoredBox(color: surfaceHi),
                           )
-                        : const ColoredBox(color: surfaceHi),
+                        : ColoredBox(color: surfaceHi),
                   ),
                   const Positioned.fill(
                     child: DecoratedBox(
@@ -452,7 +451,7 @@ class _ContinueCard extends StatelessWidget {
                       value: progress.fraction.toDouble(),
                       minHeight: 4,
                       backgroundColor: Colors.white24,
-                      valueColor: const AlwaysStoppedAnimation(accent),
+                      valueColor: AlwaysStoppedAnimation(accent),
                     ),
                   ),
                 ],
@@ -496,7 +495,7 @@ class _Shelf extends StatelessWidget {
               SizedBox(
                 height: h,
                 child: items.isEmpty
-                    ? const Center(child: CircularProgressIndicator(color: accent, strokeWidth: 2))
+                    ? Center(child: CircularProgressIndicator(color: accent, strokeWidth: 2))
                     : ListView.separated(
                         scrollDirection: Axis.horizontal,
                         padding: const EdgeInsets.symmetric(horizontal: 16),

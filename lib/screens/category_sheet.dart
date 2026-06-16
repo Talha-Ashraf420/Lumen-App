@@ -42,10 +42,10 @@ class _CategorySheetState extends State<_CategorySheet> {
       maxChildSize: 0.92,
       builder: (context, scroll) {
         return Container(
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             color: surface,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-            border: Border(top: BorderSide(color: Colors.white12)),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+            border: Border(top: BorderSide(color: line)),
           ),
           child: Column(
             children: [
@@ -71,7 +71,7 @@ class _CategorySheetState extends State<_CategorySheet> {
                     _row('all', 'All categories'),
                     for (final c in filtered) _row(c.id, c.name),
                     if (filtered.isEmpty)
-                      const Padding(padding: EdgeInsets.all(24), child: Center(child: Text('No matches', style: TextStyle(color: subtle)))),
+                      Padding(padding: const EdgeInsets.all(24), child: Center(child: Text('No matches', style: TextStyle(color: subtle)))),
                   ],
                 ),
               ),
@@ -90,8 +90,7 @@ class _CategorySheetState extends State<_CategorySheet> {
         margin: const EdgeInsets.symmetric(vertical: 3),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
         decoration: BoxDecoration(
-          gradient: sel ? accentGradient : null,
-          color: sel ? null : surfaceHi.withValues(alpha: 0.5),
+          color: sel ? accent : surfaceHi.withValues(alpha: 0.5),
           borderRadius: BorderRadius.circular(14),
         ),
         child: Row(children: [

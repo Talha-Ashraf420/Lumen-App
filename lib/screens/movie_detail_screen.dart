@@ -72,10 +72,10 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
               blendMode: BlendMode.dstIn,
               child: backdrop.isNotEmpty
                   ? CachedNetworkImage(imageUrl: backdrop, fit: BoxFit.cover)
-                  : const ColoredBox(color: surfaceHi),
+                  : ColoredBox(color: surfaceHi),
             ),
           ),
-          const Positioned.fill(
+          Positioned.fill(
             child: DecoratedBox(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
@@ -128,17 +128,17 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                     children: [
                       if (rating > 0)
                         Row(mainAxisSize: MainAxisSize.min, children: [
-                          const Icon(Icons.star_rounded, color: gold, size: 18),
+                          Icon(Icons.star_rounded, color: gold, size: 18),
                           const SizedBox(width: 4),
                           Text(rating.toStringAsFixed(1),
-                              style: const TextStyle(color: gold, fontWeight: FontWeight.w700)),
+                              style: TextStyle(color: gold, fontWeight: FontWeight.w700)),
                         ]),
                       if (info?.releaseDate.isNotEmpty == true)
-                        Text(info!.releaseDate, style: const TextStyle(color: muted)),
+                        Text(info!.releaseDate, style: TextStyle(color: muted)),
                       if (info?.duration.isNotEmpty == true)
-                        Text(info!.duration, style: const TextStyle(color: muted)),
+                        Text(info!.duration, style: TextStyle(color: muted)),
                       if (info?.genre.isNotEmpty == true)
-                        Text(info!.genre, style: const TextStyle(color: subtle)),
+                        Text(info!.genre, style: TextStyle(color: subtle)),
                     ],
                   ),
                   const SizedBox(height: 20),
@@ -150,14 +150,14 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                           child: Container(
                             padding: const EdgeInsets.symmetric(vertical: 16),
                             decoration: BoxDecoration(
-                              gradient: accentGradient,
+                              color: accent,
                               borderRadius: BorderRadius.circular(16),
                               boxShadow: glow(accent, blur: 22, y: 8, a: 0.5),
                             ),
                             child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                              Icon(Icons.play_arrow_rounded, size: 26),
+                              Icon(Icons.play_arrow_rounded, size: 26, color: Colors.white),
                               SizedBox(width: 6),
-                              Text('Play', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                              Text('Play', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Colors.white)),
                             ]),
                           ),
                         ),
@@ -166,7 +166,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                   ),
                   if (info?.plot.isNotEmpty == true) ...[
                     const SizedBox(height: 22),
-                    Text(info!.plot, style: const TextStyle(color: muted, height: 1.5)),
+                    Text(info!.plot, style: TextStyle(color: muted, height: 1.5)),
                   ],
                   if (info?.cast.isNotEmpty == true) ...[
                     const SizedBox(height: 18),
@@ -185,8 +185,8 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
   Widget _meta(String label, String value) => Padding(
         padding: const EdgeInsets.only(top: 8),
         child: RichText(
-          text: TextSpan(style: const TextStyle(color: muted, height: 1.4), children: [
-            TextSpan(text: '$label:  ', style: const TextStyle(color: subtle, fontWeight: FontWeight.w700)),
+          text: TextSpan(style: TextStyle(color: muted, height: 1.4), children: [
+            TextSpan(text: '$label:  ', style: TextStyle(color: subtle, fontWeight: FontWeight.w700)),
             TextSpan(text: value),
           ]),
         ),

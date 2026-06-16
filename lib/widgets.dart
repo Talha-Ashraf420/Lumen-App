@@ -10,10 +10,11 @@ class Glass extends StatelessWidget {
   final double blur;
   final double radius;
   final EdgeInsets? padding;
-  final Color tint;
-  const Glass({super.key, required this.child, this.blur = 18, this.radius = 22, this.padding, this.tint = surfaceHi});
+  final Color? tint;
+  const Glass({super.key, required this.child, this.blur = 18, this.radius = 22, this.padding, this.tint});
   @override
   Widget build(BuildContext context) {
+    final tintColor = tint ?? surfaceHi;
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
       child: BackdropFilter(
@@ -21,7 +22,7 @@ class Glass extends StatelessWidget {
         child: Container(
           padding: padding,
           decoration: BoxDecoration(
-            color: tint.withValues(alpha: 0.55),
+            color: tintColor.withValues(alpha: 0.55),
             borderRadius: BorderRadius.circular(radius),
             border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
           ),
@@ -62,11 +63,11 @@ class SearchField extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(Icons.search_rounded, color: accent, size: 22),
+          Icon(Icons.search_rounded, color: accent, size: 22),
           const SizedBox(width: 10),
           Expanded(
             child: readOnly
-                ? Align(alignment: Alignment.centerLeft, child: Text(hint, style: const TextStyle(color: subtle, fontSize: 15)))
+                ? Align(alignment: Alignment.centerLeft, child: Text(hint, style: TextStyle(color: subtle, fontSize: 15)))
                 : TextField(
                     controller: controller,
                     onChanged: onChanged,
@@ -79,7 +80,7 @@ class SearchField extends StatelessWidget {
                       enabledBorder: InputBorder.none,
                       focusedBorder: InputBorder.none,
                       hintText: hint,
-                      hintStyle: const TextStyle(color: subtle, fontSize: 15),
+                      hintStyle: TextStyle(color: subtle, fontSize: 15),
                     ),
                   ),
           ),
@@ -100,7 +101,7 @@ class Aurora extends StatelessWidget {
     return IgnorePointer(
       child: Stack(
         children: [
-          const Positioned.fill(child: ColoredBox(color: bg)),
+          Positioned.fill(child: ColoredBox(color: bg)),
           Positioned(top: -160, left: -120, child: _blob(accent.withValues(alpha: 0.26), 380)),
           Positioned(top: 80, right: -140, child: _blob(accent2.withValues(alpha: 0.18), 340)),
           Positioned(bottom: -160, left: 20, child: _blob(const Color(0xFF3B2D6B).withValues(alpha: 0.4), 320)),
@@ -127,12 +128,12 @@ class BrandedLoading extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           ShaderMask(
-            shaderCallback: (r) => accentGradient.createShader(r),
+            shaderCallback: (r) => LinearGradient(colors: [accent, accent]).createShader(r),
             child: const Text('Lumen',
                 style: TextStyle(fontSize: 40, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: -1)),
           ).animate(onPlay: (c) => c.repeat(reverse: true)).fadeIn(duration: 600.ms).then().fade(begin: 1, end: 0.6, duration: 900.ms),
           const SizedBox(height: 22),
-          const SizedBox(width: 26, height: 26, child: CircularProgressIndicator(color: accent, strokeWidth: 2.4)),
+          SizedBox(width: 26, height: 26, child: CircularProgressIndicator(color: accent, strokeWidth: 2.4)),
         ],
       ),
     );
@@ -166,7 +167,7 @@ class SectionHeader extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                 decoration: BoxDecoration(color: accent.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(20)),
-                child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
                   Text('See all', style: TextStyle(color: accent, fontWeight: FontWeight.w700, fontSize: 12.5)),
                   Icon(Icons.chevron_right_rounded, color: accent, size: 17),
                 ]),
@@ -243,9 +244,9 @@ class PosterCard extends StatelessWidget {
                     blur: 6,
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      const Icon(Icons.star_rounded, color: gold, size: 12),
+                      Icon(Icons.star_rounded, color: gold, size: 12),
                       const SizedBox(width: 3),
-                      Text(rating.toStringAsFixed(1), style: const TextStyle(color: gold, fontSize: 10.5, fontWeight: FontWeight.w800)),
+                      Text(rating.toStringAsFixed(1), style: TextStyle(color: gold, fontSize: 10.5, fontWeight: FontWeight.w800)),
                     ]),
                   ),
                 ),
@@ -259,7 +260,7 @@ class PosterCard extends StatelessWidget {
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
                       Container(width: 5, height: 5, decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
                       const SizedBox(width: 4),
-                      Text(badge!, style: const TextStyle(fontSize: 8.5, fontWeight: FontWeight.w800, letterSpacing: 0.4)),
+                      Text(badge!, style: const TextStyle(fontSize: 8.5, fontWeight: FontWeight.w800, letterSpacing: 0.4, color: Colors.white)),
                     ]),
                   ),
                 ),
@@ -279,7 +280,7 @@ class PosterCard extends StatelessWidget {
         if (subtitle != null && subtitle!.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 2),
-            child: Text(subtitle!, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: subtle)),
+            child: Text(subtitle!, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: subtle)),
           ),
       ],
     );
@@ -294,8 +295,8 @@ class PosterCard extends StatelessWidget {
 class _Fallback extends StatelessWidget {
   const _Fallback();
   @override
-  Widget build(BuildContext context) => const DecoratedBox(
-        decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [surfaceHi, surface])),
+  Widget build(BuildContext context) => DecoratedBox(
+        decoration: BoxDecoration(color: surfaceHi),
         child: Center(child: Icon(Icons.movie_creation_outlined, color: subtle, size: 28)),
       );
 }

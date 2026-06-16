@@ -162,7 +162,7 @@ class SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClien
                   _q = '';
                   _ctrl.clear();
                 }),
-                child: const Padding(padding: EdgeInsets.all(8), child: Icon(Icons.close_rounded, color: subtle, size: 20)),
+                child: Padding(padding: const EdgeInsets.all(8), child: Icon(Icons.close_rounded, color: subtle, size: 20)),
               )
             : null,
       ),
@@ -191,8 +191,7 @@ class SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClien
               alignment: Alignment.center,
               padding: const EdgeInsets.symmetric(horizontal: 18),
               decoration: BoxDecoration(
-                gradient: sel ? accentGradient : null,
-                color: sel ? null : surfaceHi.withValues(alpha: 0.5),
+                color: sel ? accent : surfaceHi.withValues(alpha: 0.5),
                 borderRadius: BorderRadius.circular(13),
                 border: Border.all(color: sel ? Colors.transparent : line),
               ),
@@ -216,10 +215,10 @@ class SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClien
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
           decoration: BoxDecoration(color: surfaceHi.withValues(alpha: 0.6), borderRadius: BorderRadius.circular(13), border: Border.all(color: line)),
           child: Row(children: [
-            const Icon(Icons.category_rounded, size: 18, color: accent),
+            Icon(Icons.category_rounded, size: 18, color: accent),
             const SizedBox(width: 8),
             Expanded(child: Text(_catLabel, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
-            const Icon(Icons.expand_more_rounded, color: muted, size: 20),
+            Icon(Icons.expand_more_rounded, color: muted, size: 20),
           ]),
         ),
       ),
@@ -345,13 +344,13 @@ class SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClien
             Container(
               padding: const EdgeInsets.all(22),
               decoration: BoxDecoration(color: surfaceHi.withValues(alpha: 0.5), shape: BoxShape.circle),
-              child: const Icon(Icons.search_rounded, color: accent, size: 34),
+              child: Icon(Icons.search_rounded, color: accent, size: 34),
             ),
             const SizedBox(height: 16),
             const Text('Search everything', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
             const SizedBox(height: 6),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 50),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 50),
               child: Text('Find movies, series and live channels across your whole library.',
                   textAlign: TextAlign.center, style: TextStyle(color: subtle, height: 1.4)),
             ),
@@ -359,5 +358,5 @@ class SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClien
         ),
       );
 
-  Widget _empty(String msg) => Center(child: Text(msg, style: const TextStyle(color: subtle)));
+  Widget _empty(String msg) => Center(child: Text(msg, style: TextStyle(color: subtle)));
 }

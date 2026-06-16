@@ -53,7 +53,7 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
         future: _future,
         builder: (context, snap) {
           if (snap.connectionState != ConnectionState.done) {
-            return const Center(child: CircularProgressIndicator(color: accent, strokeWidth: 2.5));
+            return Center(child: CircularProgressIndicator(color: accent, strokeWidth: 2.5));
           }
           if (snap.hasError || snap.data == null) {
             return _errorBack('Couldn’t load this series.');
@@ -90,7 +90,7 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          const ColoredBox(color: surfaceHi),
+          ColoredBox(color: surfaceHi),
           // blurred art fill — premium backdrop that handles portrait covers cleanly
           if (art.isNotEmpty)
             ClipRect(
@@ -117,7 +117,7 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
                 ),
               ),
             ),
-          const DecoratedBox(
+          DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.bottomCenter,
@@ -180,11 +180,11 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
                     onTap: () => _playEpisodes(eps, 0, info),
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 13),
-                      decoration: BoxDecoration(gradient: accentGradient, borderRadius: BorderRadius.circular(14), boxShadow: glow(accent, a: 0.5)),
+                      decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(14), boxShadow: glow(accent, a: 0.5)),
                       child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                        Icon(Icons.play_arrow_rounded, size: 24),
+                        Icon(Icons.play_arrow_rounded, size: 24, color: Colors.white),
                         SizedBox(width: 6),
-                        Text('Play', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                        Text('Play', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Colors.white)),
                       ]),
                     ),
                   ),
@@ -210,18 +210,18 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
             children: [
               if (info.rating > 0)
                 Row(mainAxisSize: MainAxisSize.min, children: [
-                  const Icon(Icons.star_rounded, color: gold, size: 17),
+                  Icon(Icons.star_rounded, color: gold, size: 17),
                   const SizedBox(width: 4),
-                  Text(info.rating.toStringAsFixed(1), style: const TextStyle(color: gold, fontWeight: FontWeight.w700)),
+                  Text(info.rating.toStringAsFixed(1), style: TextStyle(color: gold, fontWeight: FontWeight.w700)),
                 ]),
-              if (info.releaseDate.isNotEmpty) Text(info.releaseDate, style: const TextStyle(color: muted)),
-              if (info.genre.isNotEmpty) Text(info.genre, style: const TextStyle(color: subtle)),
-              Text('${seasons.length} season${seasons.length == 1 ? '' : 's'}', style: const TextStyle(color: subtle)),
+              if (info.releaseDate.isNotEmpty) Text(info.releaseDate, style: TextStyle(color: muted)),
+              if (info.genre.isNotEmpty) Text(info.genre, style: TextStyle(color: subtle)),
+              Text('${seasons.length} season${seasons.length == 1 ? '' : 's'}', style: TextStyle(color: subtle)),
             ],
           ),
           if (info.plot.isNotEmpty) ...[
             const SizedBox(height: 12),
-            Text(info.plot, style: const TextStyle(color: muted, height: 1.5)),
+            Text(info.plot, style: TextStyle(color: muted, height: 1.5)),
           ],
           const SizedBox(height: 18),
           SizedBox(
@@ -240,8 +240,7 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
                     alignment: Alignment.center,
                     padding: const EdgeInsets.symmetric(horizontal: 18),
                     decoration: BoxDecoration(
-                      gradient: sel ? accentGradient : null,
-                      color: sel ? null : surfaceHi.withValues(alpha: 0.6),
+                      color: sel ? accent : surfaceHi.withValues(alpha: 0.6),
                       borderRadius: BorderRadius.circular(13),
                       border: Border.all(color: sel ? Colors.transparent : line),
                     ),
@@ -261,9 +260,9 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(msg, style: const TextStyle(color: muted)),
+            Text(msg, style: TextStyle(color: muted)),
             const SizedBox(height: 12),
-            TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Go back', style: TextStyle(color: accent))),
+            TextButton(onPressed: () => Navigator.of(context).pop(), child: Text('Go back', style: TextStyle(color: accent))),
           ],
         ),
       );
@@ -315,14 +314,14 @@ class _EpisodeTile extends StatelessWidget {
                 children: [
                   Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, height: 1.2)),
                   const SizedBox(height: 5),
-                  Text('Episode ${ep.episodeNum}', style: const TextStyle(color: subtle, fontSize: 12)),
+                  Text('Episode ${ep.episodeNum}', style: TextStyle(color: subtle, fontSize: 12)),
                 ],
               ),
             ),
             Container(
               margin: const EdgeInsets.only(left: 6),
               padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(gradient: accentGradient, shape: BoxShape.circle, boxShadow: glow(accent, blur: 12, y: 3, a: 0.4)),
+              decoration: BoxDecoration(color: accent, shape: BoxShape.circle, boxShadow: glow(accent, blur: 12, y: 3, a: 0.4)),
               child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 20),
             ),
           ],
@@ -337,7 +336,7 @@ class _ThumbFallback extends StatelessWidget {
   const _ThumbFallback({required this.number});
   @override
   Widget build(BuildContext context) => DecoratedBox(
-        decoration: const BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [surfaceHi, surface])),
-        child: Center(child: Text('E$number', style: const TextStyle(color: subtle, fontWeight: FontWeight.w800, fontSize: 16))),
+        decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [surfaceHi, surface])),
+        child: Center(child: Text('E$number', style: TextStyle(color: subtle, fontWeight: FontWeight.w800, fontSize: 16))),
       );
 }

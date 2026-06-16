@@ -216,7 +216,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 });
               }),
               if (real.isEmpty)
-                const Padding(padding: EdgeInsets.all(20), child: Text('No subtitles available in this stream.', style: TextStyle(color: subtle))),
+                Padding(padding: const EdgeInsets.all(20), child: Text('No subtitles available in this stream.', style: TextStyle(color: subtle))),
               const SizedBox(height: 12),
             ],
           ),
@@ -246,7 +246,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
             StreamBuilder<bool>(
               stream: _player.stream.buffering,
               builder: (_, s) => (s.data ?? false)
-                  ? const Center(child: CircularProgressIndicator(color: accent, strokeWidth: 2.6))
+                  ? Center(child: CircularProgressIndicator(color: accent, strokeWidth: 2.6))
                   : const SizedBox.shrink(),
             ),
             AnimatedOpacity(
@@ -325,7 +325,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       value: _epgNow!.progress.toDouble(),
                       minHeight: 2.5,
                       backgroundColor: Colors.white24,
-                      valueColor: const AlwaysStoppedAnimation(accent),
+                      valueColor: AlwaysStoppedAnimation(accent),
                     ),
                   ),
                 ],
@@ -368,7 +368,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
               child: Container(
                 width: 74,
                 height: 74,
-                decoration: BoxDecoration(gradient: accentGradient, shape: BoxShape.circle, boxShadow: glow(accent, a: 0.5)),
+                decoration: BoxDecoration(color: accent, shape: BoxShape.circle, boxShadow: glow(accent, a: 0.5)),
                 child: Icon(playing ? Icons.pause_rounded : Icons.play_arrow_rounded, color: Colors.white, size: 42),
               ),
             );

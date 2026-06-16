@@ -75,13 +75,13 @@ class MyListScreen extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(22),
               decoration: BoxDecoration(color: surfaceHi.withValues(alpha: 0.6), shape: BoxShape.circle),
-              child: const Icon(Icons.favorite_rounded, color: accent, size: 34),
+              child: Icon(Icons.favorite_rounded, color: accent, size: 34),
             ),
             const SizedBox(height: 16),
             const Text('Nothing saved yet', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
             const SizedBox(height: 6),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 50),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 50),
               child: Text('Tap the heart on any movie or series to keep it here.',
                   textAlign: TextAlign.center, style: TextStyle(color: subtle, height: 1.4)),
             ),

@@ -32,11 +32,22 @@ class LumenApp extends StatelessWidget {
   const LumenApp({super.key});
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Lumen',
-      debugShowCheckedModeBanner: false,
-      theme: buildTheme(),
-      home: const _Gate(),
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: ThemeController.instance.mode,
+      builder: (context, mode, _) {
+        // Resolve & publish the active palette for this build (used by the
+        // theme-aware colour getters across the app).
+        final platform = MediaQuery.maybePlatformBrightnessOf(context) ?? Brightness.dark;
+        resolvePalette(mode, platform);
+        return MaterialApp(
+          title: 'Lumen',
+          debugShowCheckedModeBanner: false,
+          theme: buildTheme(lightPalette),
+          darkTheme: buildTheme(darkPalette),
+          themeMode: mode,
+          home: const _Gate(),
+        );
+      },
     );
   }
 }
@@ -56,6 +67,7 @@ class _GateState extends State<_Gate> {
   void initState() {
     super.initState();
     Library.instance.load();
+    ThemeController.instance.load();
     Store.active().then((c) => setState(() {
           _creds = c;
           _loading = false;

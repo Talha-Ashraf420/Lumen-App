@@ -66,16 +66,16 @@ class _LoginScreenState extends State<LoginScreen> {
                       width: 64,
                       height: 64,
                       decoration: BoxDecoration(
-                        gradient: const LinearGradient(colors: [accent, accent2]),
+                        gradient: LinearGradient(colors: [accent, accent2]),
                         borderRadius: BorderRadius.circular(18),
                         boxShadow: [BoxShadow(color: accent.withValues(alpha: 0.4), blurRadius: 30)],
                       ),
-                      child: const Icon(Icons.play_arrow_rounded, color: bg, size: 38),
+                      child: Icon(Icons.play_arrow_rounded, color: bg, size: 38),
                     ),
                     const SizedBox(height: 16),
                     const Text('Lumen', style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 4),
-                    const Text('Sign in with your Xtream / X3U codes.',
+                    Text('Sign in with your Xtream / X3U codes.',
                         style: TextStyle(color: muted)),
                     const SizedBox(height: 24),
                     if (_profiles.isNotEmpty) ...[
@@ -83,7 +83,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             padding: const EdgeInsets.only(bottom: 10),
                             child: _ProfileTile(profile: p, busy: _busy, onTap: () => _connect(p)),
                           )),
-                      const Divider(height: 28, color: Colors.white12),
+                      Divider(height: 28, color: line),
                     ],
                     _field(_url, 'Server URL', hint: 'http://host:8080'),
                     const SizedBox(height: 12),
@@ -119,13 +119,13 @@ class _LoginScreenState extends State<LoginScreen> {
                                   password: _pass.text.trim(),
                                 )),
                         child: _busy
-                            ? const SizedBox(
+                            ? SizedBox(
                                 width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2, color: bg))
                             : const Text('Connect', style: TextStyle(fontWeight: FontWeight.bold)),
                       ),
                     ),
                     const SizedBox(height: 14),
-                    const Text('Credentials are stored only on this device.',
+                    Text('Credentials are stored only on this device.',
                         style: TextStyle(color: subtle, fontSize: 12)),
                   ],
                 ),
@@ -170,11 +170,11 @@ class _ProfileTile extends StatelessWidget {
       child: ListTile(
         onTap: busy ? null : onTap,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        leading: const Icon(Icons.tv_rounded, color: accent),
+        leading: Icon(Icons.tv_rounded, color: accent),
         title: Text(profile.username, style: const TextStyle(fontWeight: FontWeight.w600)),
         subtitle: Text(profile.baseUrl.replaceFirst(RegExp(r'^https?://'), ''),
-            style: const TextStyle(color: subtle)),
-        trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: subtle),
+            style: TextStyle(color: subtle)),
+        trailing: Icon(Icons.arrow_forward_ios_rounded, size: 14, color: subtle),
       ),
     );
   }

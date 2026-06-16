@@ -70,9 +70,8 @@ class _HomeShellState extends State<HomeShell> {
         margin: const EdgeInsets.symmetric(horizontal: 3),
         padding: EdgeInsets.symmetric(horizontal: sel ? 16 : 14, vertical: 11),
         decoration: BoxDecoration(
-          gradient: sel ? accentGradient : null,
+          color: sel ? accent : null,
           borderRadius: BorderRadius.circular(18),
-          boxShadow: sel ? glow(accent, blur: 16, y: 5, a: 0.55) : null,
         ),
         child: Row(
           children: [
