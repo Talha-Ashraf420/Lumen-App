@@ -116,7 +116,7 @@ class _CatalogScreenState extends State<CatalogScreen> with AutomaticKeepAliveCl
                 return const Center(child: Text('Nothing here.', style: TextStyle(color: subtle)));
               }
               return GridView.builder(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 28),
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 110),
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: 3,
                   childAspectRatio: isLive ? 0.80 : 0.52,

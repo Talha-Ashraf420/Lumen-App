@@ -3,7 +3,10 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import '../xtream.dart';
-import 'catalog_screen.dart';
+import 'browse_screen.dart';
+import 'home_screen.dart';
+import 'mylist_screen.dart';
+import 'profile_screen.dart';
 
 class HomeShell extends StatefulWidget {
   final XtreamClient client;
@@ -15,97 +18,72 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   int _index = 0;
-  static const _tabs = [
-    (label: 'Live TV', kind: 'live'),
-    (label: 'Movies', kind: 'movie'),
-    (label: 'Series', kind: 'series'),
+
+  static const _nav = [
+    (icon: Icons.home_rounded, label: 'Home'),
+    (icon: Icons.search_rounded, label: 'Browse'),
+    (icon: Icons.favorite_rounded, label: 'My List'),
+    (icon: Icons.person_rounded, label: 'Profile'),
   ];
 
   @override
   Widget build(BuildContext context) {
+    final pages = [
+      HomeScreen(client: widget.client, onBrowse: () => setState(() => _index = 1)),
+      BrowseScreen(client: widget.client),
+      const MyListScreen(),
+      ProfileScreen(client: widget.client, onLogout: widget.onLogout),
+    ];
     return Scaffold(
       body: Stack(
         children: [
           const Aurora(),
-          SafeArea(
-            bottom: false,
-            child: Column(
-              children: [
-                _header(),
-                _segmentedTabs(),
-                const SizedBox(height: 10),
-                Expanded(
-                  child: IndexedStack(
-                    index: _index,
-                    children: [for (final t in _tabs) CatalogScreen(client: widget.client, kind: t.kind)],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _header() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 12, 12),
-      child: Row(
-        children: [
-          ShaderMask(
-            shaderCallback: (r) => accentGradient.createShader(r),
-            child: const Text('Lumen',
-                style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: -0.6)),
-          ),
-          const Spacer(),
-          IconButton(
-            onPressed: widget.onLogout,
-            icon: const Icon(Icons.logout_rounded, color: muted, size: 22),
-            tooltip: 'Sign out',
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _segmentedTabs() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Glass(
-        radius: 18,
-        blur: 16,
-        padding: const EdgeInsets.all(5),
-        child: Row(
-          children: [
-            for (var i = 0; i < _tabs.length; i++)
-              Expanded(
-                child: GestureDetector(
-                  onTap: () => setState(() => _index = i),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 250),
-                    curve: Curves.easeOut,
-                    height: 40,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      gradient: i == _index ? accentGradient : null,
-                      borderRadius: BorderRadius.circular(13),
-                      boxShadow: i == _index ? glow(accent, blur: 14, y: 4, a: 0.5) : null,
-                    ),
-                    child: Text(
-                      _tabs[i].label,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 14,
-                        color: i == _index ? Colors.white : muted,
-                      ),
-                    ),
-                  ),
+          SafeArea(bottom: false, child: IndexedStack(index: _index, children: pages)),
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(40, 0, 40, 22),
+              child: Glass(
+                radius: 30,
+                blur: 26,
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [for (var i = 0; i < _nav.length; i++) _item(i)],
                 ),
               ),
+            ).animate().fadeIn(delay: 150.ms).slideY(begin: 0.6, end: 0, curve: Curves.easeOutBack),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _item(int i) {
+    final sel = i == _index;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => setState(() => _index = i),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOut,
+        margin: const EdgeInsets.symmetric(horizontal: 3),
+        padding: EdgeInsets.symmetric(horizontal: sel ? 16 : 14, vertical: 11),
+        decoration: BoxDecoration(
+          gradient: sel ? accentGradient : null,
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: sel ? glow(accent, blur: 16, y: 5, a: 0.55) : null,
+        ),
+        child: Row(
+          children: [
+            Icon(_nav[i].icon, size: 21, color: sel ? Colors.white : muted),
+            if (sel) ...[
+              const SizedBox(width: 7),
+              Text(_nav[i].label, style: const TextStyle(fontWeight: FontWeight.w700, color: Colors.white, fontSize: 13)),
+            ],
           ],
         ),
       ),
-    ).animate().fadeIn(duration: 350.ms).slideY(begin: -0.3, end: 0, curve: Curves.easeOut);
+    );
   }
 }
