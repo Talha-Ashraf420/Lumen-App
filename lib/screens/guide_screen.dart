@@ -22,7 +22,7 @@ class GuideScreen extends StatefulWidget {
 class _GuideScreenState extends State<GuideScreen> with AutomaticKeepAliveClientMixin {
   List<Category> _cats = [];
   String? _cat;
-  late Future<List<LiveStream>> _channels;
+  Future<List<LiveStream>> _channels = Future.value(<LiveStream>[]);
   bool _ready = false;
 
   @override

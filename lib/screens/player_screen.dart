@@ -374,21 +374,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   Widget _overlay() {
-    // Guarantee insets so controls clear the notch / home indicator in landscape.
-    return SafeArea(
-      minimum: EdgeInsets.symmetric(horizontal: _fullscreen ? 28 : 4, vertical: _fullscreen ? 12 : 0),
-      child: Column(children: [_topBar(), const Spacer(), _centerControls(), const Spacer(), _bottomBar()]),
-    );
+    // Bars bleed to the screen edges (no black margins); the SafeArea lives
+    // inside each bar so only the controls clear the notch / home indicator.
+    return Column(children: [_topBar(), const Spacer(), _centerControls(), const Spacer(), _bottomBar()]);
   }
 
   Widget _topBar() {
     return Container(
-      padding: const EdgeInsets.fromLTRB(8, 8, 16, 8),
       decoration: const BoxDecoration(
         gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xCC000000), Colors.transparent]),
       ),
-      child: Row(
-        children: [
+      child: SafeArea(
+        bottom: false,
+        minimum: const EdgeInsets.only(left: 8, right: 16, top: 8, bottom: 8),
+        child: Row(
+          children: [
           IconButton(onPressed: () => Navigator.of(context).pop(), icon: const Icon(Icons.arrow_back_rounded, color: Colors.white)),
           if (_isLive)
             Container(
@@ -457,6 +457,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
               },
             ),
         ],
+        ),
       ),
     );
   }
@@ -511,35 +512,38 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   Widget _bottomBar() {
     return Container(
-      padding: const EdgeInsets.fromLTRB(12, 30, 12, 12),
       decoration: const BoxDecoration(
         gradient: LinearGradient(begin: Alignment.bottomCenter, end: Alignment.topCenter, colors: [Color(0xCC000000), Colors.transparent]),
       ),
-      child: Column(
-        children: [
-          if (!_isLive) _seekBar(),
-          Row(
-            children: [
-              IconButton(onPressed: _toggleMute, icon: Icon(_muted ? Icons.volume_off_rounded : Icons.volume_up_rounded, color: Colors.white)),
-              IconButton(onPressed: _pickSubtitles, icon: const Icon(Icons.closed_caption_rounded, color: Colors.white)),
-              IconButton(onPressed: _openSettings, icon: const Icon(Icons.tune_rounded, color: Colors.white)),
-              const Spacer(),
-              if (_isLive)
-                const Padding(
-                  padding: EdgeInsets.only(right: 8),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(Icons.circle, color: Color(0xFFFF3B5C), size: 9),
-                    SizedBox(width: 6),
-                    Text('LIVE', style: TextStyle(fontWeight: FontWeight.w700)),
-                  ]),
+      child: SafeArea(
+        top: false,
+        minimum: const EdgeInsets.fromLTRB(12, 30, 12, 12),
+        child: Column(
+          children: [
+            if (!_isLive) _seekBar(),
+            Row(
+              children: [
+                IconButton(onPressed: _toggleMute, icon: Icon(_muted ? Icons.volume_off_rounded : Icons.volume_up_rounded, color: Colors.white)),
+                IconButton(onPressed: _pickSubtitles, icon: const Icon(Icons.closed_caption_rounded, color: Colors.white)),
+                IconButton(onPressed: _openSettings, icon: const Icon(Icons.tune_rounded, color: Colors.white)),
+                const Spacer(),
+                if (_isLive)
+                  const Padding(
+                    padding: EdgeInsets.only(right: 8),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(Icons.circle, color: Color(0xFFFF3B5C), size: 9),
+                      SizedBox(width: 6),
+                      Text('LIVE', style: TextStyle(fontWeight: FontWeight.w700)),
+                    ]),
+                  ),
+                IconButton(
+                  onPressed: _toggleFullscreen,
+                  icon: Icon(_fullscreen ? Icons.fullscreen_exit_rounded : Icons.fullscreen_rounded, color: Colors.white),
                 ),
-              IconButton(
-                onPressed: _toggleFullscreen,
-                icon: Icon(_fullscreen ? Icons.fullscreen_exit_rounded : Icons.fullscreen_rounded, color: Colors.white),
-              ),
-            ],
-          ),
-        ],
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -66,19 +66,35 @@ class _GateState extends State<_Gate> {
   XtreamCredentials? _creds;
   bool _loading = true;
 
+  // The Navigator caches the initial route, so a MaterialApp rebuild alone won't
+  // refresh this subtree's palette. Listen to the theme mode and rebuild in place.
+  void _onTheme() => setState(() {});
+
   @override
   void initState() {
     super.initState();
     Library.instance.load();
     ThemeController.instance.load();
+    ThemeController.instance.mode.addListener(_onTheme);
     Store.active().then((c) => setState(() {
           _creds = c;
           _loading = false;
         }));
   }
 
+  @override
+  void dispose() {
+    ThemeController.instance.mode.removeListener(_onTheme);
+    super.dispose();
+  }
+
   void _onLogin(XtreamCredentials c) => setState(() => _creds = c);
-  void _onLogout() => setState(() => _creds = null);
+  void _onLogout() => setState(() {
+        _creds = null;
+        _client = null;
+      });
+
+  XtreamClient? _client; // cached so theme rebuilds don't recreate it
 
   @override
   Widget build(BuildContext context) {
@@ -86,6 +102,7 @@ class _GateState extends State<_Gate> {
       return const Scaffold(body: BrandedLoading(background: true));
     }
     if (_creds == null) return LoginScreen(onLogin: _onLogin);
-    return HomeShell(client: XtreamClient(_creds!), onLogout: _onLogout);
+    _client ??= XtreamClient(_creds!);
+    return HomeShell(client: _client!, onLogout: _onLogout);
   }
 }
