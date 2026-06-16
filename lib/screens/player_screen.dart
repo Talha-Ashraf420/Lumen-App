@@ -47,6 +47,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   List<EpgEntry> _epg = const [];
   BoxFit _fit = BoxFit.contain;
   double _rate = 1.0;
+  final TransformationController _zoom = TransformationController();
 
   PlayerItem get _item => widget.items[_index];
   bool get _isLive => _item.isLive;
@@ -70,6 +71,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _completedSub?.cancel();
     _posSub?.cancel();
     _persistProgress();
+    _zoom.dispose();
     _player.dispose();
     SystemChrome.setPreferredOrientations(DeviceOrientation.values);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -351,11 +353,25 @@ class _PlayerScreenState extends State<PlayerScreen> {
       backgroundColor: Colors.black,
       body: GestureDetector(
         onTap: _tap,
+        onDoubleTap: () {
+          _zoom.value = Matrix4.identity(); // reset pinch-zoom
+          _scheduleHide();
+        },
         behavior: HitTestBehavior.opaque,
         child: Stack(
           fit: StackFit.expand,
           children: [
-            Center(child: Video(controller: _controller, controls: NoVideoControls, fit: _fit)),
+            // Pinch to zoom / pan the video; double-tap resets.
+            Center(
+              child: InteractiveViewer(
+                transformationController: _zoom,
+                panEnabled: true,
+                minScale: 1.0,
+                maxScale: 5.0,
+                clipBehavior: Clip.none,
+                child: Video(controller: _controller, controls: NoVideoControls, fit: _fit),
+              ),
+            ),
             StreamBuilder<bool>(
               stream: _player.stream.buffering,
               builder: (_, s) => (s.data ?? false)

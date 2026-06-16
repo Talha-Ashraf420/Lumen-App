@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -77,7 +78,10 @@ class _HomeShellState extends State<HomeShell> {
     final sel = i == _index;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => setState(() => _index = i),
+      onTap: () {
+        if (i != _index) HapticFeedback.selectionClick();
+        setState(() => _index = i);
+      },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 280),
         curve: Curves.easeOut,
