@@ -94,6 +94,22 @@ class XtreamClient {
     return _list(listings, EpgEntry.fromJson);
   }
 
+  /// Full-day EPG schedule for a live channel (used by the guide + catch-up).
+  Future<List<EpgEntry>> simpleDataTable(int streamId) async {
+    final data = await _get({'action': 'get_simple_data_table', 'stream_id': '$streamId'});
+    final listings = (data is Map) ? data['epg_listings'] : null;
+    return _list(listings, EpgEntry.fromJson);
+  }
+
+  /// Catch-up (timeshift) URL for a past programme. `start` is the provider-local
+  /// programme start formatted as `YYYY-MM-DD:HH-MM`; `durationMinutes` its length.
+  /// Uses the widely-supported `streaming/timeshift.php` endpoint.
+  String timeshiftUrl(int streamId, String start, int durationMinutes) {
+    return '${creds.baseUrl}/streaming/timeshift.php'
+        '?username=${creds.username}&password=${creds.password}'
+        '&stream=$streamId&start=$start&duration=$durationMinutes';
+  }
+
   /// Direct provider media URL — fed straight to the native (mpv) player.
   String streamUrl(String kind, Object id, {String ext = 'ts'}) {
     final e = ext.replaceFirst(RegExp(r'^\.'), '');

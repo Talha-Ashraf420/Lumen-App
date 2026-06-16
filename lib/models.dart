@@ -30,13 +30,19 @@ class LiveStream {
   final String icon;
   final String categoryId;
   final String epgChannelId;
-  LiveStream(this.streamId, this.name, this.icon, this.categoryId, this.epgChannelId);
+  final int tvArchive; // 1 if catch-up/archive available
+  final int tvArchiveDuration; // archive window in days
+  LiveStream(this.streamId, this.name, this.icon, this.categoryId, this.epgChannelId,
+      {this.tvArchive = 0, this.tvArchiveDuration = 0});
+  bool get hasArchive => tvArchive == 1;
   factory LiveStream.fromJson(Map<String, dynamic> j) => LiveStream(
         _toInt(j['stream_id']),
         _toStr(j['name']),
         _toStr(j['stream_icon']),
         _toStr(j['category_id']),
         _toStr(j['epg_channel_id']),
+        tvArchive: _toInt(j['tv_archive']),
+        tvArchiveDuration: _toInt(j['tv_archive_duration']),
       );
 }
 
@@ -147,13 +153,14 @@ class Episode {
   }
 }
 
-/// A single EPG programme (now/next) from get_short_epg.
+/// A single EPG programme (now/next) from get_short_epg / get_simple_data_table.
 class EpgEntry {
   final String title;
   final String description;
   final DateTime start;
   final DateTime end;
-  EpgEntry(this.title, this.description, this.start, this.end);
+  final String startServer; // raw provider-local "YYYY-MM-DD HH:MM:SS" (for timeshift)
+  EpgEntry(this.title, this.description, this.start, this.end, {this.startServer = ''});
 
   factory EpgEntry.fromJson(Map<String, dynamic> j) {
     String dec(dynamic v) {
@@ -176,6 +183,7 @@ class EpgEntry {
       dec(j['description']),
       ts(j['start_timestamp']),
       ts(j['stop_timestamp']),
+      startServer: _toStr(j['start']),
     );
   }
 
@@ -184,11 +192,25 @@ class EpgEntry {
     return now.isAfter(start) && now.isBefore(end);
   }
 
+  bool get isPast => DateTime.now().isAfter(end);
+
+  int get durationMinutes => end.difference(start).inMinutes;
+
   double get progress {
     final total = end.difference(start).inSeconds;
     if (total <= 0) return 0;
     final done = DateTime.now().difference(start).inSeconds;
     return (done / total).clamp(0, 1);
+  }
+
+  /// Provider-local start formatted for the timeshift endpoint: `YYYY-MM-DD:HH-MM`.
+  String get timeshiftStart {
+    // startServer looks like "2026-06-16 20:30:00"
+    final m = RegExp(r'(\d{4}-\d{2}-\d{2})\s+(\d{2}):(\d{2})').firstMatch(startServer);
+    if (m != null) return '${m.group(1)}:${m.group(2)}-${m.group(3)}';
+    // fallback: derive from local start time
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${start.year}-${two(start.month)}-${two(start.day)}:${two(start.hour)}-${two(start.minute)}';
   }
 }
 

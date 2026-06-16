@@ -3,6 +3,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import '../xtream.dart';
+import 'guide_screen.dart';
 import 'home_screen.dart';
 import 'mylist_screen.dart';
 import 'profile_screen.dart';
@@ -21,6 +22,7 @@ class _HomeShellState extends State<HomeShell> {
 
   static const _nav = [
     (icon: Icons.home_rounded, label: 'Home'),
+    (icon: Icons.live_tv_rounded, label: 'Live'),
     (icon: Icons.search_rounded, label: 'Search'),
     (icon: Icons.favorite_rounded, label: 'My List'),
     (icon: Icons.person_rounded, label: 'Profile'),
@@ -29,7 +31,8 @@ class _HomeShellState extends State<HomeShell> {
   @override
   Widget build(BuildContext context) {
     final pages = [
-      HomeScreen(client: widget.client, onBrowse: () => setState(() => _index = 1)),
+      HomeScreen(client: widget.client, onBrowse: () => setState(() => _index = 2)),
+      GuideScreen(client: widget.client),
       SearchScreen(client: widget.client),
       MyListScreen(client: widget.client),
       ProfileScreen(client: widget.client, onLogout: widget.onLogout),
@@ -42,11 +45,11 @@ class _HomeShellState extends State<HomeShell> {
           Align(
             alignment: Alignment.bottomCenter,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(40, 0, 40, 22),
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 22),
               child: Glass(
                 radius: 30,
                 blur: 26,
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [for (var i = 0; i < _nav.length; i++) _item(i)],
@@ -67,8 +70,8 @@ class _HomeShellState extends State<HomeShell> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 280),
         curve: Curves.easeOut,
-        margin: const EdgeInsets.symmetric(horizontal: 3),
-        padding: EdgeInsets.symmetric(horizontal: sel ? 16 : 14, vertical: 11),
+        margin: const EdgeInsets.symmetric(horizontal: 2),
+        padding: EdgeInsets.symmetric(horizontal: sel ? 14 : 11, vertical: 11),
         decoration: BoxDecoration(
           color: sel ? accent : null,
           borderRadius: BorderRadius.circular(18),

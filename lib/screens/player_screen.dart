@@ -45,6 +45,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Timer? _hideTimer;
   StreamSubscription<Duration>? _posSub;
   List<EpgEntry> _epg = const [];
+  BoxFit _fit = BoxFit.contain;
+  double _rate = 1.0;
 
   PlayerItem get _item => widget.items[_index];
   bool get _isLive => _item.isLive;
@@ -232,6 +234,117 @@ class _PlayerScreenState extends State<PlayerScreen> {
         title: Text(label, style: TextStyle(fontWeight: sel ? FontWeight.w700 : FontWeight.w500)),
       );
 
+  /// Unified playback settings: video fit, speed (VOD), audio track, subtitles.
+  Future<void> _openSettings() async {
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (_) {
+        return StatefulBuilder(
+          builder: (ctx, setSheet) {
+            final audio = _player.state.tracks.audio.where((t) => t.id != 'auto' && t.id != 'no').toList();
+            final curAudio = _player.state.track.audio;
+            final subs = _player.state.tracks.subtitle.where((t) => t.id != 'auto' && t.id != 'no').toList();
+            final curSub = _player.state.track.subtitle;
+            return SafeArea(
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 10),
+                    Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: subtle, borderRadius: BorderRadius.circular(2)))),
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(20, 16, 20, 4),
+                      child: Text('Playback', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                    ),
+                    _settingLabel('Video fit'),
+                    _chipRow([
+                      ('Fit', _fit == BoxFit.contain, () => setSheet(() => setState(() => _fit = BoxFit.contain))),
+                      ('Fill', _fit == BoxFit.cover, () => setSheet(() => setState(() => _fit = BoxFit.cover))),
+                      ('Stretch', _fit == BoxFit.fill, () => setSheet(() => setState(() => _fit = BoxFit.fill))),
+                    ]),
+                    if (!_isLive) ...[
+                      _settingLabel('Speed'),
+                      _chipRow([
+                        for (final r in const [0.5, 1.0, 1.25, 1.5, 2.0])
+                          ('${r}x', _rate == r, () {
+                            _player.setRate(r);
+                            setSheet(() => setState(() => _rate = r));
+                          }),
+                      ]),
+                    ],
+                    _settingLabel('Audio'),
+                    if (audio.isEmpty)
+                      Padding(padding: const EdgeInsets.fromLTRB(20, 2, 20, 4), child: Text('Only one audio track.', style: TextStyle(color: subtle)))
+                    else
+                      ...audio.map((t) {
+                        final label = [t.title, t.language].whereType<String>().where((e) => e.isNotEmpty).join(' · ');
+                        return _trackRow(label.isEmpty ? 'Track ${t.id}' : label, curAudio.id == t.id, () {
+                          _player.setAudioTrack(t);
+                          setSheet(() {});
+                        });
+                      }),
+                    _settingLabel('Subtitles'),
+                    _trackRow('Off', curSub.id == 'no', () {
+                      _player.setSubtitleTrack(SubtitleTrack.no());
+                      setSheet(() {});
+                    }),
+                    ...subs.map((t) {
+                      final label = [t.title, t.language].whereType<String>().where((e) => e.isNotEmpty).join(' · ');
+                      return _trackRow(label.isEmpty ? 'Track ${t.id}' : label, curSub.id == t.id, () {
+                        _player.setSubtitleTrack(t);
+                        setSheet(() {});
+                      });
+                    }),
+                    const SizedBox(height: 16),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+    _scheduleHide();
+  }
+
+  Widget _settingLabel(String s) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+        child: Text(s, style: TextStyle(color: muted, fontWeight: FontWeight.w700, fontSize: 13)),
+      );
+
+  Widget _chipRow(List<(String, bool, VoidCallback)> chips) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final (label, sel, onTap) in chips)
+              GestureDetector(
+                onTap: onTap,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+                  decoration: BoxDecoration(
+                    color: sel ? accent : surfaceHi.withValues(alpha: 0.6),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(label,
+                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: sel ? Colors.white : muted)),
+                ),
+              ),
+          ],
+        ),
+      );
+
+  Widget _trackRow(String label, bool sel, VoidCallback onTap) => ListTile(
+        onTap: onTap,
+        dense: true,
+        leading: Icon(sel ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded, color: sel ? accent : muted),
+        title: Text(label, style: TextStyle(fontWeight: sel ? FontWeight.w700 : FontWeight.w500)),
+      );
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -242,7 +355,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            Center(child: Video(controller: _controller, controls: NoVideoControls, fit: BoxFit.contain)),
+            Center(child: Video(controller: _controller, controls: NoVideoControls, fit: _fit)),
             StreamBuilder<bool>(
               stream: _player.stream.buffering,
               builder: (_, s) => (s.data ?? false)
@@ -409,6 +522,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
             children: [
               IconButton(onPressed: _toggleMute, icon: Icon(_muted ? Icons.volume_off_rounded : Icons.volume_up_rounded, color: Colors.white)),
               IconButton(onPressed: _pickSubtitles, icon: const Icon(Icons.closed_caption_rounded, color: Colors.white)),
+              IconButton(onPressed: _openSettings, icon: const Icon(Icons.tune_rounded, color: Colors.white)),
               const Spacer(),
               if (_isLive)
                 const Padding(
