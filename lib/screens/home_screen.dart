@@ -149,7 +149,7 @@ class _HeroCarousel extends StatefulWidget {
 }
 
 class _HeroCarouselState extends State<_HeroCarousel> {
-  final _ctrl = PageController(viewportFraction: 0.9);
+  final _ctrl = PageController(viewportFraction: 0.84);
   int _page = 0;
 
   @override
@@ -177,7 +177,7 @@ class _HeroCarouselState extends State<_HeroCarousel> {
         return Column(
           children: [
             SizedBox(
-              height: 210,
+              height: 440,
               child: PageView.builder(
                 controller: _ctrl,
                 onPageChanged: (p) => setState(() => _page = p),
@@ -247,10 +247,10 @@ class _HeroCard extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(item.name,
-                      maxLines: 1,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w800)),
-                  const SizedBox(height: 8),
+                      style: const TextStyle(fontSize: 25, fontWeight: FontWeight.w800, height: 1.1)),
+                  const SizedBox(height: 12),
                   Row(children: [
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),

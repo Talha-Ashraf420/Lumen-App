@@ -156,8 +156,9 @@ class SectionHeader extends StatelessWidget {
             child: Text(title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: -0.3)),
+                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, letterSpacing: -0.3)),
           ),
+          const SizedBox(width: 12),
           if (onSeeAll != null)
             GestureDetector(
               onTap: onSeeAll,
