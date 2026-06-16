@@ -51,6 +51,7 @@ dependencies:
   flutter_secure_storage: ^9.2.2
   screen_brightness: ^2.1.2
   url_launcher: ^6.3.0
+  flutter_card_swiper: ^7.0.1
 
 dev_dependencies:
   flutter_test:

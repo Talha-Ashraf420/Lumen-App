@@ -11,6 +11,7 @@ import '../widgets.dart';
 import '../xtream.dart';
 import 'category_sheet.dart';
 import 'movie_detail_screen.dart';
+import 'swipe_screen.dart';
 
 /// "Discover" — a dense, rotatable 3D globe of movie posters. One finger spins
 /// it (with inertia); two fingers pinch to zoom in. Tap a poster to open it, or
@@ -161,8 +162,13 @@ class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin
             const Text('Discover', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
             const Spacer(),
             Text('${_pool.length}', style: TextStyle(color: subtle, fontWeight: FontWeight.w700)),
-            const SizedBox(width: 6),
-            Icon(Icons.auto_awesome_rounded, color: accent, size: 20),
+            const SizedBox(width: 4),
+            IconButton(
+              onPressed: () =>
+                  Navigator.of(context).push(MaterialPageRoute(builder: (_) => SwipeScreen(client: widget.client))),
+              icon: Icon(Icons.style_rounded, color: accent),
+              tooltip: 'Swipe',
+            ),
           ],
         ),
       );
