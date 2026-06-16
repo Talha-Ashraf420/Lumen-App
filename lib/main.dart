@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
+import 'catalog_cache.dart';
+import 'epg_cache.dart';
 import 'models.dart';
 import 'store.dart';
 import 'library.dart';
@@ -92,6 +94,8 @@ class _GateState extends State<_Gate> {
   void _onLogout() => setState(() {
         _creds = null;
         _client = null;
+        CatalogCache.instance.clear();
+        EpgCache.instance.clear();
       });
 
   XtreamClient? _client; // cached so theme rebuilds don't recreate it

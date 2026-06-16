@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import '../catalog_cache.dart';
 import '../library.dart';
 import '../models.dart';
 import '../theme.dart';
@@ -43,12 +44,11 @@ class _HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMi
 
   Future<_HomeData> _loadHome() async {
     final c = widget.client;
-    // Tolerate a single failing call (provider hiccups / 404 on one action) so
-    // the home still renders the sections that did load.
+    // Shared, retried category cache (reused by Search / Live too).
     final results = await Future.wait([
-      c.vodCategories().catchError((_) => <Category>[]),
-      c.seriesCategories().catchError((_) => <Category>[]),
-      c.liveCategories().catchError((_) => <Category>[]),
+      CatalogCache.instance.vod(c),
+      CatalogCache.instance.series(c),
+      CatalogCache.instance.live(c),
     ]);
     return _HomeData(results[0], results[1], results[2]);
   }

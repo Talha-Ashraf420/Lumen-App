@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../catalog_cache.dart';
 import '../library.dart';
 import '../models.dart';
 import '../theme.dart';
@@ -49,9 +50,9 @@ class SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClien
   void initState() {
     super.initState();
     final c = widget.client;
-    c.vodCategories().then((v) => mounted ? setState(() => _movieCats = v) : null).catchError((_) {});
-    c.seriesCategories().then((v) => mounted ? setState(() => _seriesCats = v) : null).catchError((_) {});
-    c.liveCategories().then((v) => mounted ? setState(() => _liveCats = v) : null).catchError((_) {});
+    CatalogCache.instance.vod(c).then((v) => mounted ? setState(() => _movieCats = v) : null);
+    CatalogCache.instance.series(c).then((v) => mounted ? setState(() => _seriesCats = v) : null);
+    CatalogCache.instance.live(c).then((v) => mounted ? setState(() => _liveCats = v) : null);
   }
 
   @override

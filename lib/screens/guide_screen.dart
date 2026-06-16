@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import '../catalog_cache.dart';
 import '../epg_cache.dart';
 import '../library.dart';
 import '../models.dart';
@@ -36,7 +37,7 @@ class _GuideScreenState extends State<GuideScreen> with AutomaticKeepAliveClient
 
   Future<void> _init() async {
     try {
-      final cats = await widget.client.liveCategories();
+      final cats = await CatalogCache.instance.live(widget.client);
       if (!mounted) return;
       setState(() {
         _cats = cats;
