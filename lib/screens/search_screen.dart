@@ -32,11 +32,13 @@ class SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClien
   String _section = 'all'; // all | movie | series | live
   String _cat = 'all';
 
-  // cached full catalogs (loaded once, filtered locally)
-  List<VodStream>? _movies;
-  List<Series>? _series;
-  List<LiveStream>? _live;
-  bool _lm = false, _ls = false, _ll = false;
+  // Streams cached per category id ('all' = whole catalog). Many providers
+  // return nothing for the no-category "list all" call, so we fetch per
+  // category (like Home does) and aggregate for the 'all' view.
+  final Map<String, List<VodStream>> _movieByCat = {};
+  final Map<String, List<Series>> _seriesByCat = {};
+  final Map<String, List<LiveStream>> _liveByCat = {};
+  final Set<String> _inFlight = {};
 
   List<Category> _movieCats = [], _seriesCats = [], _liveCats = [];
 
@@ -50,7 +52,6 @@ class SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClien
     c.vodCategories().then((v) => mounted ? setState(() => _movieCats = v) : null).catchError((_) {});
     c.seriesCategories().then((v) => mounted ? setState(() => _seriesCats = v) : null).catchError((_) {});
     c.liveCategories().then((v) => mounted ? setState(() => _liveCats = v) : null).catchError((_) {});
-    _ensureFor(_section);
   }
 
   @override
@@ -59,46 +60,77 @@ class SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClien
     super.dispose();
   }
 
-  void _ensureFor(String section) {
-    final c = widget.client;
-    void ensureMovies() {
-      if (_movies != null || _lm) return;
-      _lm = true;
-      c.vodStreams(null).then((v) {
-        if (mounted) setState(() => _movies = v);
-      }).catchError((_) {
-        if (mounted) setState(() => _movies = []);
-      });
-    }
+  bool _has(String section, String cat) => switch (section) {
+        'movie' => _movieByCat.containsKey(cat),
+        'series' => _seriesByCat.containsKey(cat),
+        _ => _liveByCat.containsKey(cat),
+      };
 
-    void ensureSeries() {
-      if (_series != null || _ls) return;
-      _ls = true;
-      c.series(null).then((v) {
-        if (mounted) setState(() => _series = v);
-      }).catchError((_) {
-        if (mounted) setState(() => _series = []);
-      });
+  /// Ensure the streams for (section, cat) are loaded. Safe to call from build.
+  void _ensure(String section, String cat) {
+    final key = '$section:$cat';
+    if (_has(section, cat) || _inFlight.contains(key)) return;
+    _inFlight.add(key);
+    Future<void> store(Future<void> Function() run) =>
+        run().catchError((_) => _store(section, cat, const [])).whenComplete(() => _inFlight.remove(key));
+    switch (section) {
+      case 'movie':
+        store(() => _loadMovies(cat).then((v) => _store(section, cat, v)));
+      case 'series':
+        store(() => _loadSeries(cat).then((v) => _store(section, cat, v)));
+      default:
+        store(() => _loadLive(cat).then((v) => _store(section, cat, v)));
     }
+  }
 
-    void ensureLive() {
-      if (_live != null || _ll) return;
-      _ll = true;
-      c.liveStreams(null).then((v) {
-        if (mounted) setState(() => _live = v);
-      }).catchError((_) {
-        if (mounted) setState(() => _live = []);
-      });
-    }
+  void _store(String section, String cat, List<dynamic> v) {
+    if (!mounted) return;
+    setState(() {
+      switch (section) {
+        case 'movie':
+          _movieByCat[cat] = v.cast<VodStream>();
+        case 'series':
+          _seriesByCat[cat] = v.cast<Series>();
+        default:
+          _liveByCat[cat] = v.cast<LiveStream>();
+      }
+    });
+  }
 
-    if (section == 'movie') ensureMovies();
-    else if (section == 'series') ensureSeries();
-    else if (section == 'live') ensureLive();
-    else {
-      ensureMovies();
-      ensureSeries();
-      ensureLive();
+  Future<List<VodStream>> _loadMovies(String cat) async {
+    if (cat != 'all') return widget.client.vodStreams(cat);
+    final all = await widget.client.vodStreams(null).catchError((_) => <VodStream>[]);
+    if (all.isNotEmpty || _movieCats.isEmpty) return all;
+    return _aggregate(_movieCats, (id) => widget.client.vodStreams(id));
+  }
+
+  Future<List<Series>> _loadSeries(String cat) async {
+    if (cat != 'all') return widget.client.series(cat);
+    final all = await widget.client.series(null).catchError((_) => <Series>[]);
+    if (all.isNotEmpty || _seriesCats.isEmpty) return all;
+    return _aggregate(_seriesCats, (id) => widget.client.series(id));
+  }
+
+  Future<List<LiveStream>> _loadLive(String cat) async {
+    if (cat != 'all') return widget.client.liveStreams(cat);
+    final all = await widget.client.liveStreams(null).catchError((_) => <LiveStream>[]);
+    if (all.isNotEmpty || _liveCats.isEmpty) return all;
+    return _aggregate(_liveCats, (id) => widget.client.liveStreams(id));
+  }
+
+  /// Concatenate streams across all categories in gentle batches (fallback when
+  /// the provider doesn't support the "list all" call).
+  Future<List<T>> _aggregate<T>(List<Category> cats, Future<List<T>> Function(String) fetch) async {
+    final out = <T>[];
+    const batch = 4;
+    for (var i = 0; i < cats.length; i += batch) {
+      final slice = cats.skip(i).take(batch);
+      final res = await Future.wait(slice.map((c) => fetch(c.id).catchError((_) => <T>[])));
+      for (final r in res) {
+        out.addAll(r);
+      }
     }
+    return out;
   }
 
   // builders → result items
@@ -184,7 +216,6 @@ class SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClien
             onTap: () => setState(() {
               _section = items[i].id;
               _cat = 'all';
-              _ensureFor(_section);
             }),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
@@ -231,11 +262,17 @@ class SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClien
 
     if (_section == 'all') {
       if (q.isEmpty) return _prompt();
-      // global search across everything
-      final loading = _movies == null || _series == null || _live == null;
-      final mr = (_movies ?? []).where((x) => m(x.name)).take(18).map(_movie).toList();
-      final sr = (_series ?? []).where((x) => m(x.name)).take(18).map(_ser).toList();
-      final lr = (_live ?? []).where((x) => m(x.name)).take(18).map(_liv).toList();
+      // global search across everything (whole-catalog 'all' lists)
+      _ensure('movie', 'all');
+      _ensure('series', 'all');
+      _ensure('live', 'all');
+      final movies = _movieByCat['all'];
+      final series = _seriesByCat['all'];
+      final live = _liveByCat['all'];
+      final loading = movies == null || series == null || live == null;
+      final mr = (movies ?? []).where((x) => m(x.name)).take(18).map(_movie).toList();
+      final sr = (series ?? []).where((x) => m(x.name)).take(18).map(_ser).toList();
+      final lr = (live ?? []).where((x) => m(x.name)).take(18).map(_liv).toList();
       if (loading && mr.isEmpty && sr.isEmpty && lr.isEmpty) return const BrandedLoading();
       if (mr.isEmpty && sr.isEmpty && lr.isEmpty) return _empty('No results for “$_q”.');
       return ListView(
@@ -248,28 +285,19 @@ class SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClien
       );
     }
 
-    // specific section
+    // specific section — fetch the selected category directly
     final live = _section == 'live';
-    final List<_Res> all = switch (_section) {
-      'movie' => (_movies)?.map(_movie).toList() ?? const [],
-      'series' => (_series)?.map(_ser).toList() ?? const [],
-      _ => (_live)?.map(_liv).toList() ?? const [],
-    };
-    final loaded = switch (_section) {
-      'movie' => _movies != null,
-      'series' => _series != null,
-      _ => _live != null,
-    };
     final catId = _cat;
-    // category filter needs raw items; rebuild filtered raw lists
+    _ensure(_section, catId);
+    final loaded = _has(_section, catId);
     List<_Res> items;
     if (_section == 'movie') {
-      items = (_movies ?? []).where((x) => (catId == 'all' || x.categoryId == catId) && m(x.name)).map(_movie).toList();
+      items = (_movieByCat[catId] ?? const []).where((x) => m(x.name)).map(_movie).toList();
     } else if (_section == 'series') {
-      items = (_series ?? []).where((x) => (catId == 'all' || x.categoryId == catId) && m(x.name)).map(_ser).toList();
+      items = (_seriesByCat[catId] ?? const []).where((x) => m(x.name)).map(_ser).toList();
     } else {
       // build a shared channel playlist so the player can zap next/previous
-      final chans = (_live ?? []).where((x) => (catId == 'all' || x.categoryId == catId) && m(x.name)).toList();
+      final chans = (_liveByCat[catId] ?? const <LiveStream>[]).where((x) => m(x.name)).toList();
       final pl = chans.map(_liveItem).toList();
       items = chans
           .asMap()
@@ -278,7 +306,7 @@ class SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClien
           .toList();
     }
 
-    if (!loaded && all.isEmpty) return const BrandedLoading();
+    if (!loaded) return const BrandedLoading();
     if (items.isEmpty) return _empty(q.isEmpty ? 'Nothing here.' : 'No results for “$_q”.');
 
     return GridView.builder(
