@@ -19,6 +19,9 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   int _index = 0;
+  // Tabs initialise only once first opened — avoids a startup request burst
+  // (e.g. the Live guide loading EPG) that can trip the provider.
+  final Set<int> _visited = {0};
 
   static const _nav = [
     (icon: Icons.home_rounded, label: 'Home'),
@@ -28,14 +31,22 @@ class _HomeShellState extends State<HomeShell> {
     (icon: Icons.person_rounded, label: 'Profile'),
   ];
 
+  Widget _pageFor(int i) => switch (i) {
+        0 => HomeScreen(client: widget.client, onBrowse: () => setState(() => _index = 2)),
+        1 => GuideScreen(client: widget.client),
+        2 => SearchScreen(client: widget.client),
+        3 => MyListScreen(client: widget.client),
+        _ => ProfileScreen(client: widget.client, onLogout: widget.onLogout),
+      };
+
   @override
   Widget build(BuildContext context) {
+    _visited.add(_index);
+    // Build a real page only for visited tabs (so unopened tabs don't fetch);
+    // pages are rebuilt each frame so they re-read the active theme palette.
     final pages = [
-      HomeScreen(client: widget.client, onBrowse: () => setState(() => _index = 2)),
-      GuideScreen(client: widget.client),
-      SearchScreen(client: widget.client),
-      MyListScreen(client: widget.client),
-      ProfileScreen(client: widget.client, onLogout: widget.onLogout),
+      for (var i = 0; i < _nav.length; i++)
+        _visited.contains(i) ? _pageFor(i) : const SizedBox.shrink(),
     ];
     return Scaffold(
       body: Stack(

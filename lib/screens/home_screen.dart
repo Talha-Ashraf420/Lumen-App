@@ -43,7 +43,13 @@ class _HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMi
 
   Future<_HomeData> _loadHome() async {
     final c = widget.client;
-    final results = await Future.wait([c.vodCategories(), c.seriesCategories(), c.liveCategories()]);
+    // Tolerate a single failing call (provider hiccups / 404 on one action) so
+    // the home still renders the sections that did load.
+    final results = await Future.wait([
+      c.vodCategories().catchError((_) => <Category>[]),
+      c.seriesCategories().catchError((_) => <Category>[]),
+      c.liveCategories().catchError((_) => <Category>[]),
+    ]);
     return _HomeData(results[0], results[1], results[2]);
   }
 

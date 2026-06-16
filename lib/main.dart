@@ -45,7 +45,10 @@ class LumenApp extends StatelessWidget {
           theme: buildTheme(lightPalette),
           darkTheme: buildTheme(darkPalette),
           themeMode: mode,
-          home: const _Gate(),
+          // Flip instantly (no lerp) — our global palette getters switch at once,
+          // and a non-const home forces the whole subtree to re-read them.
+          themeAnimationDuration: Duration.zero,
+          home: _Gate(),
         );
       },
     );
