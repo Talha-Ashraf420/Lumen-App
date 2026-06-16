@@ -146,14 +146,33 @@ class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin
 
   Widget _globe() {
     if (_pool.isEmpty) {
-      return Center(child: Text('Nothing to discover yet.', style: TextStyle(color: subtle)));
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Couldn’t load titles.', style: TextStyle(color: subtle)),
+            const SizedBox(height: 12),
+            GestureDetector(
+              onTap: () {
+                setState(() => _loading = true);
+                _load();
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+                decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(14)),
+                child: const Text('Retry', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+              ),
+            ),
+          ],
+        ),
+      );
     }
     return LayoutBuilder(
       builder: (context, constraints) {
         final w = constraints.maxWidth, h = constraints.maxHeight;
         final cx = w / 2, cy = h / 2;
         final radius = math.min(w, h) * 0.42 * _zoom;
-        final pw = 44.0 * _zoom, ph = 66.0 * _zoom;
+        final pw = 40.0 * _zoom, ph = 60.0 * _zoom;
 
         final projected = <_Proj>[];
         var frontIdx = 0;
@@ -164,8 +183,9 @@ class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin
             frontDepth = r.z;
             frontIdx = i;
           }
-          final t = (r.z + 1) / 2;
-          projected.add(_Proj(i, cx + r.x * radius, cy + r.y * radius, r.z, 0.6 + 0.5 * t, 0.28 + 0.72 * t));
+          final t = (r.z + 1) / 2; // 0 = far back, 1 = front
+          if (t < 0.12) continue; // cull the deep back (occluded anyway)
+          projected.add(_Proj(i, cx + r.x * radius, cy + r.y * radius, r.z, 0.6 + 0.5 * t, 0.28 + 0.72 * t, t > 0.55));
         }
         if (frontIdx != _front) {
           _front = frontIdx;
@@ -211,7 +231,7 @@ class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin
                       opacity: p.opacity,
                       child: Transform.scale(
                         scale: p.scale,
-                        child: _poster(_pool[p.i], pw, ph, p.i == _front),
+                        child: _poster(_pool[p.i], pw, ph, p.i == _front, p.img),
                       ),
                     ),
                   ),
@@ -223,7 +243,7 @@ class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin
     );
   }
 
-  Widget _poster(VodStream m, double w, double h, bool focused) {
+  Widget _poster(VodStream m, double w, double h, bool focused, bool loadImage) {
     return RepaintBoundary(
       child: GestureDetector(
         onTap: () => _open(m),
@@ -236,11 +256,16 @@ class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin
             border: focused ? Border.all(color: accent, width: 2) : null,
           ),
           clipBehavior: Clip.antiAlias,
-          child: CachedNetworkImage(
-            imageUrl: m.icon,
-            fit: BoxFit.cover,
-            errorWidget: (_, _, _) => Icon(Icons.movie_outlined, color: subtle, size: 18),
-          ),
+          // Only front-facing posters load an image (small-decoded to bound
+          // memory across a ~1000-poster globe); the rest are plain tiles.
+          child: loadImage
+              ? CachedNetworkImage(
+                  imageUrl: m.icon,
+                  fit: BoxFit.cover,
+                  memCacheWidth: 160,
+                  errorWidget: (_, _, _) => Icon(Icons.movie_outlined, color: subtle, size: 18),
+                )
+              : null,
         ),
       ),
     );
@@ -308,5 +333,6 @@ class _P3 {
 class _Proj {
   final int i;
   final double x, y, depth, scale, opacity;
-  _Proj(this.i, this.x, this.y, this.depth, this.scale, this.opacity);
+  final bool img;
+  _Proj(this.i, this.x, this.y, this.depth, this.scale, this.opacity, this.img);
 }

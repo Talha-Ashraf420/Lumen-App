@@ -8,34 +8,48 @@ import 'xtream.dart';
 /// Taste = the categories of movies the user has favourited / recently watched.
 /// With no signal yet, falls back to a few random categories.
 class Discovery {
-  static Future<List<VodStream>> pool(XtreamClient c, {int size = 240}) async {
+  /// Build a large, taste-weighted movie pool. Fetches categories in small
+  /// sequential batches with retry (providers reject big concurrent bursts),
+  /// accumulating de-duplicated items until [target] is reached or categories
+  /// run out.
+  static Future<List<VodStream>> pool(XtreamClient c, {int target = 1000}) async {
     final allCats = await CatalogCache.instance.vod(c);
     if (allCats.isEmpty) return [];
 
-    // Count category frequency across the user's movie favourites + recents.
+    // Preferred categories (from the user's movie taste) first, then the rest shuffled.
     final freq = <String, int>{};
     for (final m in [...Library.instance.favourites, ...Library.instance.recent]) {
-      if (m.kind == 'movie' && m.cat.isNotEmpty) {
-        freq[m.cat] = (freq[m.cat] ?? 0) + 1;
+      if (m.kind == 'movie' && m.cat.isNotEmpty) freq[m.cat] = (freq[m.cat] ?? 0) + 1;
+    }
+    final pref = freq.keys.where((id) => allCats.any((c) => c.id == id)).toList()
+      ..sort((a, b) => freq[b]!.compareTo(freq[a]!));
+    final rest = allCats.map((e) => e.id).where((id) => !pref.contains(id)).toList()..shuffle();
+    final ordered = [...pref, ...rest];
+
+    final out = <VodStream>[];
+    final seen = <int>{};
+    const batch = 3;
+    for (var i = 0; i < ordered.length && out.length < target; i += batch) {
+      final ids = ordered.skip(i).take(batch);
+      final lists = await Future.wait(ids.map((id) => _fetch(c, id)));
+      for (final list in lists) {
+        for (final m in list) {
+          if (m.icon.isNotEmpty && seen.add(m.streamId)) out.add(m);
+        }
       }
     }
+    out.shuffle();
+    return out.length > target ? out.sublist(0, target) : out;
+  }
 
-    // Preferred categories first, then fill with random ones for a dense, varied globe.
-    final chosen = <String>[];
-    if (freq.isNotEmpty) {
-      final pref = freq.keys.toList()..sort((a, b) => freq[b]!.compareTo(freq[a]!));
-      chosen.addAll(pref.take(6));
+  static Future<List<VodStream>> _fetch(XtreamClient c, String id) async {
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        final r = await c.vodStreams(id);
+        if (r.isNotEmpty) return r;
+      } catch (_) {}
+      await Future.delayed(Duration(milliseconds: 250 * (attempt + 1)));
     }
-    final rest = allCats.where((cat) => !chosen.contains(cat.id)).toList()..shuffle();
-    for (final cat in rest) {
-      if (chosen.length >= 12) break;
-      chosen.add(cat.id);
-    }
-
-    final lists = await Future.wait(
-      chosen.map((id) => c.vodStreams(id).catchError((_) => <VodStream>[])),
-    );
-    final items = lists.expand((e) => e).where((m) => m.icon.isNotEmpty).toList()..shuffle();
-    return items.take(size).toList();
+    return const [];
   }
 }
