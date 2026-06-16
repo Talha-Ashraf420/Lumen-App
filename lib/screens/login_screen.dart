@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models.dart';
 import '../store.dart';
+import '../widgets.dart';
 import '../theme.dart';
 import '../xtream.dart';
 
@@ -62,19 +63,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Container(
-                      width: 64,
-                      height: 64,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(colors: [accent, accent2]),
-                        borderRadius: BorderRadius.circular(18),
-                        boxShadow: [BoxShadow(color: accent.withValues(alpha: 0.4), blurRadius: 30)],
-                      ),
-                      child: Icon(Icons.play_arrow_rounded, color: bg, size: 38),
-                    ),
-                    const SizedBox(height: 16),
-                    const Text('Lumen', style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 4),
+                    const Wordmark(size: 42),
+                    const SizedBox(height: 14),
                     Text('Sign in with your Xtream / X3U codes.',
                         style: TextStyle(color: muted)),
                     const SizedBox(height: 24),

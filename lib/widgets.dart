@@ -2,7 +2,58 @@ import 'dart:ui';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:lottie/lottie.dart';
 import 'theme.dart';
+
+/// The Lumen wordmark: a violet play-beam mark + "Lumen" in Manrope. Rendered
+/// natively (not from SVG) so the font renders reliably and it adapts to theme.
+class Wordmark extends StatelessWidget {
+  final double size; // text font size
+  const Wordmark({super.key, this.size = 34});
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        CustomPaint(size: Size(size * 0.66, size * 0.92), painter: _BeamMark(accent)),
+        SizedBox(width: size * 0.26),
+        Text('Lumen',
+            style: GoogleFonts.manrope(
+                fontSize: size, fontWeight: FontWeight.w800, color: textHi, letterSpacing: -0.5, height: 1)),
+      ],
+    );
+  }
+}
+
+/// A right-pointing play triangle with an accent underline (matches the icon).
+class _BeamMark extends CustomPainter {
+  final Color color;
+  _BeamMark(this.color);
+  @override
+  void paint(Canvas canvas, Size size) {
+    final p = Paint()
+      ..color = color
+      ..isAntiAlias = true;
+    final w = size.width, h = size.height;
+    final triH = h * 0.74;
+    final tri = Path()
+      ..moveTo(0, 0)
+      ..lineTo(0, triH)
+      ..lineTo(w, triH / 2)
+      ..close();
+    canvas.drawPath(tri, p);
+    final barTop = h * 0.85;
+    canvas.drawRRect(
+      RRect.fromLTRBR(0, barTop, w * 0.86, h, Radius.circular(h * 0.06)),
+      p,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_BeamMark old) => old.color != color;
+}
 
 /// Frosted "liquid glass" surface (used for nav / menus / sheets).
 class Glass extends StatelessWidget {
@@ -127,18 +178,14 @@ class BrandedLoading extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          ShaderMask(
-            shaderCallback: (r) => LinearGradient(colors: [accent, accent]).createShader(r),
-            child: const Text('Lumen',
-                style: TextStyle(fontSize: 40, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: -1)),
-          ).animate(onPlay: (c) => c.repeat(reverse: true)).fadeIn(duration: 600.ms).then().fade(begin: 1, end: 0.6, duration: 900.ms),
-          const SizedBox(height: 22),
-          SizedBox(width: 26, height: 26, child: CircularProgressIndicator(color: accent, strokeWidth: 2.4)),
+          Lottie.asset('assets/lumen_loader.json', width: 132, height: 132, repeat: true),
+          const SizedBox(height: 10),
+          const Wordmark(size: 30),
         ],
       ),
     );
     if (!background) return content;
-    return Stack(children: [const Aurora(), content]);
+    return Stack(children: [Aurora(), content]);
   }
 }
 

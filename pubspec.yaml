@@ -1,5 +1,10 @@
 name: lumen_tv
 description: "A new Flutter project."
+
+flutter_launcher_icons:
+  ios: true
+  remove_alpha_ios: true
+  image_path: "assets/icon/lumen_icon.png"
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -42,10 +47,12 @@ dependencies:
   cached_network_image: ^3.4.1
   google_fonts: ^8.1.0
   flutter_animate: ^4.5.2
+  lottie: ^3.1.2
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  flutter_launcher_icons: ^0.14.1
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
@@ -64,6 +71,9 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  assets:
+    - assets/lumen_loader.json
 
   # To add assets to your application, add an assets section, like this:
   # assets:
