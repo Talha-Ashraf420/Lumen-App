@@ -5,12 +5,20 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import '../theme.dart';
 
-/// Native playback (libmpv) with a full custom control set.
-class PlayerScreen extends StatefulWidget {
+/// A playable entry (episode / channel / movie).
+class PlayerItem {
   final String url;
   final String title;
   final bool isLive;
-  const PlayerScreen({super.key, required this.url, required this.title, this.isLive = false});
+  const PlayerItem(this.url, this.title, {this.isLive = false});
+}
+
+/// Native playback (libmpv) with a full custom control set + playlist
+/// (next/previous episode or channel, with auto-advance for VOD).
+class PlayerScreen extends StatefulWidget {
+  final List<PlayerItem> items;
+  final int index;
+  const PlayerScreen({super.key, required this.items, this.index = 0});
   @override
   State<PlayerScreen> createState() => _PlayerScreenState();
 }
@@ -18,26 +26,51 @@ class PlayerScreen extends StatefulWidget {
 class _PlayerScreenState extends State<PlayerScreen> {
   late final Player _player = Player();
   late final VideoController _controller = VideoController(_player);
+  late int _index = widget.index;
+  StreamSubscription<bool>? _completedSub;
 
   bool _controls = true;
   bool _fullscreen = false;
   bool _muted = false;
   Timer? _hideTimer;
 
+  PlayerItem get _item => widget.items[_index];
+  bool get _isLive => _item.isLive;
+  bool get _hasNext => _index < widget.items.length - 1;
+  bool get _hasPrev => _index > 0;
+
   @override
   void initState() {
     super.initState();
-    _player.open(Media(widget.url, httpHeaders: const {'User-Agent': 'VLC/3.0.20 LibVLC/3.0.20'}));
+    _openCurrent();
+    _completedSub = _player.stream.completed.listen((done) {
+      if (done && !_isLive && _hasNext) _go(_index + 1);
+    });
     _scheduleHide();
   }
 
   @override
   void dispose() {
     _hideTimer?.cancel();
+    _completedSub?.cancel();
     _player.dispose();
     SystemChrome.setPreferredOrientations(DeviceOrientation.values);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
+  }
+
+  void _openCurrent() {
+    _player.open(Media(_item.url, httpHeaders: const {'User-Agent': 'VLC/3.0.20 LibVLC/3.0.20'}));
+  }
+
+  void _go(int i) {
+    if (i < 0 || i >= widget.items.length) return;
+    setState(() {
+      _index = i;
+      _controls = true;
+    });
+    _openCurrent();
+    _scheduleHide();
   }
 
   void _scheduleHide() {
@@ -151,15 +184,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   Widget _overlay() {
     return SafeArea(
-      child: Column(
-        children: [
-          _topBar(),
-          const Spacer(),
-          _centerControls(),
-          const Spacer(),
-          _bottomBar(),
-        ],
-      ),
+      child: Column(children: [_topBar(), const Spacer(), _centerControls(), const Spacer(), _bottomBar()]),
     );
   }
 
@@ -172,7 +197,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       child: Row(
         children: [
           IconButton(onPressed: () => Navigator.of(context).pop(), icon: const Icon(Icons.arrow_back_rounded, color: Colors.white)),
-          if (widget.isLive)
+          if (_isLive)
             Container(
               margin: const EdgeInsets.only(right: 10),
               padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
@@ -184,7 +209,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
               ]),
             ),
           Expanded(
-            child: Text(widget.title,
+            child: Text(_item.title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontWeight: FontWeight.w700, shadows: [Shadow(color: Colors.black, blurRadius: 8)])),
@@ -198,8 +223,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        if (!widget.isLive) _roundBtn(Icons.replay_10_rounded, () => _seekBy(-10)),
-        const SizedBox(width: 28),
+        _smallBtn(Icons.skip_previous_rounded, _hasPrev ? () => _go(_index - 1) : null),
+        const SizedBox(width: 18),
+        if (!_isLive) _roundBtn(Icons.replay_10_rounded, () => _seekBy(-10)),
+        const SizedBox(width: 22),
         StreamBuilder<bool>(
           stream: _player.stream.playing,
           builder: (_, s) {
@@ -218,8 +245,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
             );
           },
         ),
-        const SizedBox(width: 28),
-        if (!widget.isLive) _roundBtn(Icons.forward_10_rounded, () => _seekBy(10)),
+        const SizedBox(width: 22),
+        if (!_isLive) _roundBtn(Icons.forward_10_rounded, () => _seekBy(10)),
+        const SizedBox(width: 18),
+        _smallBtn(Icons.skip_next_rounded, _hasNext ? () => _go(_index + 1) : null),
       ],
     );
   }
@@ -233,6 +262,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
         ),
       );
 
+  Widget _smallBtn(IconData icon, VoidCallback? onTap) => GestureDetector(
+        onTap: onTap,
+        child: Icon(icon, color: onTap == null ? Colors.white24 : Colors.white, size: 34),
+      );
+
   Widget _bottomBar() {
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 30, 12, 12),
@@ -241,13 +275,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
       ),
       child: Column(
         children: [
-          if (!widget.isLive) _seekBar(),
+          if (!_isLive) _seekBar(),
           Row(
             children: [
               IconButton(onPressed: _toggleMute, icon: Icon(_muted ? Icons.volume_off_rounded : Icons.volume_up_rounded, color: Colors.white)),
               IconButton(onPressed: _pickSubtitles, icon: const Icon(Icons.closed_caption_rounded, color: Colors.white)),
               const Spacer(),
-              if (widget.isLive)
+              if (_isLive)
                 const Padding(
                   padding: EdgeInsets.only(right: 8),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [

@@ -106,7 +106,7 @@ class SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClien
   _Res _ser(Series s) => _Res(s.name, s.cover, s.rating, _year(s.releaseDate.isEmpty ? s.name : s.releaseDate), false,
       () => _push(SeriesDetailScreen(client: widget.client, seriesId: s.seriesId, title: s.name)));
   _Res _liv(LiveStream s) => _Res(s.name, s.icon, 0, '', true,
-      () => _push(PlayerScreen(url: widget.client.streamUrl('live', s.streamId, ext: 'ts'), title: s.name, isLive: true)));
+      () => _push(PlayerScreen(items: [PlayerItem(widget.client.streamUrl('live', s.streamId, ext: 'ts'), s.name, isLive: true)])));
 
   void _push(Widget w) => Navigator.of(context).push(MaterialPageRoute(builder: (_) => w));
 
@@ -259,7 +259,16 @@ class SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClien
     } else if (_section == 'series') {
       items = (_series ?? []).where((x) => (catId == 'all' || x.categoryId == catId) && m(x.name)).map(_ser).toList();
     } else {
-      items = (_live ?? []).where((x) => (catId == 'all' || x.categoryId == catId) && m(x.name)).map(_liv).toList();
+      // build a shared channel playlist so the player can zap next/previous
+      final chans = (_live ?? []).where((x) => (catId == 'all' || x.categoryId == catId) && m(x.name)).toList();
+      final pl = chans
+          .map((s) => PlayerItem(widget.client.streamUrl('live', s.streamId, ext: 'ts'), s.name, isLive: true))
+          .toList();
+      items = chans
+          .asMap()
+          .entries
+          .map((e) => _Res(e.value.name, e.value.icon, 0, '', true, () => _push(PlayerScreen(items: pl, index: e.key))))
+          .toList();
     }
 
     if (!loaded && all.isEmpty) return const BrandedLoading();

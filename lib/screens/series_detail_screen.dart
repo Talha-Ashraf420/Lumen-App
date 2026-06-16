@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -25,12 +26,12 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
     _future = widget.client.seriesInfo(widget.seriesId);
   }
 
-  void _play(Episode ep) {
-    final url = widget.client.streamUrl('series', ep.id, ext: ep.containerExtension);
-    final epTitle = ep.title.isEmpty ? 'Episode ${ep.episodeNum}' : ep.title;
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => PlayerScreen(url: url, title: '${widget.title} · $epTitle'),
-    ));
+  void _playEpisodes(List<Episode> eps, int index) {
+    final items = eps.map((e) {
+      final t = e.title.isEmpty ? 'Episode ${e.episodeNum}' : e.title;
+      return PlayerItem(widget.client.streamUrl('series', e.id, ext: e.containerExtension), '${widget.title} · $t');
+    }).toList();
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => PlayerScreen(items: items, index: index)));
   }
 
   @override
@@ -62,7 +63,7 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
                 sliver: SliverList.separated(
                   itemCount: eps.length,
                   separatorBuilder: (_, __) => const SizedBox(height: 12),
-                  itemBuilder: (_, i) => _EpisodeTile(ep: eps[i], fallback: info.cover, index: i, onTap: () => _play(eps[i])),
+                  itemBuilder: (_, i) => _EpisodeTile(ep: eps[i], fallback: info.cover, index: i, onTap: () => _playEpisodes(eps, i)),
                 ),
               ),
             ],
@@ -79,7 +80,32 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
         fit: StackFit.expand,
         children: [
           const ColoredBox(color: surfaceHi),
-          if (art.isNotEmpty) CachedNetworkImage(imageUrl: art, fit: BoxFit.cover),
+          // blurred art fill — premium backdrop that handles portrait covers cleanly
+          if (art.isNotEmpty)
+            ClipRect(
+              child: ImageFiltered(
+                imageFilter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                child: Transform.scale(scale: 1.15, child: CachedNetworkImage(imageUrl: art, fit: BoxFit.cover)),
+              ),
+            ),
+          // sharp poster, centered, sitting over the blur
+          if (art.isNotEmpty)
+            Align(
+              alignment: Alignment.topCenter,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 28),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: SizedBox(
+                    height: 190,
+                    child: AspectRatio(
+                      aspectRatio: 2 / 3,
+                      child: CachedNetworkImage(imageUrl: art, fit: BoxFit.cover, errorWidget: (_, _, _) => const SizedBox.shrink()),
+                    ),
+                  ),
+                ),
+              ),
+            ),
           const DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -126,7 +152,7 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
                 const SizedBox(height: 14),
                 if (eps.isNotEmpty)
                   GestureDetector(
-                    onTap: () => _play(eps.first),
+                    onTap: () => _playEpisodes(eps, 0),
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 13),
                       decoration: BoxDecoration(gradient: accentGradient, borderRadius: BorderRadius.circular(14), boxShadow: glow(accent, a: 0.5)),

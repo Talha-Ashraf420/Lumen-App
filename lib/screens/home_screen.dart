@@ -50,8 +50,17 @@ class _HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMi
       () => _push(MovieDetailScreen(client: widget.client, movie: m)));
   HItem _series(Series s) => HItem(s.name, s.cover, s.rating, _year(s.releaseDate.isEmpty ? s.name : s.releaseDate),
       () => _push(SeriesDetailScreen(client: widget.client, seriesId: s.seriesId, title: s.name)));
-  HItem _live(LiveStream s) => HItem(s.name, s.icon, 0, 'Live',
-      () => _push(PlayerScreen(url: widget.client.streamUrl('live', s.streamId, ext: 'ts'), title: s.name, isLive: true)));
+  /// Build a live shelf whose items share one channel playlist (next/prev zap).
+  List<HItem> _liveShelf(List<LiveStream> chans) {
+    final pl = chans
+        .map((s) => PlayerItem(widget.client.streamUrl('live', s.streamId, ext: 'ts'), s.name, isLive: true))
+        .toList();
+    return chans
+        .asMap()
+        .entries
+        .map((e) => HItem(e.value.name, e.value.icon, 0, 'Live', () => _push(PlayerScreen(items: pl, index: e.key))))
+        .toList();
+  }
 
   void _push(Widget w) => Navigator.of(context).push(MaterialPageRoute(builder: (_) => w));
 
@@ -108,7 +117,7 @@ class _HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMi
             if (liveCat != null)
               _Shelf(
                 title: 'Live · ${liveCat.name}',
-                future: c.liveStreams(liveCat.id).then((l) => l.take(16).map(_live).toList()).catchError((_) => <HItem>[]),
+                future: c.liveStreams(liveCat.id).then((l) => _liveShelf(l.take(40).toList())).catchError((_) => <HItem>[]),
                 live: true,
                 onMore: widget.onBrowse,
               ),

@@ -30,7 +30,8 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
         ? _info!.containerExtension
         : widget.movie.containerExtension;
     final url = widget.client.streamUrl('movie', widget.movie.streamId, ext: ext);
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => PlayerScreen(url: url, title: widget.movie.name)));
+    Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => PlayerScreen(items: [PlayerItem(url, widget.movie.name)])));
   }
 
   @override
