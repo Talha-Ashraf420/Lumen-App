@@ -63,6 +63,35 @@ class Aurora extends StatelessWidget {
       ).animate(onPlay: (c) => c.repeat(reverse: true)).moveY(begin: -18, end: 18, duration: 7.seconds, curve: Curves.easeInOut);
 }
 
+/// Branded loading splash — gradient wordmark + subtle loader on the dark canvas.
+class BrandedLoading extends StatelessWidget {
+  final bool background;
+  const BrandedLoading({super.key, this.background = false});
+  @override
+  Widget build(BuildContext context) {
+    final content = Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ShaderMask(
+            shaderCallback: (r) => accentGradient.createShader(r),
+            child: const Text('Lumen',
+                style: TextStyle(fontSize: 40, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: -1)),
+          ).animate(onPlay: (c) => c.repeat(reverse: true)).fadeIn(duration: 600.ms).then().fade(begin: 1, end: 0.6, duration: 900.ms),
+          const SizedBox(height: 22),
+          const SizedBox(
+            width: 26,
+            height: 26,
+            child: CircularProgressIndicator(color: accent, strokeWidth: 2.4),
+          ),
+        ],
+      ),
+    );
+    if (!background) return content;
+    return Stack(children: [const Aurora(), content]);
+  }
+}
+
 /// Clean premium tile: image-only poster (depth + rating) with the title BELOW
 /// in crisp type — far less cluttered than text-on-image.
 class PosterCard extends StatelessWidget {

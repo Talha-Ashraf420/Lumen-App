@@ -62,7 +62,7 @@ class _HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMi
       future: _future,
       builder: (context, snap) {
         if (snap.connectionState != ConnectionState.done) {
-          return const Center(child: CircularProgressIndicator(color: accent, strokeWidth: 2.5));
+          return const BrandedLoading();
         }
         if (snap.hasError || snap.data == null) {
           return Center(

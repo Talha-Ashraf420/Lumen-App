@@ -3,6 +3,7 @@ import 'package:media_kit/media_kit.dart';
 import 'models.dart';
 import 'store.dart';
 import 'theme.dart';
+import 'widgets.dart';
 import 'xtream.dart';
 import 'screens/login_screen.dart';
 import 'screens/shell.dart';
@@ -65,7 +66,7 @@ class _GateState extends State<_Gate> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator(color: accent)));
+      return const Scaffold(body: BrandedLoading(background: true));
     }
     if (_creds == null) return LoginScreen(onLogin: _onLogin);
     return HomeShell(client: XtreamClient(_creds!), onLogout: _onLogout);

@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import '../theme.dart';
-import '../widgets.dart';
 import '../xtream.dart';
 import 'catalog_screen.dart';
 
-/// Browse by section (Live / Movies / Series) with the grid + search + chips.
+/// Browse by section (Live / Movies / Series) using clean minimal text tabs.
 class BrowseScreen extends StatefulWidget {
   final XtreamClient client;
   const BrowseScreen({super.key, required this.client});
@@ -20,44 +19,45 @@ class _BrowseScreenState extends State<BrowseScreen> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        const Padding(
-          padding: EdgeInsets.fromLTRB(20, 6, 20, 12),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: Text('Browse', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800)),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Glass(
-            radius: 18,
-            blur: 16,
-            padding: const EdgeInsets.all(5),
-            child: Row(
-              children: [
-                for (var i = 0; i < _tabs.length; i++)
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () => setState(() => _index = i),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 250),
-                        height: 40,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          gradient: i == _index ? accentGradient : null,
-                          borderRadius: BorderRadius.circular(13),
-                          boxShadow: i == _index ? glow(accent, blur: 14, y: 4, a: 0.5) : null,
-                        ),
-                        child: Text(_tabs[i].label,
-                            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: i == _index ? Colors.white : muted)),
+        SizedBox(
+          height: 52,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.fromLTRB(20, 6, 20, 0),
+            itemCount: _tabs.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 22),
+            itemBuilder: (_, i) {
+              final sel = i == _index;
+              return GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => setState(() => _index = i),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    AnimatedDefaultTextStyle(
+                      duration: const Duration(milliseconds: 200),
+                      style: TextStyle(
+                        fontSize: sel ? 24 : 19,
+                        fontWeight: sel ? FontWeight.w800 : FontWeight.w600,
+                        color: sel ? cream : subtle,
+                        letterSpacing: -0.4,
                       ),
+                      child: Text(_tabs[i].label),
                     ),
-                  ),
-              ],
-            ),
+                    const SizedBox(height: 5),
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 220),
+                      height: 3,
+                      width: sel ? 22 : 0,
+                      decoration: BoxDecoration(gradient: accentGradient, borderRadius: BorderRadius.circular(3)),
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 8),
         Expanded(
           child: IndexedStack(
             index: _index,
