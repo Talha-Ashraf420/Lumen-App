@@ -1,9 +1,11 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../library.dart';
 import '../models.dart';
 import '../theme.dart';
+import '../tmdb.dart';
 import '../xtream.dart';
 import 'player_screen.dart';
 
@@ -17,6 +19,7 @@ class MovieDetailScreen extends StatefulWidget {
 
 class _MovieDetailScreenState extends State<MovieDetailScreen> {
   VodInfo? _info;
+  TmdbInfo? _tmdb;
 
   @override
   void initState() {
@@ -24,6 +27,15 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
     widget.client.vodInfo(widget.movie.streamId).then((v) {
       if (mounted) setState(() => _info = v);
     }).catchError((_) {});
+    Tmdb.movie(widget.movie.name).then((t) {
+      if (mounted && t != null) setState(() => _tmdb = t);
+    });
+  }
+
+  Future<void> _trailer() async {
+    final url = _tmdb?.trailerUrl;
+    if (url == null) return;
+    await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
   }
 
   void _play() {
@@ -55,8 +67,18 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
   Widget build(BuildContext context) {
     final m = widget.movie;
     final info = _info;
-    final backdrop = (info?.backdrop.isNotEmpty == true) ? info!.backdrop : m.icon;
-    final rating = info?.rating != null && info!.rating > 0 ? info.rating : m.rating;
+    final t = _tmdb;
+    // Prefer richer TMDB metadata, fall back to provider data.
+    final backdrop = (t?.backdrop.isNotEmpty == true)
+        ? t!.backdrop
+        : (info?.backdrop.isNotEmpty == true ? info!.backdrop : m.icon);
+    final rating = (t?.rating ?? 0) > 0
+        ? t!.rating
+        : (info?.rating != null && info!.rating > 0 ? info.rating : m.rating);
+    final releaseDate = t?.releaseDate.isNotEmpty == true ? t!.releaseDate : (info?.releaseDate ?? '');
+    final genre = t?.genres.isNotEmpty == true ? t!.genres : (info?.genre ?? '');
+    final plot = t?.overview.isNotEmpty == true ? t!.overview : (info?.plot ?? '');
+    final cast = t?.cast.isNotEmpty == true ? t!.cast : (info?.cast ?? '');
 
     return Scaffold(
       backgroundColor: bg,
@@ -138,12 +160,12 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                           Text(rating.toStringAsFixed(1),
                               style: TextStyle(color: gold, fontWeight: FontWeight.w700)),
                         ]),
-                      if (info?.releaseDate.isNotEmpty == true)
-                        Text(info!.releaseDate, style: TextStyle(color: muted)),
+                      if (releaseDate.isNotEmpty)
+                        Text(releaseDate.length >= 4 ? releaseDate.substring(0, 4) : releaseDate, style: TextStyle(color: muted)),
                       if (info?.duration.isNotEmpty == true)
                         Text(info!.duration, style: TextStyle(color: muted)),
-                      if (info?.genre.isNotEmpty == true)
-                        Text(info!.genre, style: TextStyle(color: subtle)),
+                      if (genre.isNotEmpty)
+                        Text(genre, style: TextStyle(color: subtle)),
                     ],
                   ),
                   const SizedBox(height: 20),
@@ -167,15 +189,34 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                           ),
                         ),
                       ),
+                      if (t?.trailerUrl != null) ...[
+                        const SizedBox(width: 12),
+                        GestureDetector(
+                          onTap: _trailer,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+                            decoration: BoxDecoration(
+                              color: surfaceHi.withValues(alpha: 0.8),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: line),
+                            ),
+                            child: Row(mainAxisSize: MainAxisSize.min, children: [
+                              Icon(Icons.smart_display_rounded, color: accent, size: 22),
+                              const SizedBox(width: 6),
+                              const Text('Trailer', style: TextStyle(fontWeight: FontWeight.w800)),
+                            ]),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
-                  if (info?.plot.isNotEmpty == true) ...[
+                  if (plot.isNotEmpty) ...[
                     const SizedBox(height: 22),
-                    Text(info!.plot, style: TextStyle(color: muted, height: 1.5)),
+                    Text(plot, style: TextStyle(color: muted, height: 1.5)),
                   ],
-                  if (info?.cast.isNotEmpty == true) ...[
+                  if (cast.isNotEmpty) ...[
                     const SizedBox(height: 18),
-                    _meta('Cast', info!.cast),
+                    _meta('Cast', cast),
                   ],
                   if (info?.director.isNotEmpty == true) _meta('Director', info!.director),
                 ],

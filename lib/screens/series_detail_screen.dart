@@ -2,9 +2,11 @@ import 'dart:ui';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../library.dart';
 import '../models.dart';
 import '../theme.dart';
+import '../tmdb.dart';
 import '../xtream.dart';
 import 'player_screen.dart';
 
@@ -20,11 +22,21 @@ class SeriesDetailScreen extends StatefulWidget {
 class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
   late Future<SeriesInfo> _future;
   int? _season;
+  TmdbInfo? _tmdb;
 
   @override
   void initState() {
     super.initState();
     _future = widget.client.seriesInfo(widget.seriesId);
+    Tmdb.tv(widget.title).then((t) {
+      if (mounted && t != null) setState(() => _tmdb = t);
+    });
+  }
+
+  Future<void> _trailer() async {
+    final url = _tmdb?.trailerUrl;
+    if (url == null) return;
+    await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
   }
 
   MediaRef _ref(String cover) => MediaRef(kind: 'series', id: widget.seriesId, name: widget.title, image: cover);
@@ -63,7 +75,9 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
           if (seasons.isEmpty) return _errorBack('No episodes listed for this series.');
           final active = _season ?? seasons.first;
           final eps = info.episodes[active] ?? [];
-          final art = info.backdrop.isNotEmpty ? info.backdrop : info.cover;
+          final art = (_tmdb?.backdrop.isNotEmpty == true)
+              ? _tmdb!.backdrop
+              : (info.backdrop.isNotEmpty ? info.backdrop : info.cover);
 
           return CustomScrollView(
             slivers: [
@@ -175,19 +189,42 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
                     .fadeIn()
                     .slideY(begin: 0.2, end: 0),
                 const SizedBox(height: 14),
-                if (eps.isNotEmpty)
-                  GestureDetector(
-                    onTap: () => _playEpisodes(eps, 0, info),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 13),
-                      decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(14), boxShadow: glow(accent, a: 0.5)),
-                      child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                        Icon(Icons.play_arrow_rounded, size: 24, color: Colors.white),
-                        SizedBox(width: 6),
-                        Text('Play', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Colors.white)),
-                      ]),
-                    ),
-                  ),
+                Row(
+                  children: [
+                    if (eps.isNotEmpty)
+                      GestureDetector(
+                        onTap: () => _playEpisodes(eps, 0, info),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 13),
+                          decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(14), boxShadow: glow(accent, a: 0.5)),
+                          child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                            Icon(Icons.play_arrow_rounded, size: 24, color: Colors.white),
+                            SizedBox(width: 6),
+                            Text('Play', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Colors.white)),
+                          ]),
+                        ),
+                      ),
+                    if (_tmdb?.trailerUrl != null) ...[
+                      const SizedBox(width: 12),
+                      GestureDetector(
+                        onTap: _trailer,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
+                          decoration: BoxDecoration(
+                            color: Colors.black38,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: Colors.white24),
+                          ),
+                          child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                            Icon(Icons.smart_display_rounded, size: 22, color: Colors.white),
+                            SizedBox(width: 6),
+                            Text('Trailer', style: TextStyle(fontWeight: FontWeight.w800, color: Colors.white)),
+                          ]),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ],
             ),
           ),
@@ -203,26 +240,37 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Wrap(
-            spacing: 14,
-            runSpacing: 6,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              if (info.rating > 0)
-                Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.star_rounded, color: gold, size: 17),
-                  const SizedBox(width: 4),
-                  Text(info.rating.toStringAsFixed(1), style: TextStyle(color: gold, fontWeight: FontWeight.w700)),
-                ]),
-              if (info.releaseDate.isNotEmpty) Text(info.releaseDate, style: TextStyle(color: muted)),
-              if (info.genre.isNotEmpty) Text(info.genre, style: TextStyle(color: subtle)),
-              Text('${seasons.length} season${seasons.length == 1 ? '' : 's'}', style: TextStyle(color: subtle)),
-            ],
-          ),
-          if (info.plot.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Text(info.plot, style: TextStyle(color: muted, height: 1.5)),
-          ],
+          Builder(builder: (_) {
+            final rating = (_tmdb?.rating ?? 0) > 0 ? _tmdb!.rating : info.rating;
+            final genre = _tmdb?.genres.isNotEmpty == true ? _tmdb!.genres : info.genre;
+            final year = _tmdb?.releaseDate.isNotEmpty == true
+                ? (_tmdb!.releaseDate.length >= 4 ? _tmdb!.releaseDate.substring(0, 4) : _tmdb!.releaseDate)
+                : info.releaseDate;
+            return Wrap(
+              spacing: 14,
+              runSpacing: 6,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                if (rating > 0)
+                  Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.star_rounded, color: gold, size: 17),
+                    const SizedBox(width: 4),
+                    Text(rating.toStringAsFixed(1), style: TextStyle(color: gold, fontWeight: FontWeight.w700)),
+                  ]),
+                if (year.isNotEmpty) Text(year, style: TextStyle(color: muted)),
+                if (genre.isNotEmpty) Text(genre, style: TextStyle(color: subtle)),
+                Text('${seasons.length} season${seasons.length == 1 ? '' : 's'}', style: TextStyle(color: subtle)),
+              ],
+            );
+          }),
+          Builder(builder: (_) {
+            final plot = _tmdb?.overview.isNotEmpty == true ? _tmdb!.overview : info.plot;
+            if (plot.isEmpty) return const SizedBox.shrink();
+            return Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Text(plot, style: TextStyle(color: muted, height: 1.5)),
+            );
+          }),
           const SizedBox(height: 18),
           SizedBox(
             height: 38,

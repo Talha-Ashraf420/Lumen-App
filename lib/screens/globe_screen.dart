@@ -320,48 +320,58 @@ class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin
 
   Widget _footer() {
     final m = _pool.isNotEmpty ? _pool[_front.clamp(0, _pool.length - 1)] : null;
+    // Bottom padding lifts the controls clear of the floating nav bar.
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 96),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           if (m != null)
-            Text(m.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-          const SizedBox(height: 12),
+            Text(
+              m.name,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontWeight: FontWeight.w800,
+                fontSize: 20,
+                height: 1.15,
+                letterSpacing: -0.3,
+                shadows: [Shadow(color: Colors.black, blurRadius: 12)],
+              ),
+            ),
+          const SizedBox(height: 14),
           Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Expanded(
-                child: GestureDetector(
-                  onTap: _surprise,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 15),
-                    decoration: BoxDecoration(
-                        color: surfaceHi.withValues(alpha: 0.8), borderRadius: BorderRadius.circular(16), border: Border.all(color: line)),
-                    child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                      Icon(Icons.casino_rounded, color: accent, size: 20),
-                      const SizedBox(width: 8),
-                      const Text('Surprise me', style: TextStyle(fontWeight: FontWeight.w800)),
-                    ]),
-                  ),
+              // Compact pill: spin to a random pick.
+              GestureDetector(
+                onTap: _surprise,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+                  decoration: BoxDecoration(
+                      color: surfaceHi.withValues(alpha: 0.85),
+                      borderRadius: BorderRadius.circular(30),
+                      border: Border.all(color: line)),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.casino_rounded, color: accent, size: 19),
+                    const SizedBox(width: 7),
+                    const Text('Surprise', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+                  ]),
                 ),
               ),
               const SizedBox(width: 12),
-              Expanded(
-                child: GestureDetector(
-                  onTap: m == null ? null : () => _open(m),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 15),
-                    decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(16), boxShadow: glow(accent)),
-                    child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                      Icon(Icons.play_arrow_rounded, color: Colors.white, size: 22),
-                      SizedBox(width: 6),
-                      Text('Open', style: TextStyle(fontWeight: FontWeight.w800, color: Colors.white)),
-                    ]),
-                  ),
+              // Compact pill: open the focused pick.
+              GestureDetector(
+                onTap: m == null ? null : () => _open(m),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 11),
+                  decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(30), boxShadow: glow(accent)),
+                  child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.play_arrow_rounded, color: Colors.white, size: 20),
+                    SizedBox(width: 5),
+                    Text('Open', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, color: Colors.white)),
+                  ]),
                 ),
               ),
             ],
