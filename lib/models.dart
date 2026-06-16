@@ -148,12 +148,24 @@ class Episode {
 
 class SeriesInfo {
   final String cover;
+  final String backdrop;
   final String plot;
   final String genre;
+  final double rating;
+  final String releaseDate;
   final Map<int, List<Episode>> episodes; // season -> episodes
-  SeriesInfo({required this.cover, required this.plot, required this.genre, required this.episodes});
+  SeriesInfo({
+    required this.cover,
+    required this.backdrop,
+    required this.plot,
+    required this.genre,
+    required this.rating,
+    required this.releaseDate,
+    required this.episodes,
+  });
   factory SeriesInfo.fromJson(Map<String, dynamic> j) {
     final info = (j['info'] ?? {}) as Map<String, dynamic>;
+    final backdrops = info['backdrop_path'];
     final eps = <int, List<Episode>>{};
     final raw = j['episodes'];
     if (raw is Map) {
@@ -166,8 +178,11 @@ class SeriesInfo {
     }
     return SeriesInfo(
       cover: _toStr(info['cover']),
+      backdrop: backdrops is List && backdrops.isNotEmpty ? _toStr(backdrops.first) : '',
       plot: _toStr(info['plot']),
       genre: _toStr(info['genre']),
+      rating: _toDouble(info['rating']),
+      releaseDate: _toStr(info['releaseDate'] ?? info['release_date'] ?? info['releasedate']),
       episodes: eps,
     );
   }

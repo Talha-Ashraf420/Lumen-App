@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../xtream.dart';
@@ -24,69 +25,44 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
     _future = widget.client.seriesInfo(widget.seriesId);
   }
 
+  void _play(Episode ep) {
+    final url = widget.client.streamUrl('series', ep.id, ext: ep.containerExtension);
+    final epTitle = ep.title.isEmpty ? 'Episode ${ep.episodeNum}' : ep.title;
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => PlayerScreen(url: url, title: '${widget.title} · $epTitle'),
+    ));
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis)),
+      backgroundColor: bg,
       body: FutureBuilder<SeriesInfo>(
         future: _future,
         builder: (context, snap) {
           if (snap.connectionState != ConnectionState.done) {
-            return const Center(child: CircularProgressIndicator(color: accent));
+            return const Center(child: CircularProgressIndicator(color: accent, strokeWidth: 2.5));
           }
           if (snap.hasError || snap.data == null) {
-            return Center(child: Text('${snap.error ?? "Couldn't load series."}', style: const TextStyle(color: Color(0xFFFFB4B4))));
+            return _errorBack('Couldn’t load this series.');
           }
           final info = snap.data!;
           final seasons = info.episodes.keys.toList()..sort();
-          if (seasons.isEmpty) {
-            return const Center(child: Text('No episodes listed.', style: TextStyle(color: subtle)));
-          }
+          if (seasons.isEmpty) return _errorBack('No episodes listed for this series.');
           final active = _season ?? seasons.first;
           final eps = info.episodes[active] ?? [];
-          return Column(
-            children: [
-              if (info.plot.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                  child: Text(info.plot,
-                      maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(color: muted)),
-                ),
-              SizedBox(
-                height: 44,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: seasons.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 8),
-                  itemBuilder: (_, i) {
-                    final s = seasons[i];
-                    final sel = s == active;
-                    return ChoiceChip(
-                      label: Text('Season $s'),
-                      selected: sel,
-                      onSelected: (_) => setState(() => _season = s),
-                      selectedColor: accent,
-                      labelStyle: TextStyle(color: sel ? bg : muted, fontWeight: FontWeight.w600),
-                      backgroundColor: surfaceHi,
-                      shape: const StadiumBorder(side: BorderSide(color: Colors.white12)),
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(height: 8),
-              Expanded(
-                child: ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+          final art = info.backdrop.isNotEmpty ? info.backdrop : info.cover;
+
+          return CustomScrollView(
+            slivers: [
+              SliverToBoxAdapter(child: _hero(info, art, eps)),
+              SliverToBoxAdapter(child: _meta(info, seasons)),
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 40),
+                sliver: SliverList.separated(
                   itemCount: eps.length,
-                  itemBuilder: (_, i) => _EpisodeRow(
-                    ep: eps[i],
-                    onTap: () {
-                      final url = widget.client.streamUrl('series', eps[i].id, ext: eps[i].containerExtension);
-                      final t = '${widget.title} · ${eps[i].title.isEmpty ? "Episode ${eps[i].episodeNum}" : eps[i].title}';
-                      Navigator.of(context).push(MaterialPageRoute(builder: (_) => PlayerScreen(url: url, title: t)));
-                    },
-                  ),
+                  separatorBuilder: (_, __) => const SizedBox(height: 12),
+                  itemBuilder: (_, i) => _EpisodeTile(ep: eps[i], fallback: info.cover, index: i, onTap: () => _play(eps[i])),
                 ),
               ),
             ],
@@ -95,35 +71,222 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
       ),
     );
   }
-}
 
-class _EpisodeRow extends StatelessWidget {
-  final Episode ep;
-  final VoidCallback onTap;
-  const _EpisodeRow({required this.ep, required this.onTap});
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      color: surface,
-      margin: const EdgeInsets.only(bottom: 10),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: ListTile(
-        onTap: onTap,
-        leading: ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: SizedBox(
-            width: 64,
-            height: 40,
-            child: ep.image.isNotEmpty
-                ? CachedNetworkImage(imageUrl: ep.image, fit: BoxFit.cover, errorWidget: (_, __, ___) => const ColoredBox(color: surfaceHi))
-                : const ColoredBox(color: surfaceHi, child: Icon(Icons.movie_rounded, size: 16, color: subtle)),
+  Widget _hero(SeriesInfo info, String art, List<Episode> eps) {
+    return SizedBox(
+      height: 320,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          const ColoredBox(color: surfaceHi),
+          if (art.isNotEmpty) CachedNetworkImage(imageUrl: art, fit: BoxFit.cover),
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.bottomCenter,
+                end: Alignment.topCenter,
+                colors: [bg, Color(0x00000000)],
+                stops: [0.0, 0.85],
+              ),
+            ),
           ),
-        ),
-        title: Text(ep.title.isEmpty ? 'Episode ${ep.episodeNum}' : ep.title,
-            maxLines: 1, overflow: TextOverflow.ellipsis),
-        subtitle: Text('Episode ${ep.episodeNum}', style: const TextStyle(color: subtle)),
-        trailing: const Icon(Icons.play_circle_fill_rounded, color: accent),
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.center, colors: [Color(0x66000000), Colors.transparent]),
+            ),
+          ),
+          SafeArea(
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: Padding(
+                padding: const EdgeInsets.all(8),
+                child: IconButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+                  style: IconButton.styleFrom(backgroundColor: Colors.black38),
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            left: 20,
+            right: 20,
+            bottom: 18,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(widget.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800, height: 1.05))
+                    .animate()
+                    .fadeIn()
+                    .slideY(begin: 0.2, end: 0),
+                const SizedBox(height: 14),
+                if (eps.isNotEmpty)
+                  GestureDetector(
+                    onTap: () => _play(eps.first),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 13),
+                      decoration: BoxDecoration(gradient: accentGradient, borderRadius: BorderRadius.circular(14), boxShadow: glow(accent, a: 0.5)),
+                      child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(Icons.play_arrow_rounded, size: 24),
+                        SizedBox(width: 6),
+                        Text('Play', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                      ]),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
+
+  Widget _meta(SeriesInfo info, List<int> seasons) {
+    final active = _season ?? seasons.first;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 14,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              if (info.rating > 0)
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  const Icon(Icons.star_rounded, color: gold, size: 17),
+                  const SizedBox(width: 4),
+                  Text(info.rating.toStringAsFixed(1), style: const TextStyle(color: gold, fontWeight: FontWeight.w700)),
+                ]),
+              if (info.releaseDate.isNotEmpty) Text(info.releaseDate, style: const TextStyle(color: muted)),
+              if (info.genre.isNotEmpty) Text(info.genre, style: const TextStyle(color: subtle)),
+              Text('${seasons.length} season${seasons.length == 1 ? '' : 's'}', style: const TextStyle(color: subtle)),
+            ],
+          ),
+          if (info.plot.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(info.plot, style: const TextStyle(color: muted, height: 1.5)),
+          ],
+          const SizedBox(height: 18),
+          SizedBox(
+            height: 38,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: seasons.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 8),
+              itemBuilder: (_, i) {
+                final s = seasons[i];
+                final sel = s == active;
+                return GestureDetector(
+                  onTap: () => setState(() => _season = s),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    alignment: Alignment.center,
+                    padding: const EdgeInsets.symmetric(horizontal: 18),
+                    decoration: BoxDecoration(
+                      gradient: sel ? accentGradient : null,
+                      color: sel ? null : surfaceHi.withValues(alpha: 0.6),
+                      borderRadius: BorderRadius.circular(13),
+                      border: Border.all(color: sel ? Colors.transparent : line),
+                    ),
+                    child: Text('Season $s', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: sel ? Colors.white : muted)),
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 14),
+        ],
+      ),
+    );
+  }
+
+  Widget _errorBack(String msg) => Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(msg, style: const TextStyle(color: muted)),
+            const SizedBox(height: 12),
+            TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Go back', style: TextStyle(color: accent))),
+          ],
+        ),
+      );
+}
+
+class _EpisodeTile extends StatelessWidget {
+  final Episode ep;
+  final String fallback; // series cover used when episode image is missing
+  final int index;
+  final VoidCallback onTap;
+  const _EpisodeTile({required this.ep, required this.fallback, required this.index, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final img = ep.image.isNotEmpty ? ep.image : fallback;
+    final title = ep.title.isEmpty ? 'Episode ${ep.episodeNum}' : ep.title;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(color: surface, borderRadius: BorderRadius.circular(16), border: Border.all(color: line)),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(11),
+              child: SizedBox(
+                width: 118,
+                height: 70,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    _ThumbFallback(number: ep.episodeNum),
+                    if (img.isNotEmpty)
+                      CachedNetworkImage(imageUrl: img, fit: BoxFit.cover, errorWidget: (_, _, _) => const SizedBox.shrink()),
+                    const DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(begin: Alignment.bottomCenter, end: Alignment.center, colors: [Color(0x99000000), Colors.transparent]),
+                      ),
+                    ),
+                    const Center(child: Icon(Icons.play_circle_fill_rounded, color: Colors.white, size: 30)),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, height: 1.2)),
+                  const SizedBox(height: 5),
+                  Text('Episode ${ep.episodeNum}', style: const TextStyle(color: subtle, fontSize: 12)),
+                ],
+              ),
+            ),
+            Container(
+              margin: const EdgeInsets.only(left: 6),
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(gradient: accentGradient, shape: BoxShape.circle, boxShadow: glow(accent, blur: 12, y: 3, a: 0.4)),
+              child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 20),
+            ),
+          ],
+        ),
+      ),
+    ).animate().fadeIn(duration: 280.ms, delay: (index.clamp(0, 12) * 25).ms).slideY(begin: 0.08, end: 0);
+  }
+}
+
+class _ThumbFallback extends StatelessWidget {
+  final int number;
+  const _ThumbFallback({required this.number});
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+        decoration: const BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [surfaceHi, surface])),
+        child: Center(child: Text('E$number', style: const TextStyle(color: subtle, fontWeight: FontWeight.w800, fontSize: 16))),
+      );
 }
