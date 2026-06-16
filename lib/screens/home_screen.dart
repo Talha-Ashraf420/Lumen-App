@@ -121,24 +121,14 @@ class _HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMi
   Widget _searchBar() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-      child: GestureDetector(
+      child: SearchField(
+        hint: 'Movies, series, channels…',
+        readOnly: true,
         onTap: widget.onBrowse,
-        child: Glass(
-          radius: 18,
-          blur: 14,
-          padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
-          child: Row(
-            children: [
-              const Icon(Icons.search_rounded, color: muted, size: 22),
-              const SizedBox(width: 10),
-              const Expanded(child: Text('Movies, series, channels…', style: TextStyle(color: subtle, fontSize: 15))),
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(color: surfaceHi, borderRadius: BorderRadius.circular(12)),
-                child: const Icon(Icons.tune_rounded, color: muted, size: 18),
-              ),
-            ],
-          ),
+        trailing: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(color: surface, borderRadius: BorderRadius.circular(11)),
+          child: const Icon(Icons.tune_rounded, color: muted, size: 18),
         ),
       ),
     );
@@ -313,118 +303,41 @@ class _Shelf extends StatelessWidget {
       builder: (context, snap) {
         final items = snap.data ?? [];
         if (snap.connectionState == ConnectionState.done && items.isEmpty) return const SizedBox.shrink();
+        final h = posterShelfHeight(live: live);
         return Padding(
-          padding: const EdgeInsets.only(top: 22),
+          padding: const EdgeInsets.only(top: 24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(18, 0, 16, 12),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-                    ),
-                    if (onMore != null)
-                      GestureDetector(
-                        onTap: onMore,
-                        child: const Text('See all', style: TextStyle(color: muted, fontWeight: FontWeight.w600, fontSize: 13)),
-                      ),
-                  ],
-                ),
-              ),
+              SectionHeader(title: title, onSeeAll: onMore),
               SizedBox(
-                height: live ? 150 : 232,
+                height: h,
                 child: items.isEmpty
                     ? const Center(child: CircularProgressIndicator(color: accent, strokeWidth: 2))
                     : ListView.separated(
                         scrollDirection: Axis.horizontal,
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         itemCount: items.length,
-                        separatorBuilder: (_, _) => const SizedBox(width: 12),
-                        itemBuilder: (_, i) => _ShelfCard(item: items[i], live: live),
+                        separatorBuilder: (_, _) => const SizedBox(width: 14),
+                        itemBuilder: (_, i) => SizedBox(
+                          width: kPosterW,
+                          child: PosterCard(
+                            name: items[i].name,
+                            image: items[i].image,
+                            rating: items[i].rating,
+                            subtitle: live ? null : (items[i].subtitle.isEmpty ? null : items[i].subtitle),
+                            badge: live ? 'LIVE' : null,
+                            live: live,
+                            index: i,
+                            onTap: items[i].onTap,
+                          ),
+                        ),
                       ),
               ),
             ],
           ),
         );
       },
-    );
-  }
-}
-
-class _ShelfCard extends StatelessWidget {
-  final HItem item;
-  final bool live;
-  const _ShelfCard({required this.item, required this.live});
-  @override
-  Widget build(BuildContext context) {
-    final w = live ? 120.0 : 124.0;
-    return GestureDetector(
-      onTap: item.onTap,
-      child: SizedBox(
-        width: w,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            AspectRatio(
-              aspectRatio: live ? 1 : 2 / 3,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: glow(Colors.black, blur: 14, y: 7, a: 0.5),
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
-                  child: Stack(fit: StackFit.expand, children: [
-                    const DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [surfaceHi, surface]),
-                      ),
-                      child: Center(child: Icon(Icons.movie_creation_outlined, color: subtle, size: 26)),
-                    ),
-                    if (item.image.isNotEmpty)
-                      Padding(
-                        padding: live ? const EdgeInsets.all(12) : EdgeInsets.zero,
-                        child: CachedNetworkImage(
-                            imageUrl: item.image,
-                            fit: live ? BoxFit.contain : BoxFit.cover,
-                            errorWidget: (_, _, _) => const SizedBox.shrink()),
-                      ),
-                    if (item.rating > 0)
-                      Positioned(
-                        left: 6,
-                        top: 6,
-                        child: Glass(
-                          radius: 8,
-                          blur: 6,
-                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                          child: Row(mainAxisSize: MainAxisSize.min, children: [
-                            const Icon(Icons.star_rounded, color: gold, size: 11),
-                            const SizedBox(width: 2),
-                            Text(item.rating.toStringAsFixed(1),
-                                style: const TextStyle(color: gold, fontSize: 10, fontWeight: FontWeight.w800)),
-                          ]),
-                        ),
-                      ),
-                  ]),
-                ),
-              ),
-            ),
-            const SizedBox(height: 7),
-            Text(item.name,
-                maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
-            if (item.subtitle.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 1),
-                child: Text(item.subtitle, style: const TextStyle(fontSize: 11, color: subtle)),
-              ),
-          ],
-        ),
-      ),
     );
   }
 }

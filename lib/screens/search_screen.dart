@@ -141,40 +141,20 @@ class SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClien
   // ---- pieces ----
   Widget _searchField() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-      child: Glass(
-        radius: 20,
-        blur: 16,
-        padding: const EdgeInsets.fromLTRB(16, 4, 8, 4),
-        child: Row(
-          children: [
-            const Icon(Icons.search_rounded, color: accent, size: 22),
-            const SizedBox(width: 10),
-            Expanded(
-              child: TextField(
-                controller: _ctrl,
-                autofocus: false,
-                onChanged: (v) => setState(() => _q = v),
-                style: const TextStyle(fontSize: 16),
-                decoration: const InputDecoration(
-                  isCollapsed: true,
-                  contentPadding: EdgeInsets.symmetric(vertical: 16),
-                  border: InputBorder.none,
-                  hintText: 'Search movies, series, channels…',
-                  hintStyle: TextStyle(color: subtle, fontSize: 15),
-                ),
-              ),
-            ),
-            if (_q.isNotEmpty)
-              GestureDetector(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: SearchField(
+        hint: 'Search movies, series, channels…',
+        controller: _ctrl,
+        onChanged: (v) => setState(() => _q = v),
+        trailing: _q.isNotEmpty
+            ? GestureDetector(
                 onTap: () => setState(() {
                   _q = '';
                   _ctrl.clear();
                 }),
                 child: const Padding(padding: EdgeInsets.all(8), child: Icon(Icons.close_rounded, color: subtle, size: 20)),
-              ),
-          ],
-        ),
+              )
+            : null,
       ),
     );
   }
@@ -289,9 +269,9 @@ class SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClien
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
-        childAspectRatio: live ? 0.80 : 0.52,
+        childAspectRatio: live ? 0.78 : 0.50,
         crossAxisSpacing: 13,
-        mainAxisSpacing: 18,
+        mainAxisSpacing: 20,
       ),
       itemCount: items.length,
       itemBuilder: (_, i) => PosterCard(
@@ -316,14 +296,14 @@ class SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClien
           child: Text('$title  ·  ${items.length}', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
         ),
         SizedBox(
-          height: items.first.live ? 148 : 224,
+          height: posterShelfHeight(live: items.first.live),
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),
             itemCount: items.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 12),
+            separatorBuilder: (_, __) => const SizedBox(width: 14),
             itemBuilder: (_, i) => SizedBox(
-              width: items[i].live ? 118 : 122,
+              width: kPosterW,
               child: PosterCard(
                 name: items[i].name,
                 image: items[i].image,

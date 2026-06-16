@@ -4,21 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'theme.dart';
 
-/// Frosted "liquid glass" surface.
+/// Frosted "liquid glass" surface (used for nav / menus / sheets).
 class Glass extends StatelessWidget {
   final Widget child;
   final double blur;
   final double radius;
   final EdgeInsets? padding;
   final Color tint;
-  const Glass({
-    super.key,
-    required this.child,
-    this.blur = 18,
-    this.radius = 22,
-    this.padding,
-    this.tint = surfaceHi,
-  });
+  const Glass({super.key, required this.child, this.blur = 18, this.radius = 22, this.padding, this.tint = surfaceHi});
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
@@ -39,6 +32,66 @@ class Glass extends StatelessWidget {
   }
 }
 
+/// The single, consistent search field used across the whole app.
+class SearchField extends StatelessWidget {
+  final String hint;
+  final TextEditingController? controller;
+  final ValueChanged<String>? onChanged;
+  final VoidCallback? onTap; // read-only mode (e.g. Home → opens Search)
+  final bool readOnly;
+  final Widget? trailing;
+  const SearchField({
+    super.key,
+    required this.hint,
+    this.controller,
+    this.onChanged,
+    this.onTap,
+    this.readOnly = false,
+    this.trailing,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final field = Container(
+      height: 54,
+      padding: const EdgeInsets.fromLTRB(16, 0, 8, 0),
+      decoration: BoxDecoration(
+        color: surfaceHi.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: line),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.search_rounded, color: accent, size: 22),
+          const SizedBox(width: 10),
+          Expanded(
+            child: readOnly
+                ? Align(alignment: Alignment.centerLeft, child: Text(hint, style: const TextStyle(color: subtle, fontSize: 15)))
+                : TextField(
+                    controller: controller,
+                    onChanged: onChanged,
+                    style: const TextStyle(fontSize: 15.5),
+                    cursorColor: accent,
+                    decoration: const InputDecoration(
+                      isCollapsed: true,
+                      filled: false,
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      hintText: 'Search movies, series, channels…',
+                      hintStyle: TextStyle(color: subtle, fontSize: 15),
+                    ),
+                  ),
+          ),
+          if (trailing != null) trailing!,
+        ],
+      ),
+    );
+    if (onTap != null) return GestureDetector(onTap: onTap, child: field);
+    return field;
+  }
+}
+
 /// Ambient drifting aurora background.
 class Aurora extends StatelessWidget {
   const Aurora({super.key});
@@ -48,9 +101,9 @@ class Aurora extends StatelessWidget {
       child: Stack(
         children: [
           const Positioned.fill(child: ColoredBox(color: bg)),
-          Positioned(top: -160, left: -120, child: _blob(accent.withValues(alpha: 0.28), 380)),
-          Positioned(top: 80, right: -140, child: _blob(accent2.withValues(alpha: 0.20), 340)),
-          Positioned(bottom: -140, left: 20, child: _blob(const Color(0xFF3B2D6B).withValues(alpha: 0.45), 320)),
+          Positioned(top: -160, left: -120, child: _blob(accent.withValues(alpha: 0.26), 380)),
+          Positioned(top: 80, right: -140, child: _blob(accent2.withValues(alpha: 0.18), 340)),
+          Positioned(bottom: -160, left: 20, child: _blob(const Color(0xFF3B2D6B).withValues(alpha: 0.4), 320)),
         ],
       ),
     );
@@ -63,7 +116,7 @@ class Aurora extends StatelessWidget {
       ).animate(onPlay: (c) => c.repeat(reverse: true)).moveY(begin: -18, end: 18, duration: 7.seconds, curve: Curves.easeInOut);
 }
 
-/// Branded loading splash — gradient wordmark + subtle loader on the dark canvas.
+/// Branded loading splash.
 class BrandedLoading extends StatelessWidget {
   final bool background;
   const BrandedLoading({super.key, this.background = false});
@@ -79,11 +132,7 @@ class BrandedLoading extends StatelessWidget {
                 style: TextStyle(fontSize: 40, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: -1)),
           ).animate(onPlay: (c) => c.repeat(reverse: true)).fadeIn(duration: 600.ms).then().fade(begin: 1, end: 0.6, duration: 900.ms),
           const SizedBox(height: 22),
-          const SizedBox(
-            width: 26,
-            height: 26,
-            child: CircularProgressIndicator(color: accent, strokeWidth: 2.4),
-          ),
+          const SizedBox(width: 26, height: 26, child: CircularProgressIndicator(color: accent, strokeWidth: 2.4)),
         ],
       ),
     );
@@ -92,8 +141,49 @@ class BrandedLoading extends StatelessWidget {
   }
 }
 
-/// Clean premium tile: image-only poster (depth + rating) with the title BELOW
-/// in crisp type — far less cluttered than text-on-image.
+/// Section header with a tidy "See all" pill.
+class SectionHeader extends StatelessWidget {
+  final String title;
+  final VoidCallback? onSeeAll;
+  const SectionHeader({super.key, required this.title, this.onSeeAll});
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 14, 12),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: -0.3)),
+          ),
+          if (onSeeAll != null)
+            GestureDetector(
+              onTap: onSeeAll,
+              behavior: HitTestBehavior.opaque,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(color: accent.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(20)),
+                child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                  Text('See all', style: TextStyle(color: accent, fontWeight: FontWeight.w700, fontSize: 12.5)),
+                  Icon(Icons.chevron_right_rounded, color: accent, size: 17),
+                ]),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Standard width for a poster card in a shelf (keeps everything consistent).
+const double kPosterW = 128;
+double posterShelfHeight({bool live = false}) =>
+    live ? kPosterW + 44 : kPosterW * 1.5 + 48; // image + title block (with slack)
+
+/// The single poster/channel card used everywhere: fixed full-width poster
+/// (no Expanded/AspectRatio mismatch) + crisp title below. Never clips.
 class PosterCard extends StatelessWidget {
   final String name;
   final String image;
@@ -117,15 +207,12 @@ class PosterCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final art = AspectRatio(
+    final poster = AspectRatio(
       aspectRatio: live ? 1 : 2 / 3,
       child: DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(18),
-          boxShadow: glow(Colors.black, blur: 16, y: 8, a: 0.5),
-        ),
+        decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), boxShadow: glow(Colors.black, blur: 14, y: 7, a: 0.5)),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(16),
           child: Stack(
             fit: StackFit.expand,
             children: [
@@ -136,20 +223,14 @@ class PosterCard extends StatelessWidget {
                   child: CachedNetworkImage(
                     imageUrl: image,
                     fit: live ? BoxFit.contain : BoxFit.cover,
-                    fadeInDuration: const Duration(milliseconds: 250),
+                    fadeInDuration: const Duration(milliseconds: 220),
                     errorWidget: (_, _, _) => const SizedBox.shrink(),
                   ),
                 ),
-              // subtle top sheen + inner border for a premium edge
               DecoratedBox(
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: BorderRadius.circular(16),
                   border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
-                  gradient: const LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.center,
-                    colors: [Color(0x22FFFFFF), Colors.transparent],
-                  ),
                 ),
               ),
               if (rating > 0)
@@ -163,8 +244,7 @@ class PosterCard extends StatelessWidget {
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
                       const Icon(Icons.star_rounded, color: gold, size: 12),
                       const SizedBox(width: 3),
-                      Text(rating.toStringAsFixed(1),
-                          style: const TextStyle(color: gold, fontSize: 10.5, fontWeight: FontWeight.w800)),
+                      Text(rating.toStringAsFixed(1), style: const TextStyle(color: gold, fontSize: 10.5, fontWeight: FontWeight.w800)),
                     ]),
                   ),
                 ),
@@ -174,10 +254,7 @@ class PosterCard extends StatelessWidget {
                   top: 7,
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFF3B5C),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
+                    decoration: BoxDecoration(color: const Color(0xFFFF3B5C), borderRadius: BorderRadius.circular(8)),
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
                       Container(width: 5, height: 5, decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
                       const SizedBox(width: 4),
@@ -192,25 +269,24 @@ class PosterCard extends StatelessWidget {
     );
 
     final tile = Column(
+      mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(child: art),
+        poster,
         const SizedBox(height: 8),
-        Text(name,
-            maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+        Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
         if (subtitle != null && subtitle!.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 2),
-            child: Text(subtitle!,
-                maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: subtle)),
+            child: Text(subtitle!, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: subtle)),
           ),
       ],
     );
 
     return GestureDetector(onTap: onTap, child: tile)
         .animate()
-        .fadeIn(duration: 300.ms, delay: (index.clamp(0, 12) * 30).ms)
-        .slideY(begin: 0.10, end: 0, curve: Curves.easeOutCubic);
+        .fadeIn(duration: 300.ms, delay: (index.clamp(0, 12) * 28).ms)
+        .slideY(begin: 0.08, end: 0, curve: Curves.easeOutCubic);
   }
 }
 
