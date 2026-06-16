@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'models.dart';
 import 'store.dart';
+import 'library.dart';
 import 'theme.dart';
 import 'widgets.dart';
 import 'xtream.dart';
@@ -54,6 +55,7 @@ class _GateState extends State<_Gate> {
   @override
   void initState() {
     super.initState();
+    Library.instance.load();
     Store.active().then((c) => setState(() {
           _creds = c;
           _loading = false;

@@ -87,6 +87,13 @@ class XtreamClient {
   Future<SeriesInfo> seriesInfo(int id) async => SeriesInfo.fromJson(
       (await _get({'action': 'get_series_info', 'series_id': '$id'})).cast<String, dynamic>());
 
+  /// Now/next EPG for a live channel (base64 titles decoded in the model).
+  Future<List<EpgEntry>> shortEpg(int streamId, {int limit = 4}) async {
+    final data = await _get({'action': 'get_short_epg', 'stream_id': '$streamId', 'limit': '$limit'});
+    final listings = (data is Map) ? data['epg_listings'] : null;
+    return _list(listings, EpgEntry.fromJson);
+  }
+
   /// Direct provider media URL — fed straight to the native (mpv) player.
   String streamUrl(String kind, Object id, {String ext = 'ts'}) {
     final e = ext.replaceFirst(RegExp(r'^\.'), '');

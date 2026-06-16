@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import '../library.dart';
+import '../models.dart';
 import '../theme.dart';
 
 /// A playable entry (episode / channel / movie).
@@ -10,7 +12,13 @@ class PlayerItem {
   final String url;
   final String title;
   final bool isLive;
-  const PlayerItem(this.url, this.title, {this.isLive = false});
+  final String? progressKey; // continue-watching key, e.g. 'movie:123' / 'ep:456'
+  final String poster; // thumbnail for continue-watching / recents
+  final String ext;
+  final MediaRef? favRef; // what the heart toggles (movie/series/channel)
+  final Future<List<EpgEntry>> Function()? epg; // now/next for live channels (lazy)
+  const PlayerItem(this.url, this.title,
+      {this.isLive = false, this.progressKey, this.poster = '', this.ext = '', this.favRef, this.epg});
 }
 
 /// Native playback (libmpv) with a full custom control set + playlist
@@ -32,7 +40,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool _controls = true;
   bool _fullscreen = false;
   bool _muted = false;
+  bool _resumed = false;
+  int _lastSave = 0;
   Timer? _hideTimer;
+  StreamSubscription<Duration>? _posSub;
+  List<EpgEntry> _epg = const [];
 
   PlayerItem get _item => widget.items[_index];
   bool get _isLive => _item.isLive;
@@ -46,6 +58,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _completedSub = _player.stream.completed.listen((done) {
       if (done && !_isLive && _hasNext) _go(_index + 1);
     });
+    _posSub = _player.stream.position.listen(_onPosition);
     _scheduleHide();
   }
 
@@ -53,6 +66,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void dispose() {
     _hideTimer?.cancel();
     _completedSub?.cancel();
+    _posSub?.cancel();
+    _persistProgress();
     _player.dispose();
     SystemChrome.setPreferredOrientations(DeviceOrientation.values);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -60,7 +75,70 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _openCurrent() {
+    _resumed = false;
+    _epg = const [];
     _player.open(Media(_item.url, httpHeaders: const {'User-Agent': 'VLC/3.0.20 LibVLC/3.0.20'}));
+    if (_item.favRef != null) Library.instance.addRecent(_item.favRef!);
+    _loadEpg();
+  }
+
+  void _loadEpg() {
+    final fetch = _item.epg;
+    if (fetch == null) return;
+    fetch().then((list) {
+      if (mounted) setState(() => _epg = list);
+    }).catchError((_) {});
+  }
+
+  EpgEntry? get _epgNow {
+    for (final e in _epg) {
+      if (e.isNow) return e;
+    }
+    return _epg.isNotEmpty ? _epg.first : null;
+  }
+
+  EpgEntry? get _epgNext {
+    final now = _epgNow;
+    if (now == null) return null;
+    final i = _epg.indexOf(now);
+    return (i >= 0 && i + 1 < _epg.length) ? _epg[i + 1] : null;
+  }
+
+  void _onPosition(Duration pos) {
+    if (_isLive || _item.progressKey == null) return;
+    final dur = _player.state.duration;
+    if (dur.inSeconds <= 0) return;
+    // resume once
+    if (!_resumed) {
+      _resumed = true;
+      final saved = Library.instance.progress[_item.progressKey];
+      if (saved != null && saved.position > 10 && saved.position < dur.inSeconds * 0.95) {
+        _player.seek(Duration(seconds: saved.position));
+      }
+      return;
+    }
+    // throttled progress save
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _lastSave > 5000) {
+      _lastSave = now;
+      _persistProgress();
+    }
+  }
+
+  void _persistProgress() {
+    if (_isLive || _item.progressKey == null) return;
+    final dur = _player.state.duration, pos = _player.state.position;
+    if (dur.inSeconds <= 0) return;
+    Library.instance.saveProgress(Progress(
+      key: _item.progressKey!,
+      title: _item.title,
+      poster: _item.poster,
+      url: _item.url,
+      ext: _item.ext,
+      position: pos.inSeconds,
+      duration: dur.inSeconds,
+      updatedAt: DateTime.now().millisecondsSinceEpoch,
+    ));
   }
 
   void _go(int i) {
@@ -211,11 +289,60 @@ class _PlayerScreenState extends State<PlayerScreen> {
               ]),
             ),
           Expanded(
-            child: Text(_item.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontWeight: FontWeight.w700, shadows: [Shadow(color: Colors.black, blurRadius: 8)])),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(_item.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w700, shadows: [Shadow(color: Colors.black, blurRadius: 8)])),
+                if (_isLive && _epgNow != null) ...[
+                  const SizedBox(height: 3),
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text('Now · ${_epgNow!.title}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 11.5, color: Colors.white70, fontWeight: FontWeight.w600)),
+                      ),
+                      if (_epgNext != null) ...[
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text('Next · ${_epgNext!.title}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 11.5, color: Colors.white38)),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(2),
+                    child: LinearProgressIndicator(
+                      value: _epgNow!.progress.toDouble(),
+                      minHeight: 2.5,
+                      backgroundColor: Colors.white24,
+                      valueColor: const AlwaysStoppedAnimation(accent),
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
+          if (_item.favRef != null)
+            AnimatedBuilder(
+              animation: Library.instance,
+              builder: (_, __) {
+                final fav = Library.instance.isFav(_item.favRef!.key);
+                return IconButton(
+                  onPressed: () => Library.instance.toggleFav(_item.favRef!),
+                  icon: Icon(fav ? Icons.favorite_rounded : Icons.favorite_border_rounded, color: fav ? accent2 : Colors.white),
+                );
+              },
+            ),
         ],
       ),
     );

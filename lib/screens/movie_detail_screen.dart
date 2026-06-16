@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import '../library.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../xtream.dart';
@@ -31,8 +32,19 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
         : widget.movie.containerExtension;
     final url = widget.client.streamUrl('movie', widget.movie.streamId, ext: ext);
     Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => PlayerScreen(items: [PlayerItem(url, widget.movie.name)])));
+        builder: (_) => PlayerScreen(items: [
+              PlayerItem(
+                url,
+                widget.movie.name,
+                progressKey: 'movie:${widget.movie.streamId}',
+                poster: widget.movie.icon,
+                ext: ext,
+                favRef: _ref(),
+              )
+            ])));
   }
+
+  MediaRef _ref() => MediaRef(kind: 'movie', id: widget.movie.streamId, name: widget.movie.name, image: widget.movie.icon);
 
   @override
   Widget build(BuildContext context) {
@@ -81,10 +93,26 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.arrow_back_rounded),
-                    style: IconButton.styleFrom(backgroundColor: Colors.black38),
+                  Row(
+                    children: [
+                      IconButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: const Icon(Icons.arrow_back_rounded),
+                        style: IconButton.styleFrom(backgroundColor: Colors.black38),
+                      ),
+                      const Spacer(),
+                      AnimatedBuilder(
+                        animation: Library.instance,
+                        builder: (_, __) {
+                          final fav = Library.instance.isFav(_ref().key);
+                          return IconButton(
+                            onPressed: () => Library.instance.toggleFav(_ref()),
+                            icon: Icon(fav ? Icons.favorite_rounded : Icons.favorite_border_rounded, color: fav ? accent2 : Colors.white),
+                            style: IconButton.styleFrom(backgroundColor: Colors.black38),
+                          );
+                        },
+                      ),
+                    ],
                   ),
                   SizedBox(height: MediaQuery.of(context).size.height * 0.34),
                   Text(m.name,

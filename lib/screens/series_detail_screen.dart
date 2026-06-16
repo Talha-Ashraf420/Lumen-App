@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import '../library.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../xtream.dart';
@@ -26,10 +27,20 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
     _future = widget.client.seriesInfo(widget.seriesId);
   }
 
-  void _playEpisodes(List<Episode> eps, int index) {
+  MediaRef _ref(String cover) => MediaRef(kind: 'series', id: widget.seriesId, name: widget.title, image: cover);
+
+  void _playEpisodes(List<Episode> eps, int index, SeriesInfo info) {
+    final ref = _ref(info.cover);
     final items = eps.map((e) {
       final t = e.title.isEmpty ? 'Episode ${e.episodeNum}' : e.title;
-      return PlayerItem(widget.client.streamUrl('series', e.id, ext: e.containerExtension), '${widget.title} · $t');
+      return PlayerItem(
+        widget.client.streamUrl('series', e.id, ext: e.containerExtension),
+        '${widget.title} · $t',
+        progressKey: 'ep:${e.id}',
+        poster: e.image.isNotEmpty ? e.image : info.cover,
+        ext: e.containerExtension,
+        favRef: ref,
+      );
     }).toList();
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => PlayerScreen(items: items, index: index)));
   }
@@ -63,7 +74,7 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
                 sliver: SliverList.separated(
                   itemCount: eps.length,
                   separatorBuilder: (_, __) => const SizedBox(height: 12),
-                  itemBuilder: (_, i) => _EpisodeTile(ep: eps[i], fallback: info.cover, index: i, onTap: () => _playEpisodes(eps, i)),
+                  itemBuilder: (_, i) => _EpisodeTile(ep: eps[i], fallback: info.cover, index: i, onTap: () => _playEpisodes(eps, i, info)),
                 ),
               ),
             ],
@@ -122,15 +133,29 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
             ),
           ),
           SafeArea(
-            child: Align(
-              alignment: Alignment.topLeft,
-              child: Padding(
-                padding: const EdgeInsets.all(8),
-                child: IconButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
-                  style: IconButton.styleFrom(backgroundColor: Colors.black38),
-                ),
+            child: Padding(
+              padding: const EdgeInsets.all(8),
+              child: Row(
+                children: [
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+                    style: IconButton.styleFrom(backgroundColor: Colors.black38),
+                  ),
+                  const Spacer(),
+                  AnimatedBuilder(
+                    animation: Library.instance,
+                    builder: (_, __) {
+                      final ref = _ref(info.cover);
+                      final fav = Library.instance.isFav(ref.key);
+                      return IconButton(
+                        onPressed: () => Library.instance.toggleFav(ref),
+                        icon: Icon(fav ? Icons.favorite_rounded : Icons.favorite_border_rounded, color: fav ? accent2 : Colors.white),
+                        style: IconButton.styleFrom(backgroundColor: Colors.black38),
+                      );
+                    },
+                  ),
+                ],
               ),
             ),
           ),
@@ -152,7 +177,7 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
                 const SizedBox(height: 14),
                 if (eps.isNotEmpty)
                   GestureDetector(
-                    onTap: () => _playEpisodes(eps, 0),
+                    onTap: () => _playEpisodes(eps, 0, info),
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 13),
                       decoration: BoxDecoration(gradient: accentGradient, borderRadius: BorderRadius.circular(14), boxShadow: glow(accent, a: 0.5)),

@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import '../library.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -53,7 +54,20 @@ class _HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMi
   /// Build a live shelf whose items share one channel playlist (next/prev zap).
   List<HItem> _liveShelf(List<LiveStream> chans) {
     final pl = chans
-        .map((s) => PlayerItem(widget.client.streamUrl('live', s.streamId, ext: 'ts'), s.name, isLive: true))
+        .map((s) => PlayerItem(
+              widget.client.streamUrl('live', s.streamId, ext: 'ts'),
+              s.name,
+              isLive: true,
+              poster: s.icon,
+              favRef: MediaRef(
+                kind: 'live',
+                id: s.streamId,
+                name: s.name,
+                image: s.icon,
+                url: widget.client.streamUrl('live', s.streamId, ext: 'ts'),
+              ),
+              epg: () => widget.client.shortEpg(s.streamId),
+            ))
         .toList();
     return chans
         .asMap()
@@ -63,6 +77,85 @@ class _HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMi
   }
 
   void _push(Widget w) => Navigator.of(context).push(MaterialPageRoute(builder: (_) => w));
+
+  /// Resume a continue-watching entry straight into the player.
+  void _resume(Progress pr) {
+    _push(PlayerScreen(items: [
+      PlayerItem(pr.url, pr.title, progressKey: pr.key, poster: pr.poster, ext: pr.ext),
+    ]));
+  }
+
+  /// Re-open a recently-watched item by reconstructing its destination.
+  void _openRecent(MediaRef r) {
+    switch (r.kind) {
+      case 'movie':
+        _push(MovieDetailScreen(
+            client: widget.client,
+            movie: VodStream(r.id, r.name, r.image, '', 'mp4', 0, '')));
+      case 'series':
+        _push(SeriesDetailScreen(client: widget.client, seriesId: r.id, title: r.name));
+      case 'live':
+        _push(PlayerScreen(items: [
+          PlayerItem(r.url, r.name, isLive: true, poster: r.image, favRef: r, epg: () => widget.client.shortEpg(r.id)),
+        ]));
+    }
+  }
+
+  /// Continue-watching + recently-watched rows, rebuilt when the library changes.
+  Widget _libraryRows() {
+    final cont = Library.instance.continueWatching();
+    final recent = Library.instance.recent;
+    if (cont.isEmpty && recent.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (cont.isNotEmpty) ...[
+          const Padding(
+            padding: EdgeInsets.only(top: 24),
+            child: SectionHeader(title: 'Continue watching'),
+          ),
+          SizedBox(
+            height: 168,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: cont.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 14),
+              itemBuilder: (_, i) => _ContinueCard(progress: cont[i], onTap: () => _resume(cont[i])),
+            ),
+          ),
+        ],
+        if (recent.isNotEmpty) ...[
+          const Padding(
+            padding: EdgeInsets.only(top: 24),
+            child: SectionHeader(title: 'Jump back in'),
+          ),
+          SizedBox(
+            height: posterShelfHeight(),
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: recent.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 14),
+              itemBuilder: (_, i) => SizedBox(
+                width: kPosterW,
+                child: PosterCard(
+                  name: recent[i].name,
+                  image: recent[i].image,
+                  rating: 0,
+                  subtitle: recent[i].isLive ? null : null,
+                  badge: recent[i].isLive ? 'LIVE' : null,
+                  live: recent[i].isLive,
+                  index: i,
+                  onTap: () => _openRecent(recent[i]),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -100,6 +193,8 @@ class _HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMi
                     .then((l) => l.where((m) => m.icon.isNotEmpty).take(6).map(_movie).toList())
                     .catchError((_) => <HItem>[]),
               ),
+            // continue-watching + recently-watched (react to library changes)
+            AnimatedBuilder(animation: Library.instance, builder: (_, __) => _libraryRows()),
             // interleave movie + series shelves
             for (var i = 0; i < movieCats.length; i++) ...[
               _Shelf(
@@ -298,6 +393,85 @@ class _HeroCard extends StatelessWidget {
 }
 
 /// Horizontal shelf: header + a row of poster cards.
+/// A wide continue-watching card: thumbnail + progress bar + resume overlay.
+class _ContinueCard extends StatelessWidget {
+  final Progress progress;
+  final VoidCallback onTap;
+  const _ContinueCard({required this.progress, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: SizedBox(
+        width: 240,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: Stack(
+                children: [
+                  AspectRatio(
+                    aspectRatio: 16 / 9,
+                    child: progress.poster.isNotEmpty
+                        ? CachedNetworkImage(
+                            imageUrl: progress.poster,
+                            fit: BoxFit.cover,
+                            errorWidget: (_, _, _) => const ColoredBox(color: surfaceHi),
+                          )
+                        : const ColoredBox(color: surfaceHi),
+                  ),
+                  const Positioned.fill(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [Colors.transparent, Colors.black54],
+                          stops: [0.5, 1],
+                        ),
+                      ),
+                    ),
+                  ),
+                  Center(
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.45),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 30),
+                    ),
+                  ),
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: LinearProgressIndicator(
+                      value: progress.fraction.toDouble(),
+                      minHeight: 4,
+                      backgroundColor: Colors.white24,
+                      valueColor: const AlwaysStoppedAnimation(accent),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              progress.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _Shelf extends StatelessWidget {
   final String title;
   final Future<List<HItem>> future;

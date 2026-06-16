@@ -1,4 +1,5 @@
 // Xtream Codes data models.
+import 'dart:convert';
 
 class XtreamCredentials {
   final String baseUrl; // scheme + host[:port], no trailing slash
@@ -143,6 +144,51 @@ class Episode {
       _toInt(j['season']),
       _toStr(info['movie_image']),
     );
+  }
+}
+
+/// A single EPG programme (now/next) from get_short_epg.
+class EpgEntry {
+  final String title;
+  final String description;
+  final DateTime start;
+  final DateTime end;
+  EpgEntry(this.title, this.description, this.start, this.end);
+
+  factory EpgEntry.fromJson(Map<String, dynamic> j) {
+    String dec(dynamic v) {
+      final s = _toStr(v);
+      if (s.isEmpty) return '';
+      try {
+        return utf8.decode(base64.decode(s));
+      } catch (_) {
+        return s; // some providers send plain text
+      }
+    }
+
+    DateTime ts(dynamic v) {
+      final n = _toInt(v);
+      return DateTime.fromMillisecondsSinceEpoch(n * 1000, isUtc: true).toLocal();
+    }
+
+    return EpgEntry(
+      dec(j['title']),
+      dec(j['description']),
+      ts(j['start_timestamp']),
+      ts(j['stop_timestamp']),
+    );
+  }
+
+  bool get isNow {
+    final now = DateTime.now();
+    return now.isAfter(start) && now.isBefore(end);
+  }
+
+  double get progress {
+    final total = end.difference(start).inSeconds;
+    if (total <= 0) return 0;
+    final done = DateTime.now().difference(start).inSeconds;
+    return (done / total).clamp(0, 1);
   }
 }
 

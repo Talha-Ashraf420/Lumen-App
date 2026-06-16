@@ -31,7 +31,7 @@ class _HomeShellState extends State<HomeShell> {
     final pages = [
       HomeScreen(client: widget.client, onBrowse: () => setState(() => _index = 1)),
       SearchScreen(client: widget.client),
-      const MyListScreen(),
+      MyListScreen(client: widget.client),
       ProfileScreen(client: widget.client, onLogout: widget.onLogout),
     ];
     return Scaffold(

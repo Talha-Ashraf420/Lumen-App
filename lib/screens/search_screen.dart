@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../library.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -106,7 +107,16 @@ class SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClien
   _Res _ser(Series s) => _Res(s.name, s.cover, s.rating, _year(s.releaseDate.isEmpty ? s.name : s.releaseDate), false,
       () => _push(SeriesDetailScreen(client: widget.client, seriesId: s.seriesId, title: s.name)));
   _Res _liv(LiveStream s) => _Res(s.name, s.icon, 0, '', true,
-      () => _push(PlayerScreen(items: [PlayerItem(widget.client.streamUrl('live', s.streamId, ext: 'ts'), s.name, isLive: true)])));
+      () => _push(PlayerScreen(items: [_liveItem(s)])));
+
+  PlayerItem _liveItem(LiveStream s) {
+    final url = widget.client.streamUrl('live', s.streamId, ext: 'ts');
+    return PlayerItem(url, s.name,
+        isLive: true,
+        poster: s.icon,
+        favRef: MediaRef(kind: 'live', id: s.streamId, name: s.name, image: s.icon, url: url),
+        epg: () => widget.client.shortEpg(s.streamId));
+  }
 
   void _push(Widget w) => Navigator.of(context).push(MaterialPageRoute(builder: (_) => w));
 
@@ -261,9 +271,7 @@ class SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClien
     } else {
       // build a shared channel playlist so the player can zap next/previous
       final chans = (_live ?? []).where((x) => (catId == 'all' || x.categoryId == catId) && m(x.name)).toList();
-      final pl = chans
-          .map((s) => PlayerItem(widget.client.streamUrl('live', s.streamId, ext: 'ts'), s.name, isLive: true))
-          .toList();
+      final pl = chans.map(_liveItem).toList();
       items = chans
           .asMap()
           .entries
