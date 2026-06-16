@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import '../models.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import '../xtream.dart';
@@ -13,7 +14,8 @@ import 'search_screen.dart';
 class HomeShell extends StatefulWidget {
   final XtreamClient client;
   final VoidCallback onLogout;
-  const HomeShell({super.key, required this.client, required this.onLogout});
+  final void Function(XtreamCredentials) onSwitch;
+  const HomeShell({super.key, required this.client, required this.onLogout, required this.onSwitch});
   @override
   State<HomeShell> createState() => _HomeShellState();
 }
@@ -37,7 +39,7 @@ class _HomeShellState extends State<HomeShell> {
         1 => GuideScreen(client: widget.client),
         2 => SearchScreen(client: widget.client),
         3 => MyListScreen(client: widget.client),
-        _ => ProfileScreen(client: widget.client, onLogout: widget.onLogout),
+        _ => ProfileScreen(client: widget.client, onLogout: widget.onLogout, onSwitch: widget.onSwitch),
       };
 
   @override

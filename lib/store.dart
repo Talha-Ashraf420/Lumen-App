@@ -57,6 +57,14 @@ class Store {
     await _s.delete(key: _kActive);
   }
 
+  /// Remove a saved profile from the list (does not touch the active session).
+  static Future<List<XtreamCredentials>> removeProfile(XtreamCredentials c) async {
+    final profiles = await savedProfiles();
+    profiles.removeWhere((x) => x.baseUrl == c.baseUrl && x.username == c.username);
+    await _s.write(key: _kProfiles, value: jsonEncode(profiles.map((e) => e.toJson()).toList()));
+    return profiles;
+  }
+
   static Future<List<XtreamCredentials>> savedProfiles() async {
     await _migrate();
     final raw = await _s.read(key: _kProfiles);

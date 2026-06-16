@@ -79,15 +79,29 @@ class _GateState extends State<_Gate> {
         }));
   }
 
-  void _onLogin(XtreamCredentials c) => setState(() => _creds = c);
+  XtreamClient? _client; // cached so theme rebuilds don't recreate it
+
+  /// Make these credentials active: rebuild the client and drop cached catalogs.
+  void _activate(XtreamCredentials c) => setState(() {
+        _creds = c;
+        _client = null;
+        CatalogCache.instance.clear();
+        EpgCache.instance.clear();
+      });
+
+  void _onLogin(XtreamCredentials c) => _activate(c);
+
+  Future<void> _switchTo(XtreamCredentials c) async {
+    await Store.setActive(c);
+    if (mounted) _activate(c);
+  }
+
   void _onLogout() => setState(() {
         _creds = null;
         _client = null;
         CatalogCache.instance.clear();
         EpgCache.instance.clear();
       });
-
-  XtreamClient? _client; // cached so theme rebuilds don't recreate it
 
   @override
   Widget build(BuildContext context) {
@@ -103,7 +117,14 @@ class _GateState extends State<_Gate> {
         }
         if (_creds == null) return LoginScreen(onLogin: _onLogin);
         _client ??= XtreamClient(_creds!);
-        return HomeShell(client: _client!, onLogout: _onLogout);
+        // Key by the active profile so switching fully remounts all tabs with
+        // the new client (fresh catalogs), not stale data from the old account.
+        return HomeShell(
+          key: ValueKey('${_creds!.baseUrl}|${_creds!.username}'),
+          client: _client!,
+          onLogout: _onLogout,
+          onSwitch: _switchTo,
+        );
       },
     );
   }

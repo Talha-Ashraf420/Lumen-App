@@ -1,18 +1,24 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../models.dart';
+import '../store.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import '../xtream.dart';
+import 'login_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final XtreamClient client;
   final VoidCallback onLogout;
-  const ProfileScreen({super.key, required this.client, required this.onLogout});
+  final void Function(XtreamCredentials) onSwitch;
+  const ProfileScreen({super.key, required this.client, required this.onLogout, required this.onSwitch});
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
   Map<String, dynamic>? _info;
+  List<XtreamCredentials> _profiles = [];
 
   @override
   void initState() {
@@ -20,6 +26,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
     widget.client.authenticate().then((i) {
       if (mounted) setState(() => _info = i);
     }).catchError((_) {});
+    Store.savedProfiles().then((p) => mounted ? setState(() => _profiles = p) : null);
+  }
+
+  bool _isActive(XtreamCredentials p) =>
+      p.baseUrl == widget.client.creds.baseUrl && p.username == widget.client.creds.username;
+
+  Future<void> _addProfile() async {
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => LoginScreen(onLogin: (c) {
+        Navigator.of(context).pop();
+        widget.onSwitch(c); // login already set it active; rebuild with it
+      }),
+    ));
+    final p = await Store.savedProfiles();
+    if (mounted) setState(() => _profiles = p);
+  }
+
+  void _switch(XtreamCredentials p) {
+    if (_isActive(p)) return;
+    HapticFeedback.selectionClick();
+    widget.onSwitch(p);
+  }
+
+  Future<void> _delete(XtreamCredentials p) async {
+    final left = await Store.removeProfile(p);
+    if (mounted) setState(() => _profiles = left);
   }
 
   String _expiry() {
@@ -67,7 +99,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ],
           ),
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 24),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 0, 4, 10),
+          child: Row(
+            children: [
+              const Text('Profiles', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+              const Spacer(),
+              GestureDetector(
+                onTap: _addProfile,
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.add_rounded, size: 18, color: accent),
+                  const SizedBox(width: 4),
+                  Text('Add', style: TextStyle(color: accent, fontWeight: FontWeight.w700, fontSize: 13)),
+                ]),
+              ),
+            ],
+          ),
+        ),
+        Glass(
+          radius: 20,
+          padding: const EdgeInsets.all(6),
+          child: Column(
+            children: [
+              for (var i = 0; i < _profiles.length; i++) ...[
+                if (i > 0) _divider(),
+                _profileRow(_profiles[i]),
+              ],
+              if (_profiles.isEmpty) _profileRow(widget.client.creds),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
         const Padding(
           padding: EdgeInsets.fromLTRB(4, 0, 4, 10),
           child: Text('Appearance', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
@@ -106,6 +169,60 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ]),
       );
   Widget _divider() => Divider(height: 1, color: line, indent: 12, endIndent: 12);
+
+  Widget _profileRow(XtreamCredentials p) {
+    final active = _isActive(p);
+    final host = p.baseUrl.replaceFirst(RegExp(r'^https?://'), '');
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _switch(p),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        child: Row(
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: active ? accent : surfaceHi,
+                shape: BoxShape.circle,
+              ),
+              child: Text(
+                p.username.isNotEmpty ? p.username[0].toUpperCase() : '?',
+                style: TextStyle(fontWeight: FontWeight.w800, color: active ? Colors.white : muted),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(p.username, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700)),
+                  Text(host, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: subtle, fontSize: 12)),
+                ],
+              ),
+            ),
+            if (active)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                decoration: BoxDecoration(color: accent.withValues(alpha: 0.18), borderRadius: BorderRadius.circular(8)),
+                child: Text('Active', style: TextStyle(color: accent, fontSize: 11, fontWeight: FontWeight.w700)),
+              )
+            else ...[
+              Icon(Icons.swap_horiz_rounded, color: muted, size: 20),
+              const SizedBox(width: 4),
+              IconButton(
+                onPressed: () => _delete(p),
+                icon: Icon(Icons.delete_outline_rounded, color: subtle, size: 20),
+                visualDensity: VisualDensity.compact,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 /// Dark / Light / System segmented selector wired to ThemeController.
