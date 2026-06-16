@@ -86,27 +86,29 @@ class _HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMi
             // hero carousel from the first movie category
             if (movieCats.isNotEmpty)
               _HeroCarousel(
-                future: c.vodStreams(movieCats.first.id).then(
-                    (l) => l.where((m) => m.icon.isNotEmpty).take(6).map(_movie).toList()),
+                future: c
+                    .vodStreams(movieCats.first.id)
+                    .then((l) => l.where((m) => m.icon.isNotEmpty).take(6).map(_movie).toList())
+                    .catchError((_) => <HItem>[]),
               ),
             // interleave movie + series shelves
             for (var i = 0; i < movieCats.length; i++) ...[
               _Shelf(
                 title: movieCats[i].name,
-                future: c.vodStreams(movieCats[i].id).then((l) => l.take(16).map(_movie).toList()),
+                future: c.vodStreams(movieCats[i].id).then((l) => l.take(16).map(_movie).toList()).catchError((_) => <HItem>[]),
                 onMore: widget.onBrowse,
               ),
               if (i < seriesCats.length)
                 _Shelf(
                   title: seriesCats[i].name,
-                  future: c.series(seriesCats[i].id).then((l) => l.take(16).map(_series).toList()),
+                  future: c.series(seriesCats[i].id).then((l) => l.take(16).map(_series).toList()).catchError((_) => <HItem>[]),
                   onMore: widget.onBrowse,
                 ),
             ],
             if (liveCat != null)
               _Shelf(
                 title: 'Live · ${liveCat.name}',
-                future: c.liveStreams(liveCat.id).then((l) => l.take(16).map(_live).toList()),
+                future: c.liveStreams(liveCat.id).then((l) => l.take(16).map(_live).toList()).catchError((_) => <HItem>[]),
                 live: true,
                 onMore: widget.onBrowse,
               ),
