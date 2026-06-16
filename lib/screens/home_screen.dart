@@ -230,12 +230,49 @@ class _HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMi
                         .catchError((_) => <HItem>[]),
                   ),
                 AnimatedBuilder(animation: Library.instance, builder: (_, __) => _libraryRows()),
+                AnimatedBuilder(animation: Library.instance, builder: (_, __) => _recommendationRows(c, d.vodCats)),
                 ...shelves,
               ],
             );
           },
         );
       },
+    );
+  }
+
+  /// Top movie categories inferred from favourites + recents (present in catalog).
+  List<Category> _tasteCats(List<Category> all) {
+    final freq = <String, int>{};
+    for (final m in [...Library.instance.favourites, ...Library.instance.recent]) {
+      if (m.kind == 'movie' && m.cat.isNotEmpty) freq[m.cat] = (freq[m.cat] ?? 0) + 1;
+    }
+    final sorted = freq.keys.toList()..sort((a, b) => freq[b]!.compareTo(freq[a]!));
+    final out = <Category>[];
+    for (final id in sorted) {
+      final match = all.where((c) => c.id == id);
+      if (match.isNotEmpty) {
+        out.add(match.first);
+        if (out.length >= 2) break;
+      }
+    }
+    return out;
+  }
+
+  Widget _recommendationRows(XtreamClient c, List<Category> vodCats) {
+    final cats = _tasteCats(vodCats);
+    if (cats.isEmpty) return const SizedBox.shrink();
+    return Column(
+      children: [
+        for (final cat in cats)
+          _Shelf(
+            title: 'Because you like ${cat.name}',
+            future: c
+                .vodStreams(cat.id)
+                .then((l) => l.where((m) => m.icon.isNotEmpty).take(16).map(_movie).toList())
+                .catchError((_) => <HItem>[]),
+            onMore: widget.onBrowse,
+          ),
+      ],
     );
   }
 

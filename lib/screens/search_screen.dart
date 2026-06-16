@@ -32,6 +32,7 @@ class SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClien
   String _q = '';
   String _section = 'all'; // all | movie | series | live
   String _cat = 'all';
+  String _sort = 'default';
 
   // Streams cached per category id ('all' = whole catalog). Many providers
   // return nothing for the no-category "list all" call, so we fetch per
@@ -235,26 +236,126 @@ class SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClien
     );
   }
 
-  Widget _categoryRow() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: GestureDetector(
-        onTap: () async {
-          final r = await showCategorySheet(context, categories: _curCats, selected: _cat);
-          if (r != null && mounted) setState(() => _cat = r);
-        },
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-          decoration: BoxDecoration(color: surfaceHi.withValues(alpha: 0.6), borderRadius: BorderRadius.circular(13), border: Border.all(color: line)),
-          child: Row(children: [
-            Icon(Icons.category_rounded, size: 18, color: accent),
-            const SizedBox(width: 8),
-            Expanded(child: Text(_catLabel, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
-            Icon(Icons.expand_more_rounded, color: muted, size: 20),
-          ]),
+  static const _sortLabels = {
+    'default': 'Default',
+    'az': 'A–Z',
+    'za': 'Z–A',
+    'rating': 'Top rated',
+    'recent': 'Recently added',
+    'year': 'Newest',
+  };
+
+  Future<void> _pickSort() async {
+    final r = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: surface,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (_) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 18, 20, 8),
+              child: Align(alignment: Alignment.centerLeft, child: Text('Sort by', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800))),
+            ),
+            for (final e in _sortLabels.entries)
+              if (!(_section == 'live' && (e.key == 'rating' || e.key == 'recent' || e.key == 'year')))
+                ListTile(
+                  onTap: () => Navigator.pop(context, e.key),
+                  leading: Icon(_sort == e.key ? Icons.check_circle_rounded : Icons.sort_rounded, color: _sort == e.key ? accent : muted),
+                  title: Text(e.value, style: TextStyle(fontWeight: _sort == e.key ? FontWeight.w700 : FontWeight.w500)),
+                ),
+            const SizedBox(height: 12),
+          ],
         ),
       ),
     );
+    if (r != null && mounted) setState(() => _sort = r);
+  }
+
+  Widget _categoryRow() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        children: [
+          Expanded(
+            child: GestureDetector(
+              onTap: () async {
+                final r = await showCategorySheet(context, categories: _curCats, selected: _cat);
+                if (r != null && mounted) setState(() => _cat = r);
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                decoration: BoxDecoration(color: surfaceHi.withValues(alpha: 0.6), borderRadius: BorderRadius.circular(13), border: Border.all(color: line)),
+                child: Row(children: [
+                  Icon(Icons.category_rounded, size: 18, color: accent),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(_catLabel, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
+                  Icon(Icons.expand_more_rounded, color: muted, size: 20),
+                ]),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          GestureDetector(
+            onTap: _pickSort,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+              decoration: BoxDecoration(color: surfaceHi.withValues(alpha: 0.6), borderRadius: BorderRadius.circular(13), border: Border.all(color: line)),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.swap_vert_rounded, size: 18, color: _sort == 'default' ? muted : accent),
+                if (_sort != 'default') ...[
+                  const SizedBox(width: 6),
+                  Text(_sortLabels[_sort]!, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: accent)),
+                ],
+              ]),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  int _yr(String s) => int.tryParse(RegExp(r'(19|20)\d{2}').firstMatch(s)?.group(0) ?? '') ?? 0;
+
+  List<VodStream> _sortMovies(List<VodStream> l) {
+    final x = [...l];
+    switch (_sort) {
+      case 'az':
+        x.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      case 'za':
+        x.sort((a, b) => b.name.toLowerCase().compareTo(a.name.toLowerCase()));
+      case 'rating':
+        x.sort((a, b) => b.rating.compareTo(a.rating));
+      case 'recent':
+        x.sort((a, b) => (int.tryParse(b.added) ?? 0).compareTo(int.tryParse(a.added) ?? 0));
+      case 'year':
+        x.sort((a, b) => _yr(b.name).compareTo(_yr(a.name)));
+    }
+    return x;
+  }
+
+  List<Series> _sortSeries(List<Series> l) {
+    final x = [...l];
+    switch (_sort) {
+      case 'az':
+        x.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      case 'za':
+        x.sort((a, b) => b.name.toLowerCase().compareTo(a.name.toLowerCase()));
+      case 'rating':
+        x.sort((a, b) => b.rating.compareTo(a.rating));
+      case 'year':
+      case 'recent':
+        x.sort((a, b) => _yr(b.releaseDate).compareTo(_yr(a.releaseDate)));
+    }
+    return x;
+  }
+
+  List<LiveStream> _sortLive(List<LiveStream> l) {
+    final x = [...l];
+    if (_sort == 'az') x.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    if (_sort == 'za') x.sort((a, b) => b.name.toLowerCase().compareTo(a.name.toLowerCase()));
+    return x;
   }
 
   Widget _body() {
@@ -293,12 +394,12 @@ class SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClien
     final loaded = _has(_section, catId);
     List<_Res> items;
     if (_section == 'movie') {
-      items = (_movieByCat[catId] ?? const []).where((x) => m(x.name)).map(_movie).toList();
+      items = _sortMovies(_movieByCat[catId] ?? const []).where((x) => m(x.name)).map(_movie).toList();
     } else if (_section == 'series') {
-      items = (_seriesByCat[catId] ?? const []).where((x) => m(x.name)).map(_ser).toList();
+      items = _sortSeries(_seriesByCat[catId] ?? const []).where((x) => m(x.name)).map(_ser).toList();
     } else {
       // build a shared channel playlist so the player can zap next/previous
-      final chans = (_liveByCat[catId] ?? const <LiveStream>[]).where((x) => m(x.name)).toList();
+      final chans = _sortLive(_liveByCat[catId] ?? const <LiveStream>[]).where((x) => m(x.name)).toList();
       final pl = chans.map(_liveItem).toList();
       items = chans
           .asMap()
