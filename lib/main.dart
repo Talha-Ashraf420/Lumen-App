@@ -68,26 +68,15 @@ class _GateState extends State<_Gate> {
   XtreamCredentials? _creds;
   bool _loading = true;
 
-  // The Navigator caches the initial route, so a MaterialApp rebuild alone won't
-  // refresh this subtree's palette. Listen to the theme mode and rebuild in place.
-  void _onTheme() => setState(() {});
-
   @override
   void initState() {
     super.initState();
     Library.instance.load();
     ThemeController.instance.load();
-    ThemeController.instance.mode.addListener(_onTheme);
     Store.active().then((c) => setState(() {
           _creds = c;
           _loading = false;
         }));
-  }
-
-  @override
-  void dispose() {
-    ThemeController.instance.mode.removeListener(_onTheme);
-    super.dispose();
   }
 
   void _onLogin(XtreamCredentials c) => setState(() => _creds = c);
@@ -102,11 +91,20 @@ class _GateState extends State<_Gate> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
-      return const Scaffold(body: BrandedLoading(background: true));
-    }
-    if (_creds == null) return LoginScreen(onLogin: _onLogin);
-    _client ??= XtreamClient(_creds!);
-    return HomeShell(client: _client!, onLogout: _onLogout);
+    // Set the active palette and build the screens in ONE builder, below the
+    // Navigator route — so a theme change rebuilds this subtree and the new
+    // palette is published immediately before the screens read it.
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: ThemeController.instance.mode,
+      builder: (context, mode, _) {
+        resolvePalette(mode, MediaQuery.platformBrightnessOf(context));
+        if (_loading) {
+          return const Scaffold(body: BrandedLoading(background: true));
+        }
+        if (_creds == null) return LoginScreen(onLogin: _onLogin);
+        _client ??= XtreamClient(_creds!);
+        return HomeShell(client: _client!, onLogout: _onLogout);
+      },
+    );
   }
 }

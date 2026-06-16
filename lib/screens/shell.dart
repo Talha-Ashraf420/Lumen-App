@@ -51,7 +51,7 @@ class _HomeShellState extends State<HomeShell> {
     return Scaffold(
       body: Stack(
         children: [
-          const Aurora(),
+          Aurora(),
           SafeArea(bottom: false, child: IndexedStack(index: _index, children: pages)),
           Align(
             alignment: Alignment.bottomCenter,
