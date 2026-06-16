@@ -33,6 +33,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
   double _rate = 1.0;
   double _zoomScale = 1.0, _zoomStart = 1.0;
 
+  // subtitle appearance + sync
+  double _subScale = 1.0;
+  bool _subBg = false;
+  double _subDelay = 0; // seconds
+
+  // hold-to-speed
+  double _savedRate = 1.0;
+  bool _holding = false;
+
   // gesture state (1-finger swipes)
   String? _gMode; // 'seek' | 'vol' | 'bri'
   double _curVol = 100, _curBri = 0.5, _gAccum = 0;
@@ -251,6 +260,37 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         setSheet(() {});
                       });
                     }),
+                    _settingLabel('Subtitle size'),
+                    _chipRow([
+                      ('S', _subScale == 0.8, () => setSheet(() => setState(() => _subScale = 0.8))),
+                      ('M', _subScale == 1.0, () => setSheet(() => setState(() => _subScale = 1.0))),
+                      ('L', _subScale == 1.25, () => setSheet(() => setState(() => _subScale = 1.25))),
+                      ('XL', _subScale == 1.6, () => setSheet(() => setState(() => _subScale = 1.6))),
+                      ('Box ${_subBg ? 'on' : 'off'}', _subBg, () => setSheet(() => setState(() => _subBg = !_subBg))),
+                    ]),
+                    _settingLabel('Subtitle sync'),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Row(
+                        children: [
+                          _stepBtn(Icons.remove_rounded, () async {
+                            await _setSubDelay(_subDelay - 0.5);
+                            setSheet(() {});
+                          }),
+                          Expanded(
+                            child: Text(
+                              _subDelay == 0 ? 'In sync' : '${_subDelay > 0 ? '+' : ''}${_subDelay.toStringAsFixed(1)}s',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                          _stepBtn(Icons.add_rounded, () async {
+                            await _setSubDelay(_subDelay + 0.5);
+                            setSheet(() {});
+                          }),
+                        ],
+                      ),
+                    ),
                     const SizedBox(height: 16),
                   ],
                 ),
@@ -291,6 +331,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
         ),
       );
 
+  Widget _stepBtn(IconData icon, VoidCallback onTap) => GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(color: surfaceHi.withValues(alpha: 0.7), shape: BoxShape.circle),
+          child: Icon(icon, color: accent, size: 22),
+        ),
+      );
+
   Widget _trackRow(String label, bool sel, VoidCallback onTap) => ListTile(
         onTap: onTap,
         dense: true,
@@ -310,6 +359,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
         onTap: _tap,
         onDoubleTapDown: (d) => _doubleTapX = d.localPosition.dx,
         onDoubleTap: _onDoubleTap,
+        onLongPressStart: _isLive ? null : (_) => _holdSpeedStart(),
+        onLongPressEnd: _isLive ? null : (_) => _holdSpeedEnd(),
         onScaleStart: _onScaleStart,
         onScaleUpdate: _onScaleUpdate,
         onScaleEnd: _onScaleEnd,
@@ -319,7 +370,22 @@ class _PlayerScreenState extends State<PlayerScreen> {
             Center(
               child: Transform.scale(
                 scale: _zoomScale,
-                child: Video(controller: pc.controller!, controls: NoVideoControls, fit: _fit),
+                child: Video(
+                  controller: pc.controller!,
+                  controls: NoVideoControls,
+                  fit: _fit,
+                  subtitleViewConfiguration: SubtitleViewConfiguration(
+                    style: TextStyle(
+                      height: 1.4,
+                      fontSize: 32.0 * _subScale,
+                      color: Colors.white,
+                      backgroundColor: _subBg ? Colors.black54 : Colors.transparent,
+                      fontWeight: FontWeight.w600,
+                      shadows: const [Shadow(color: Colors.black, blurRadius: 6)],
+                    ),
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                  ),
+                ),
               ),
             ),
             _hudOverlay(),
@@ -358,6 +424,28 @@ class _PlayerScreenState extends State<PlayerScreen> {
       pc.player!.playOrPause();
       _scheduleHide();
     }
+  }
+
+  void _holdSpeedStart() {
+    _holding = true;
+    _savedRate = _rate;
+    pc.player!.setRate(2.0);
+    _flashHud('2× speed', Icons.fast_forward_rounded, persist: true);
+  }
+
+  void _holdSpeedEnd() {
+    if (!_holding) return;
+    _holding = false;
+    pc.player!.setRate(_savedRate);
+    _hideHud();
+  }
+
+  Future<void> _setSubDelay(double v) async {
+    _subDelay = double.parse(v.toStringAsFixed(1));
+    try {
+      await (pc.player!.platform as dynamic)?.setProperty('sub-delay', '$_subDelay');
+    } catch (_) {}
+    setState(() {});
   }
 
   void _onScaleStart(ScaleStartDetails d) {
