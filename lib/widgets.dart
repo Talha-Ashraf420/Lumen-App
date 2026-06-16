@@ -347,3 +347,79 @@ class _Fallback extends StatelessWidget {
         child: Center(child: Icon(Icons.movie_creation_outlined, color: subtle, size: 28)),
       );
 }
+
+/// A polished live-TV tile: the channel logo centred on an elevated surface
+/// (logos are often transparent/odd-shaped, so they get a clean backdrop),
+/// a LIVE badge, and the channel name below.
+class ChannelCard extends StatelessWidget {
+  final String name;
+  final String logo;
+  final VoidCallback onTap;
+  final int index;
+  const ChannelCard({super.key, required this.name, required this.logo, required this.onTap, this.index = 0});
+
+  @override
+  Widget build(BuildContext context) {
+    final tile = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        AspectRatio(
+          aspectRatio: 1,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [surfaceHi, surface],
+              ),
+              border: Border.all(color: line),
+              boxShadow: glow(Colors.black, blur: 12, y: 6, a: 0.4),
+            ),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: logo.isNotEmpty
+                      ? CachedNetworkImage(
+                          imageUrl: logo,
+                          fit: BoxFit.contain,
+                          fadeInDuration: const Duration(milliseconds: 200),
+                          errorWidget: (_, _, _) => Icon(Icons.live_tv_rounded, color: subtle, size: 30),
+                        )
+                      : Icon(Icons.live_tv_rounded, color: subtle, size: 30),
+                ),
+                Positioned(
+                  left: 8,
+                  top: 8,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                    decoration: BoxDecoration(color: const Color(0xFFFF3B5C), borderRadius: BorderRadius.circular(8)),
+                    child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(Icons.circle, color: Colors.white, size: 5),
+                      SizedBox(width: 4),
+                      Text('LIVE',
+                          style: TextStyle(fontSize: 8.5, fontWeight: FontWeight.w800, letterSpacing: 0.4, color: Colors.white)),
+                    ]),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+      ],
+    );
+    return GestureDetector(onTap: onTap, child: tile)
+        .animate()
+        .fadeIn(duration: 300.ms, delay: (index.clamp(0, 12) * 28).ms)
+        .slideY(begin: 0.08, end: 0, curve: Curves.easeOutCubic);
+  }
+}

@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../catalog_cache.dart';
+import '../home_config.dart';
 import '../library.dart';
 import '../models.dart';
 import '../theme.dart';
@@ -182,50 +183,84 @@ class _HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMi
         }
         final d = snap.data!;
         final c = widget.client;
-        final movieCats = d.vodCats.take(4).toList();
-        final seriesCats = d.seriesCats.take(3).toList();
-        final liveCat = d.liveCats.isNotEmpty ? d.liveCats.first : null;
+        // Rebuild when the user customises which shelves appear on Home.
+        return AnimatedBuilder(
+          animation: HomeConfig.instance,
+          builder: (context, _) {
+            final custom = HomeConfig.instance.isCustom;
 
-        return ListView(
-          padding: const EdgeInsets.only(bottom: 120),
-          children: [
-            _searchBar(),
-            const SizedBox(height: 14),
-            // hero carousel from the first movie category
-            if (movieCats.isNotEmpty)
-              _HeroCarousel(
-                future: c
-                    .vodStreams(movieCats.first.id)
-                    .then((l) => l.where((m) => m.icon.isNotEmpty).take(6).map(_movie).toList())
-                    .catchError((_) => <HItem>[]),
-              ),
-            // continue-watching + recently-watched (react to library changes)
-            AnimatedBuilder(animation: Library.instance, builder: (_, __) => _libraryRows()),
-            // interleave movie + series shelves
-            for (var i = 0; i < movieCats.length; i++) ...[
-              _Shelf(
-                title: movieCats[i].name,
-                future: c.vodStreams(movieCats[i].id).then((l) => l.take(16).map(_movie).toList()).catchError((_) => <HItem>[]),
-                onMore: widget.onBrowse,
-              ),
-              if (i < seriesCats.length)
-                _Shelf(
-                  title: seriesCats[i].name,
-                  future: c.series(seriesCats[i].id).then((l) => l.take(16).map(_series).toList()).catchError((_) => <HItem>[]),
-                  onMore: widget.onBrowse,
-                ),
-            ],
-            if (liveCat != null)
-              _Shelf(
-                title: 'Live · ${liveCat.name}',
-                future: c.liveStreams(liveCat.id).then((l) => _liveShelf(l.take(40).toList())).catchError((_) => <HItem>[]),
-                live: true,
-                onMore: widget.onBrowse,
-              ),
-          ],
+            // hero source: first chosen movie shelf, else first movie category
+            String? heroCat;
+            if (custom) {
+              final mv = HomeConfig.instance.shelves.where((s) => s.type == 'movie');
+              if (mv.isNotEmpty) heroCat = mv.first.id;
+            } else if (d.vodCats.isNotEmpty) {
+              heroCat = d.vodCats.first.id;
+            }
+
+            final shelves = <Widget>[];
+            if (custom) {
+              for (final s in HomeConfig.instance.shelves) {
+                shelves.add(_shelfFor(c, s));
+              }
+            } else {
+              final movieCats = d.vodCats.take(4).toList();
+              final seriesCats = d.seriesCats.take(3).toList();
+              for (var i = 0; i < movieCats.length; i++) {
+                shelves.add(_shelfFor(c, ShelfRef('movie', movieCats[i].id, movieCats[i].name)));
+                if (i < seriesCats.length) {
+                  shelves.add(_shelfFor(c, ShelfRef('series', seriesCats[i].id, seriesCats[i].name)));
+                }
+              }
+              if (d.liveCats.isNotEmpty) {
+                shelves.add(_shelfFor(c, ShelfRef('live', d.liveCats.first.id, d.liveCats.first.name)));
+              }
+            }
+
+            return ListView(
+              padding: const EdgeInsets.only(bottom: 120),
+              children: [
+                _searchBar(),
+                const SizedBox(height: 14),
+                if (heroCat != null)
+                  _HeroCarousel(
+                    future: c
+                        .vodStreams(heroCat)
+                        .then((l) => l.where((m) => m.icon.isNotEmpty).take(6).map(_movie).toList())
+                        .catchError((_) => <HItem>[]),
+                  ),
+                AnimatedBuilder(animation: Library.instance, builder: (_, __) => _libraryRows()),
+                ...shelves,
+              ],
+            );
+          },
         );
       },
     );
+  }
+
+  Widget _shelfFor(XtreamClient c, ShelfRef s) {
+    switch (s.type) {
+      case 'movie':
+        return _Shelf(
+          title: s.name,
+          future: c.vodStreams(s.id).then((l) => l.take(16).map(_movie).toList()).catchError((_) => <HItem>[]),
+          onMore: widget.onBrowse,
+        );
+      case 'series':
+        return _Shelf(
+          title: s.name,
+          future: c.series(s.id).then((l) => l.take(16).map(_series).toList()).catchError((_) => <HItem>[]),
+          onMore: widget.onBrowse,
+        );
+      default:
+        return _Shelf(
+          title: 'Live · ${s.name}',
+          future: c.liveStreams(s.id).then((l) => _liveShelf(l.take(40).toList())).catchError((_) => <HItem>[]),
+          live: true,
+          onMore: widget.onBrowse,
+        );
+    }
   }
 
   Widget _searchBar() {
@@ -509,16 +544,16 @@ class _Shelf extends StatelessWidget {
                         separatorBuilder: (_, _) => const SizedBox(width: 14),
                         itemBuilder: (_, i) => SizedBox(
                           width: kPosterW,
-                          child: PosterCard(
-                            name: items[i].name,
-                            image: items[i].image,
-                            rating: items[i].rating,
-                            subtitle: live ? null : (items[i].subtitle.isEmpty ? null : items[i].subtitle),
-                            badge: live ? 'LIVE' : null,
-                            live: live,
-                            index: i,
-                            onTap: items[i].onTap,
-                          ),
+                          child: live
+                              ? ChannelCard(name: items[i].name, logo: items[i].image, index: i, onTap: items[i].onTap)
+                              : PosterCard(
+                                  name: items[i].name,
+                                  image: items[i].image,
+                                  rating: items[i].rating,
+                                  subtitle: items[i].subtitle.isEmpty ? null : items[i].subtitle,
+                                  index: i,
+                                  onTap: items[i].onTap,
+                                ),
                         ),
                       ),
               ),

@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../home_config.dart';
 import '../models.dart';
 import '../store.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import '../xtream.dart';
+import 'customize_home_screen.dart';
 import 'login_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -128,6 +130,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ],
               if (_profiles.isEmpty) _profileRow(widget.client.creds),
             ],
+          ),
+        ),
+        const SizedBox(height: 24),
+        const Padding(
+          padding: EdgeInsets.fromLTRB(4, 0, 4, 10),
+          child: Text('Home', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+        ),
+        GestureDetector(
+          onTap: () => Navigator.of(context)
+              .push(MaterialPageRoute(builder: (_) => CustomizeHomeScreen(client: widget.client))),
+          child: Glass(
+            radius: 18,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+            child: Row(children: [
+              Icon(Icons.dashboard_customize_rounded, color: accent, size: 20),
+              const SizedBox(width: 14),
+              const Expanded(child: Text('Customize Home', style: TextStyle(fontWeight: FontWeight.w700))),
+              AnimatedBuilder(
+                animation: HomeConfig.instance,
+                builder: (_, __) => Text(
+                  HomeConfig.instance.isCustom ? '${HomeConfig.instance.shelves.length} shelves' : 'Default',
+                  style: TextStyle(color: subtle, fontSize: 13),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Icon(Icons.chevron_right_rounded, color: subtle),
+            ]),
           ),
         ),
         const SizedBox(height: 24),

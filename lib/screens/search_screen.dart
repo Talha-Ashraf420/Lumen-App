@@ -314,21 +314,21 @@ class SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClien
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
-        childAspectRatio: live ? 0.78 : 0.50,
+        childAspectRatio: live ? 0.82 : 0.50,
         crossAxisSpacing: 13,
         mainAxisSpacing: 20,
       ),
       itemCount: items.length,
-      itemBuilder: (_, i) => PosterCard(
-        name: items[i].name,
-        image: items[i].image,
-        rating: items[i].rating,
-        subtitle: live ? null : items[i].subtitle,
-        badge: live ? 'LIVE' : null,
-        live: live,
-        index: i,
-        onTap: items[i].onTap,
-      ),
+      itemBuilder: (_, i) => live
+          ? ChannelCard(name: items[i].name, logo: items[i].image, index: i, onTap: items[i].onTap)
+          : PosterCard(
+              name: items[i].name,
+              image: items[i].image,
+              rating: items[i].rating,
+              subtitle: items[i].subtitle,
+              index: i,
+              onTap: items[i].onTap,
+            ),
     );
   }
 
@@ -349,16 +349,16 @@ class SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClien
             separatorBuilder: (_, __) => const SizedBox(width: 14),
             itemBuilder: (_, i) => SizedBox(
               width: kPosterW,
-              child: PosterCard(
-                name: items[i].name,
-                image: items[i].image,
-                rating: items[i].rating,
-                subtitle: items[i].live ? null : items[i].subtitle,
-                badge: items[i].live ? 'LIVE' : null,
-                live: items[i].live,
-                index: i,
-                onTap: items[i].onTap,
-              ),
+              child: items[i].live
+                  ? ChannelCard(name: items[i].name, logo: items[i].image, index: i, onTap: items[i].onTap)
+                  : PosterCard(
+                      name: items[i].name,
+                      image: items[i].image,
+                      rating: items[i].rating,
+                      subtitle: items[i].subtitle,
+                      index: i,
+                      onTap: items[i].onTap,
+                    ),
             ),
           ),
         ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'catalog_cache.dart';
 import 'epg_cache.dart';
+import 'home_config.dart';
 import 'models.dart';
 import 'store.dart';
 import 'library.dart';
@@ -72,6 +73,7 @@ class _GateState extends State<_Gate> {
   void initState() {
     super.initState();
     Library.instance.load();
+    HomeConfig.instance.load();
     ThemeController.instance.load();
     Store.active().then((c) => setState(() {
           _creds = c;
