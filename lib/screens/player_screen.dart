@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:screen_brightness/screen_brightness.dart';
 import '../library.dart';
 import '../models.dart';
 import '../theme.dart';
@@ -47,7 +48,23 @@ class _PlayerScreenState extends State<PlayerScreen> {
   List<EpgEntry> _epg = const [];
   BoxFit _fit = BoxFit.contain;
   double _rate = 1.0;
-  final TransformationController _zoom = TransformationController();
+  double _zoomScale = 1.0, _zoomStart = 1.0;
+
+  // gesture state (1-finger swipes)
+  String? _gMode; // 'seek' | 'vol' | 'bri'
+  double _curVol = 100, _curBri = 0.5, _gAccum = 0;
+  Duration _gStartPos = Duration.zero, _gSeekTarget = Duration.zero;
+  double _doubleTapX = 0;
+
+  // transient gesture HUD
+  String? _hud;
+  IconData? _hudIcon;
+  double? _hudValue;
+  Timer? _hudTimer;
+
+  // sleep timer
+  Timer? _sleepTimer;
+  int _sleepMin = 0;
 
   PlayerItem get _item => widget.items[_index];
   bool get _isLive => _item.isLive;
@@ -62,6 +79,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       if (done && !_isLive && _hasNext) _go(_index + 1);
     });
     _posSub = _player.stream.position.listen(_onPosition);
+    ScreenBrightness.instance.current.then((b) => _curBri = b).catchError((_) => _curBri = 0.5);
     _scheduleHide();
   }
 
@@ -71,7 +89,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _completedSub?.cancel();
     _posSub?.cancel();
     _persistProgress();
-    _zoom.dispose();
+    _hudTimer?.cancel();
+    _sleepTimer?.cancel();
+    ScreenBrightness.instance.resetApplicationScreenBrightness().catchError((_) {});
     _player.dispose();
     SystemChrome.setPreferredOrientations(DeviceOrientation.values);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -277,6 +297,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           }),
                       ]),
                     ],
+                    _settingLabel('Sleep timer'),
+                    _chipRow([
+                      for (final mn in const [0, 15, 30, 45, 60])
+                        (mn == 0 ? 'Off' : '${mn}m', _sleepMin == mn, () => setSheet(() => _setSleep(mn))),
+                    ]),
                     _settingLabel('Audio'),
                     if (audio.isEmpty)
                       Padding(padding: const EdgeInsets.fromLTRB(20, 2, 20, 4), child: Text('Only one audio track.', style: TextStyle(color: subtle)))
@@ -352,26 +377,24 @@ class _PlayerScreenState extends State<PlayerScreen> {
     return Scaffold(
       backgroundColor: Colors.black,
       body: GestureDetector(
-        onTap: _tap,
-        onDoubleTap: () {
-          _zoom.value = Matrix4.identity(); // reset pinch-zoom
-          _scheduleHide();
-        },
         behavior: HitTestBehavior.opaque,
+        onTap: _tap,
+        onDoubleTapDown: (d) => _doubleTapX = d.localPosition.dx,
+        onDoubleTap: _onDoubleTap,
+        onScaleStart: _onScaleStart,
+        onScaleUpdate: _onScaleUpdate,
+        onScaleEnd: _onScaleEnd,
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // Pinch to zoom / pan the video; double-tap resets.
+            // One finger swipes (brightness / volume / seek); two fingers pinch-zoom.
             Center(
-              child: InteractiveViewer(
-                transformationController: _zoom,
-                panEnabled: true,
-                minScale: 1.0,
-                maxScale: 5.0,
-                clipBehavior: Clip.none,
+              child: Transform.scale(
+                scale: _zoomScale,
                 child: Video(controller: _controller, controls: NoVideoControls, fit: _fit),
               ),
             ),
+            _hudOverlay(),
             StreamBuilder<bool>(
               stream: _player.stream.buffering,
               builder: (_, s) => (s.data ?? false)
@@ -387,6 +410,138 @@ class _PlayerScreenState extends State<PlayerScreen> {
         ),
       ),
     );
+  }
+
+  // ---- gestures ----
+  void _onDoubleTap() {
+    final w = MediaQuery.of(context).size.width;
+    if (_zoomScale > 1.05) {
+      setState(() => _zoomScale = 1.0);
+      _scheduleHide();
+      return;
+    }
+    if (!_isLive && _doubleTapX < w * 0.35) {
+      _seekBy(-10);
+      _flashHud('−10s', Icons.replay_10_rounded);
+    } else if (!_isLive && _doubleTapX > w * 0.65) {
+      _seekBy(10);
+      _flashHud('+10s', Icons.forward_10_rounded);
+    } else {
+      _player.playOrPause();
+      _scheduleHide();
+    }
+  }
+
+  void _onScaleStart(ScaleStartDetails d) {
+    _gMode = null;
+    _gAccum = 0;
+    _zoomStart = _zoomScale;
+    _gStartPos = _player.state.position;
+    _curVol = _player.state.volume;
+  }
+
+  void _onScaleUpdate(ScaleUpdateDetails d) {
+    if (d.pointerCount >= 2) {
+      setState(() => _zoomScale = (_zoomStart * d.scale).clamp(1.0, 4.0));
+      return;
+    }
+    final w = MediaQuery.of(context).size.width;
+    final dx = d.focalPointDelta.dx, dy = d.focalPointDelta.dy;
+    // Lock the gesture to an axis/side on first meaningful movement.
+    _gMode ??= dx.abs() > dy.abs()
+        ? (_isLive ? 'none' : 'seek')
+        : (d.localFocalPoint.dx < w / 2 ? 'bri' : 'vol');
+
+    switch (_gMode) {
+      case 'seek':
+        _gAccum += dx;
+        final dur = _player.state.duration.inSeconds;
+        var target = (_gStartPos.inSeconds + (_gAccum * 0.25)).round();
+        if (dur > 0) target = target.clamp(0, dur);
+        if (target < 0) target = 0;
+        _gSeekTarget = Duration(seconds: target);
+        final delta = target - _gStartPos.inSeconds;
+        _flashHud('${delta >= 0 ? '+' : '−'}${_fmt(Duration(seconds: delta.abs()))}   ${_fmt(_gSeekTarget)}',
+            delta >= 0 ? Icons.fast_forward_rounded : Icons.fast_rewind_rounded,
+            persist: true);
+      case 'vol':
+        _curVol = (_curVol - dy * 0.4).clamp(0.0, 100.0);
+        _player.setVolume(_curVol);
+        _muted = _curVol == 0;
+        _flashHud('${_curVol.round()}%', _curVol == 0 ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+            value: _curVol / 100, persist: true);
+      case 'bri':
+        _curBri = (_curBri - dy * 0.003).clamp(0.0, 1.0);
+        ScreenBrightness.instance.setApplicationScreenBrightness(_curBri).catchError((_) {});
+        _flashHud('${(_curBri * 100).round()}%', Icons.brightness_6_rounded, value: _curBri, persist: true);
+    }
+  }
+
+  void _onScaleEnd(ScaleEndDetails d) {
+    if (_gMode == 'seek') _player.seek(_gSeekTarget);
+    _gMode = null;
+    _hideHud();
+    _scheduleHide();
+  }
+
+  void _flashHud(String text, IconData icon, {double? value, bool persist = false}) {
+    _hudTimer?.cancel();
+    setState(() {
+      _hud = text;
+      _hudIcon = icon;
+      _hudValue = value;
+    });
+    if (!persist) _hudTimer = Timer(const Duration(milliseconds: 650), () => mounted ? setState(() => _hud = null) : null);
+  }
+
+  void _hideHud() {
+    _hudTimer?.cancel();
+    _hudTimer = Timer(const Duration(milliseconds: 450), () => mounted ? setState(() => _hud = null) : null);
+  }
+
+  Widget _hudOverlay() {
+    if (_hud == null) return const SizedBox.shrink();
+    return Center(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.6), borderRadius: BorderRadius.circular(16)),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(_hudIcon, color: Colors.white, size: 30),
+            const SizedBox(height: 8),
+            Text(_hud!, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+            if (_hudValue != null) ...[
+              const SizedBox(height: 8),
+              SizedBox(
+                width: 120,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(2),
+                  child: LinearProgressIndicator(
+                    value: _hudValue,
+                    minHeight: 4,
+                    backgroundColor: Colors.white24,
+                    valueColor: const AlwaysStoppedAnimation(Colors.white),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _setSleep(int minutes) {
+    _sleepTimer?.cancel();
+    _sleepMin = minutes;
+    if (minutes > 0) {
+      _sleepTimer = Timer(Duration(minutes: minutes), () {
+        _player.pause();
+        if (mounted) setState(() => _sleepMin = 0);
+      });
+    }
+    setState(() {});
   }
 
   Widget _overlay() {

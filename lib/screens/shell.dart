@@ -5,7 +5,7 @@ import '../models.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import '../xtream.dart';
-import 'guide_screen.dart';
+import 'globe_screen.dart';
 import 'home_screen.dart';
 import 'mylist_screen.dart';
 import 'profile_screen.dart';
@@ -28,7 +28,7 @@ class _HomeShellState extends State<HomeShell> {
 
   static const _nav = [
     (icon: Icons.home_rounded, label: 'Home'),
-    (icon: Icons.live_tv_rounded, label: 'Live'),
+    (icon: Icons.auto_awesome_rounded, label: 'Discover'),
     (icon: Icons.search_rounded, label: 'Search'),
     (icon: Icons.favorite_rounded, label: 'My List'),
     (icon: Icons.person_rounded, label: 'Profile'),
@@ -36,7 +36,7 @@ class _HomeShellState extends State<HomeShell> {
 
   Widget _pageFor(int i) => switch (i) {
         0 => HomeScreen(client: widget.client, onBrowse: () => setState(() => _index = 2)),
-        1 => GuideScreen(client: widget.client),
+        1 => GlobeScreen(client: widget.client),
         2 => SearchScreen(client: widget.client),
         3 => MyListScreen(client: widget.client),
         _ => ProfileScreen(client: widget.client, onLogout: widget.onLogout, onSwitch: widget.onSwitch),

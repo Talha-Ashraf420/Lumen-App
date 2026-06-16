@@ -49,6 +49,7 @@ dependencies:
   flutter_animate: ^4.5.2
   lottie: ^3.1.2
   flutter_secure_storage: ^9.2.2
+  screen_brightness: ^2.1.2
 
 dev_dependencies:
   flutter_test:
