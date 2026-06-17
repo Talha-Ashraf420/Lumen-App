@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../catalog_cache.dart';
 import '../library.dart';
+import '../responsive.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -414,7 +415,7 @@ class SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClien
     return GridView.builder(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
+        crossAxisCount: gridColumns(MediaQuery.sizeOf(context).width, tile: live ? 150 : 132),
         childAspectRatio: live ? 0.82 : 0.50,
         crossAxisSpacing: 13,
         mainAxisSpacing: 20,

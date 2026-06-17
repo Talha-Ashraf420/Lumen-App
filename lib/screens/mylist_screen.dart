@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../library.dart';
 import '../models.dart';
+import '../responsive.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import '../xtream.dart';
@@ -44,8 +45,8 @@ class MyListScreen extends StatelessWidget {
               if (favs.isEmpty) return _empty();
               return GridView.builder(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 120),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 3,
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: gridColumns(MediaQuery.sizeOf(context).width, tile: 132),
                   childAspectRatio: 0.56,
                   crossAxisSpacing: 12,
                   mainAxisSpacing: 16,

@@ -55,6 +55,33 @@ class _BeamMark extends CustomPainter {
   bool shouldRepaint(_BeamMark old) => old.color != color;
 }
 
+/// Subtle scale-up on mouse hover (desktop affordance; no-op on touch).
+class HoverScale extends StatefulWidget {
+  final Widget child;
+  final double scale;
+  const HoverScale({super.key, required this.child, this.scale = 1.04});
+  @override
+  State<HoverScale> createState() => _HoverScaleState();
+}
+
+class _HoverScaleState extends State<HoverScale> {
+  bool _hover = false;
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: AnimatedScale(
+        scale: _hover ? widget.scale : 1.0,
+        duration: const Duration(milliseconds: 140),
+        curve: Curves.easeOut,
+        child: widget.child,
+      ),
+    );
+  }
+}
+
 /// Frosted "liquid glass" surface (used for nav / menus / sheets).
 class Glass extends StatelessWidget {
   final Widget child;
@@ -332,7 +359,7 @@ class PosterCard extends StatelessWidget {
       ],
     );
 
-    return GestureDetector(onTap: onTap, child: tile)
+    return HoverScale(child: GestureDetector(onTap: onTap, child: tile))
         .animate()
         .fadeIn(duration: 300.ms, delay: (index.clamp(0, 12) * 28).ms)
         .slideY(begin: 0.08, end: 0, curve: Curves.easeOutCubic);
@@ -417,7 +444,7 @@ class ChannelCard extends StatelessWidget {
             style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
       ],
     );
-    return GestureDetector(onTap: onTap, child: tile)
+    return HoverScale(child: GestureDetector(onTap: onTap, child: tile))
         .animate()
         .fadeIn(duration: 300.ms, delay: (index.clamp(0, 12) * 28).ms)
         .slideY(begin: 0.08, end: 0, curve: Curves.easeOutCubic);

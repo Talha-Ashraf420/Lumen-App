@@ -4,6 +4,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../library.dart';
 import '../models.dart';
+import '../responsive.dart';
 import '../theme.dart';
 import '../tmdb.dart';
 import '../xtream.dart';
@@ -115,7 +116,11 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
             ),
           ),
           SafeArea(
-            child: SingleChildScrollView(
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: isWide(context) ? 920 : double.infinity),
+                child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -220,6 +225,8 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                   ],
                   if (info?.director.isNotEmpty == true) _meta('Director', info!.director),
                 ],
+              ),
+            ),
               ),
             ),
           ),

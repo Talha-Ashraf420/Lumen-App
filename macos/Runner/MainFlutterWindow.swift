@@ -6,11 +6,10 @@ class MainFlutterWindow: NSWindow {
     let flutterViewController = FlutterViewController()
     self.contentViewController = flutterViewController
 
-    // Lumen's UI is portrait/phone-shaped — open in a tall window and keep a
-    // sensible minimum so layouts don't break.
-    let initial = NSSize(width: 460, height: 900)
-    self.setContentSize(initial)
-    self.contentMinSize = NSSize(width: 380, height: 640)
+    // Desktop layout: open in a landscape window; the UI adapts (sidebar when
+    // wide, bottom-nav when narrow).
+    self.setContentSize(NSSize(width: 1280, height: 820))
+    self.contentMinSize = NSSize(width: 760, height: 560)
     self.center()
 
     RegisterGeneratedPlugins(registry: flutterViewController)

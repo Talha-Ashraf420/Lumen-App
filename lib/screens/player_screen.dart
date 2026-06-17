@@ -354,7 +354,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
     return Scaffold(
       backgroundColor: Colors.black,
-      body: GestureDetector(
+      body: Focus(
+        autofocus: true,
+        onKeyEvent: _onKey,
+        child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: _tap,
         onDoubleTapDown: (d) => _doubleTapX = d.localPosition.dx,
@@ -403,7 +406,36 @@ class _PlayerScreenState extends State<PlayerScreen> {
           ],
         ),
       ),
+      ),
     );
+  }
+
+  KeyEventResult _onKey(FocusNode node, KeyEvent e) {
+    if (e is! KeyDownEvent && e is! KeyRepeatEvent) return KeyEventResult.ignored;
+    final k = e.logicalKey;
+    if (k == LogicalKeyboardKey.space) {
+      pc.player!.playOrPause();
+      _scheduleHide();
+    } else if (k == LogicalKeyboardKey.arrowRight) {
+      if (!_isLive) {
+        _seekBy(10);
+        _flashHud('+10s', Icons.forward_10_rounded);
+      }
+    } else if (k == LogicalKeyboardKey.arrowLeft) {
+      if (!_isLive) {
+        _seekBy(-10);
+        _flashHud('−10s', Icons.replay_10_rounded);
+      }
+    } else if (k == LogicalKeyboardKey.keyF) {
+      _toggleFullscreen();
+    } else if (k == LogicalKeyboardKey.keyM) {
+      _toggleMute();
+    } else if (k == LogicalKeyboardKey.escape || k == LogicalKeyboardKey.arrowDown) {
+      _minimize();
+    } else {
+      return KeyEventResult.ignored;
+    }
+    return KeyEventResult.handled;
   }
 
   // ---- gestures ----

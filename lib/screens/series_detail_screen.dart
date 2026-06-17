@@ -5,6 +5,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../library.dart';
 import '../models.dart';
+import '../responsive.dart';
 import '../theme.dart';
 import '../tmdb.dart';
 import '../xtream.dart';
@@ -79,19 +80,25 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
               ? _tmdb!.backdrop
               : (info.backdrop.isNotEmpty ? info.backdrop : info.cover);
 
-          return CustomScrollView(
-            slivers: [
-              SliverToBoxAdapter(child: _hero(info, art, eps)),
-              SliverToBoxAdapter(child: _meta(info, seasons)),
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 40),
-                sliver: SliverList.separated(
-                  itemCount: eps.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 12),
-                  itemBuilder: (_, i) => _EpisodeTile(ep: eps[i], fallback: info.cover, index: i, onTap: () => _playEpisodes(eps, i, info)),
-                ),
+          return Align(
+            alignment: Alignment.topCenter,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: isWide(context) ? 1000 : double.infinity),
+              child: CustomScrollView(
+                slivers: [
+                  SliverToBoxAdapter(child: _hero(info, art, eps)),
+                  SliverToBoxAdapter(child: _meta(info, seasons)),
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 40),
+                    sliver: SliverList.separated(
+                      itemCount: eps.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 12),
+                      itemBuilder: (_, i) => _EpisodeTile(ep: eps[i], fallback: info.cover, index: i, onTap: () => _playEpisodes(eps, i, info)),
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           );
         },
       ),
