@@ -1,9 +1,7 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import '../playback.dart';
 import '../responsive.dart';
-import '../theme.dart';
 import 'player_screen.dart';
 
 /// Floating, draggable mini-player shown (above the Navigator) whenever playback
@@ -82,7 +80,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
-                        _surface(wide),
+                        _surface(),
                         // darken slightly so controls read on any artwork
                         const DecoratedBox(
                           decoration: BoxDecoration(
@@ -147,20 +145,14 @@ class _MiniPlayerState extends State<MiniPlayer> {
     );
   }
 
-  /// Live video on mobile; poster artwork on desktop (reliable there).
-  Widget _surface(bool wide) {
-    if (!wide) {
-      return Video(controller: pc.controller!, controls: NoVideoControls, fit: BoxFit.contain);
-    }
-    final poster = pc.item.poster;
-    if (poster.isNotEmpty) {
-      return CachedNetworkImage(
-        imageUrl: poster,
-        fit: BoxFit.cover,
-        errorWidget: (_, _, _) => ColoredBox(color: surfaceHi),
-      );
-    }
-    return ColoredBox(color: surfaceHi, child: Center(child: Icon(Icons.movie_rounded, color: subtle, size: 30)));
+  /// Live video (the full player is popped on minimise, so only this Video is
+  /// attached to the controller).
+  Widget _surface() {
+    return Video(
+      controller: pc.controller!,
+      controls: NoVideoControls,
+      fit: BoxFit.cover,
+    );
   }
 
   Widget _miniBtn(IconData icon, VoidCallback onTap, {double size = 22}) => GestureDetector(
