@@ -415,8 +415,8 @@ class SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClien
     return GridView.builder(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: gridColumns(MediaQuery.sizeOf(context).width, tile: live ? 150 : 132),
-        childAspectRatio: live ? 0.82 : 0.50,
+        crossAxisCount: gridColumns(MediaQuery.sizeOf(context).width, tile: live ? 150 : 136),
+        childAspectRatio: live ? 0.82 : 0.66,
         crossAxisSpacing: 13,
         mainAxisSpacing: 20,
       ),

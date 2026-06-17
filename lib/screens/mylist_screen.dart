@@ -44,21 +44,20 @@ class MyListScreen extends StatelessWidget {
               return GridView.builder(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 120),
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: gridColumns(MediaQuery.sizeOf(context).width, tile: 132),
-                  childAspectRatio: 0.56,
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 16,
+                  crossAxisCount: gridColumns(MediaQuery.sizeOf(context).width, tile: 136),
+                  childAspectRatio: 0.66,
+                  crossAxisSpacing: 14,
+                  mainAxisSpacing: 18,
                 ),
                 itemCount: favs.length,
-                itemBuilder: (_, i) => PosterCard(
-                  name: favs[i].name,
-                  image: favs[i].image,
-                  rating: 0,
-                  badge: favs[i].isLive ? 'LIVE' : null,
-                  live: favs[i].isLive,
-                  index: i,
-                  onTap: () => _open(context, favs[i]),
-                ),
+                itemBuilder: (_, i) => favs[i].isLive
+                    ? ChannelCard(name: favs[i].name, logo: favs[i].image, index: i, onTap: () => _open(context, favs[i]))
+                    : PosterCard(
+                        name: favs[i].name,
+                        image: favs[i].image,
+                        index: i,
+                        onTap: () => _open(context, favs[i]),
+                      ),
               );
             },
           ),

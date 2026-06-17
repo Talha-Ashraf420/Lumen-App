@@ -149,16 +149,14 @@ class _HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMi
               separatorBuilder: (_, _) => const SizedBox(width: 14),
               itemBuilder: (_, i) => SizedBox(
                 width: kPosterW,
-                child: PosterCard(
-                  name: recent[i].name,
-                  image: recent[i].image,
-                  rating: 0,
-                  subtitle: recent[i].isLive ? null : null,
-                  badge: recent[i].isLive ? 'LIVE' : null,
-                  live: recent[i].isLive,
-                  index: i,
-                  onTap: () => _openRecent(recent[i]),
-                ),
+                child: recent[i].isLive
+                    ? ChannelCard(name: recent[i].name, logo: recent[i].image, index: i, onTap: () => _openRecent(recent[i]))
+                    : PosterCard(
+                        name: recent[i].name,
+                        image: recent[i].image,
+                        index: i,
+                        onTap: () => _openRecent(recent[i]),
+                      ),
               ),
             ),
           ),

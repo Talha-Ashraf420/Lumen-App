@@ -286,19 +286,17 @@ class SectionHeader extends StatelessWidget {
 }
 
 /// Standard width for a poster card in a shelf (keeps everything consistent).
-const double kPosterW = 128;
+const double kPosterW = 134;
 double posterShelfHeight({bool live = false}) =>
-    live ? kPosterW + 44 : kPosterW * 1.5 + 48; // image + title block (with slack)
+    live ? kPosterW + 44 : kPosterW * 1.5 + 4; // poster (info overlaid) / channel logo + name
 
-/// The single poster/channel card used everywhere: fixed full-width poster
-/// (no Expanded/AspectRatio mismatch) + crisp title below. Never clips.
-class PosterCard extends StatelessWidget {
+/// Premium movie/series poster tile: art fills the card, title + year + rating
+/// overlaid on a gradient; hover reveals a play affordance + accent glow.
+class PosterCard extends StatefulWidget {
   final String name;
   final String image;
   final double rating;
-  final String? subtitle;
-  final String? badge;
-  final bool live;
+  final String? subtitle; // year
   final int index;
   final VoidCallback onTap;
   const PosterCard({
@@ -308,93 +306,133 @@ class PosterCard extends StatelessWidget {
     required this.onTap,
     this.rating = 0,
     this.subtitle,
-    this.badge,
-    this.live = false,
     this.index = 0,
   });
+  @override
+  State<PosterCard> createState() => _PosterCardState();
+}
+
+class _PosterCardState extends State<PosterCard> {
+  bool _hover = false;
 
   @override
   Widget build(BuildContext context) {
-    final poster = AspectRatio(
-      aspectRatio: live ? 1 : 2 / 3,
-      child: DecoratedBox(
-        decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), boxShadow: glow(Colors.black, blur: 14, y: 7, a: 0.5)),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              const _Fallback(),
-              if (image.isNotEmpty)
-                Padding(
-                  padding: live ? const EdgeInsets.all(14) : EdgeInsets.zero,
-                  child: CachedNetworkImage(
-                    imageUrl: image,
-                    fit: live ? BoxFit.contain : BoxFit.cover,
-                    fadeInDuration: const Duration(milliseconds: 220),
-                    errorWidget: (_, _, _) => const SizedBox.shrink(),
-                  ),
-                ),
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+    final w = widget;
+    final card = AspectRatio(
+      aspectRatio: 2 / 3,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            const _Fallback(),
+            if (w.image.isNotEmpty)
+              CachedNetworkImage(
+                imageUrl: w.image,
+                fit: BoxFit.cover,
+                fadeInDuration: const Duration(milliseconds: 250),
+                errorWidget: (_, _, _) => const SizedBox.shrink(),
+              ),
+            // bottom scrim for the title
+            const DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.bottomCenter,
+                  end: Alignment.topCenter,
+                  colors: [Colors.black, Colors.transparent],
+                  stops: [0.0, 0.55],
                 ),
               ),
-              if (rating > 0)
-                Positioned(
-                  left: 7,
-                  top: 7,
-                  child: Glass(
-                    radius: 9,
-                    blur: 6,
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      Icon(Icons.star_rounded, color: gold, size: 12),
-                      const SizedBox(width: 3),
-                      Text(rating.toStringAsFixed(1), style: TextStyle(color: gold, fontSize: 10.5, fontWeight: FontWeight.w800)),
-                    ]),
-                  ),
+            ),
+            // title + year
+            Positioned(
+              left: 11,
+              right: 11,
+              bottom: 10,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(w.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700, height: 1.15)),
+                  if (w.subtitle != null && w.subtitle!.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(w.subtitle!, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: Colors.white60)),
+                    ),
+                ],
+              ),
+            ),
+            if (w.rating > 0)
+              Positioned(
+                left: 8,
+                top: 8,
+                child: Glass(
+                  radius: 9,
+                  blur: 6,
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.star_rounded, color: gold, size: 12),
+                    const SizedBox(width: 3),
+                    Text(w.rating.toStringAsFixed(1), style: TextStyle(color: gold, fontSize: 10.5, fontWeight: FontWeight.w800)),
+                  ]),
                 ),
-              if (badge != null)
-                Positioned(
-                  left: 7,
-                  top: 7,
+              ),
+            // hover veil + play
+            AnimatedOpacity(
+              opacity: _hover ? 1 : 0,
+              duration: const Duration(milliseconds: 180),
+              child: ColoredBox(
+                color: Colors.black.withValues(alpha: 0.32),
+                child: Center(
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                    decoration: BoxDecoration(color: const Color(0xFFFF3B5C), borderRadius: BorderRadius.circular(8)),
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      Container(width: 5, height: 5, decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
-                      const SizedBox(width: 4),
-                      Text(badge!, style: const TextStyle(fontSize: 8.5, fontWeight: FontWeight.w800, letterSpacing: 0.4, color: Colors.white)),
-                    ]),
+                    padding: const EdgeInsets.all(11),
+                    decoration: BoxDecoration(color: accent, shape: BoxShape.circle, boxShadow: glow(accent)),
+                    child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 26),
                   ),
                 ),
-            ],
-          ),
+              ),
+            ),
+            // hairline edge
+            DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
+              ),
+            ),
+          ],
         ),
       ),
     );
 
-    final tile = Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        poster,
-        const SizedBox(height: 8),
-        Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
-        if (subtitle != null && subtitle!.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(top: 2),
-            child: Text(subtitle!, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: subtle)),
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedScale(
+          scale: _hover ? 1.05 : 1.0,
+          duration: const Duration(milliseconds: 170),
+          curve: Curves.easeOut,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 170),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: _hover
+                  ? [BoxShadow(color: accent.withValues(alpha: 0.34), blurRadius: 26, offset: const Offset(0, 12))]
+                  : [BoxShadow(color: Colors.black.withValues(alpha: isDark ? 0.45 : 0.18), blurRadius: 14, offset: const Offset(0, 7))],
+            ),
+            child: card,
           ),
-      ],
-    );
-
-    return HoverScale(child: GestureDetector(onTap: onTap, child: tile))
+        ),
+      ),
+    )
         .animate()
-        .fadeIn(duration: 300.ms, delay: (index.clamp(0, 12) * 28).ms)
-        .slideY(begin: 0.08, end: 0, curve: Curves.easeOutCubic);
+        .fadeIn(duration: 320.ms, delay: (widget.index.clamp(0, 12) * 30).ms)
+        .slideY(begin: 0.1, end: 0, curve: Curves.easeOutCubic);
   }
 }
 
