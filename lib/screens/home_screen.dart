@@ -230,18 +230,15 @@ class _HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMi
               return CustomScrollView(
                 slivers: [
                   SliverToBoxAdapter(
-                    child: SizedBox(
-                      height: MediaQuery.sizeOf(context).height,
-                      child: _SpotlightHero(
-                        client: c,
-                        future: heroCat == null
-                            ? Future.value(const <VodStream>[])
-                            : c
-                                .vodStreams(heroCat)
-                                .then((l) => l.where((m) => m.icon.isNotEmpty).take(8).toList())
-                                .catchError((_) => <VodStream>[]),
-                        onOpen: (m) => _push(MovieDetailScreen(client: c, movie: m)),
-                      ),
+                    child: _SpotlightHero(
+                      client: c,
+                      future: heroCat == null
+                          ? Future.value(const <VodStream>[])
+                          : c
+                              .vodStreams(heroCat)
+                              .then((l) => l.where((m) => m.icon.isNotEmpty).take(8).toList())
+                              .catchError((_) => <VodStream>[]),
+                      onOpen: (m) => _push(MovieDetailScreen(client: c, movie: m)),
                     ),
                   ),
                   SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.only(top: 12), child: Column(children: below))),
@@ -647,6 +644,7 @@ class _SpotlightHero extends StatefulWidget {
 class _SpotlightHeroState extends State<_SpotlightHero> {
   List<VodStream> _items = [];
   int _index = 0;
+  bool _loaded = false;
   Timer? _timer;
   final Map<int, TmdbInfo?> _meta = {};
 
@@ -655,11 +653,16 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
     super.initState();
     widget.future.then((l) {
       if (!mounted) return;
-      setState(() => _items = l);
+      setState(() {
+        _items = l;
+        _loaded = true;
+      });
       if (l.isNotEmpty) {
         _fetchMeta(l.first);
         _timer = Timer.periodic(const Duration(seconds: 8), (_) => _advance());
       }
+    }).catchError((_) {
+      if (mounted) setState(() => _loaded = true);
     });
   }
 
@@ -709,8 +712,11 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
 
   @override
   Widget build(BuildContext context) {
+    // Loaded but nothing to feature → collapse so the shelves show at the top.
+    if (_loaded && _items.isEmpty) return const SizedBox.shrink();
+    // Still loading → a bounded placeholder (never an infinite full-screen spin).
     if (_items.isEmpty) {
-      return ColoredBox(color: bg, child: Center(child: CircularProgressIndicator(color: accent, strokeWidth: 2)));
+      return SizedBox(height: 360, child: Center(child: CircularProgressIndicator(color: accent, strokeWidth: 2)));
     }
     final m = _items[_index];
     final t = _meta[m.streamId];
@@ -720,7 +726,9 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
     final genre = t?.genres ?? '';
     final overview = t?.overview ?? '';
 
-    return Stack(
+    return SizedBox(
+      height: MediaQuery.sizeOf(context).height * 0.9,
+      child: Stack(
       fit: StackFit.expand,
       children: [
         AnimatedSwitcher(
@@ -844,6 +852,7 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
           ),
         ),
       ],
+      ),
     );
   }
 }
