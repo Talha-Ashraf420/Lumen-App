@@ -54,6 +54,7 @@ dependencies:
   screen_brightness: ^2.1.2
   url_launcher: ^6.3.0
   flutter_card_swiper: ^7.0.1
+  window_manager: ^0.4.2
 
 dev_dependencies:
   flutter_test:

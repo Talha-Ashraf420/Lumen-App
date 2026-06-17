@@ -1,9 +1,12 @@
 import 'dart:async';
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:screen_brightness/screen_brightness.dart';
+import 'package:window_manager/window_manager.dart';
 import '../library.dart';
 import '../models.dart';
 import '../playback.dart';
@@ -85,6 +88,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _hideTimer?.cancel();
     _hudTimer?.cancel();
     ScreenBrightness.instance.resetApplicationScreenBrightness().catchError((_) {});
+    if (_isDesktop && _fullscreen) windowManager.setFullScreen(false);
     SystemChrome.setPreferredOrientations(DeviceOrientation.values);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
@@ -93,6 +97,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// Leave the full player but keep playing in the floating mini-player.
   void _minimize() {
     pc.minimize();
+    if (_isDesktop && _fullscreen) windowManager.setFullScreen(false);
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     Navigator.of(context).pop();
@@ -128,9 +133,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _scheduleHide();
   }
 
+  static final bool _isDesktop =
+      !kIsWeb && (Platform.isMacOS || Platform.isWindows || Platform.isLinux);
+
   Future<void> _toggleFullscreen() async {
     _fullscreen = !_fullscreen;
-    if (_fullscreen) {
+    if (_isDesktop) {
+      await windowManager.setFullScreen(_fullscreen);
+    } else if (_fullscreen) {
       await SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
       await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     } else {

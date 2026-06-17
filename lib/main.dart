@@ -1,5 +1,8 @@
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
+import 'package:window_manager/window_manager.dart';
 import 'catalog_cache.dart';
 import 'epg_cache.dart';
 import 'home_config.dart';
@@ -15,8 +18,12 @@ import 'screens/login_screen.dart';
 import 'screens/mini_player.dart';
 import 'screens/shell.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Desktop: enable window control (used for real fullscreen in the player).
+  if (!kIsWeb && (Platform.isMacOS || Platform.isWindows || Platform.isLinux)) {
+    await windowManager.ensureInitialized();
+  }
   MediaKit.ensureInitialized(); // libmpv — native TS/MKV/HLS playback
 
   // Never show a blank/white error screen — paint errors on the dark canvas.
