@@ -49,7 +49,7 @@ class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin
 
   Future<void> _load() async {
     try {
-      final pool = await Discovery.pool(widget.client, categoryId: _cat);
+      final pool = await Discovery.pool(widget.client, target: 90, categoryId: _cat);
       if (!mounted) return;
       setState(() {
         _pool = pool;
@@ -237,8 +237,8 @@ class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin
             frontIdx = i;
           }
           final t = (r.z + 1) / 2; // 0 = far back, 1 = front
-          if (t < 0.12) continue; // cull the deep back (occluded anyway)
-          projected.add(_Proj(i, cx + r.x * radius, cy + r.y * radius, r.z, 0.6 + 0.5 * t, 0.28 + 0.72 * t, t > 0.55));
+          if (t < 0.06) continue; // cull only the deep-back tip
+          projected.add(_Proj(i, cx + r.x * radius, cy + r.y * radius, r.z, 0.6 + 0.5 * t, 0.28 + 0.72 * t, true));
         }
         if (frontIdx != _front) {
           _front = frontIdx;
