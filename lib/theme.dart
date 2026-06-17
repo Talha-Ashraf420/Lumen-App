@@ -35,32 +35,32 @@ class Palette {
   });
 }
 
-const _accent = Color(0xFF7C6BFF); // shared brand accent
+const _accent = Color(0xFF22CBA8); // shared brand accent (teal)
 
 const darkPalette = Palette(
-  bg: Color(0xFF0C0A12),
-  surface: Color(0xFF15131C),
-  surfaceHi: Color(0xFF1F1C28),
+  bg: Color(0xFF0A1412),
+  surface: Color(0xFF121B18),
+  surfaceHi: Color(0xFF1B2723),
   line: Color(0x14FFFFFF),
-  textHi: Color(0xFFF4F2F8),
-  muted: Color(0xFFA8A2B5),
-  subtle: Color(0xFF6E6980),
-  accent: Color(0xFF8B7BFF),
-  accentDark: Color(0xFF6B5BE0),
+  textHi: Color(0xFFEAF3EF),
+  muted: Color(0xFF9DB1A9),
+  subtle: Color(0xFF6A7C75),
+  accent: Color(0xFF22CBA8),
+  accentDark: Color(0xFF14A88B),
   gold: Color(0xFFFFC15E),
   brightness: Brightness.dark,
 );
 
 const lightPalette = Palette(
-  bg: Color(0xFFFBFBFD),
+  bg: Color(0xFFF5F8F7),
   surface: Color(0xFFFFFFFF),
-  surfaceHi: Color(0xFFF1F0F5),
+  surfaceHi: Color(0xFFEAF0EE),
   line: Color(0x14000000),
-  textHi: Color(0xFF15131C),
-  muted: Color(0xFF6B6676),
-  subtle: Color(0xFF9D97A8),
-  accent: Color(0xFF6C5CE7),
-  accentDark: Color(0xFF5546C9),
+  textHi: Color(0xFF0C1714),
+  muted: Color(0xFF5C6B66),
+  subtle: Color(0xFF93A29C),
+  accent: Color(0xFF0E9E86),
+  accentDark: Color(0xFF0B7E6B),
   gold: Color(0xFFD9982E),
   brightness: Brightness.light,
 );
@@ -94,6 +94,18 @@ List<BoxShadow> glow(Color c, {double blur = 24, double y = 10, double a = 0.0})
         offset: Offset(0, y),
       ),
     ];
+
+// ---- Type scale (elegant, airy) — large light display, refined labels. ----
+TextStyle kHero({Color? color}) =>
+    GoogleFonts.manrope(fontSize: 56, fontWeight: FontWeight.w300, letterSpacing: -1.0, height: 1.05, color: color ?? textHi);
+TextStyle kDisplay({Color? color}) =>
+    GoogleFonts.manrope(fontSize: 34, fontWeight: FontWeight.w700, letterSpacing: -0.4, height: 1.08, color: color ?? textHi);
+TextStyle kTitle({Color? color}) =>
+    GoogleFonts.manrope(fontSize: 22, fontWeight: FontWeight.w700, letterSpacing: -0.2, color: color ?? textHi);
+TextStyle kSection({Color? color}) =>
+    GoogleFonts.manrope(fontSize: 12.5, fontWeight: FontWeight.w700, letterSpacing: 1.6, color: color ?? muted);
+TextStyle kBody({Color? color}) =>
+    GoogleFonts.manrope(fontSize: 15, fontWeight: FontWeight.w400, height: 1.6, color: color ?? muted);
 
 ThemeData buildTheme(Palette p) {
   final base = ThemeData(brightness: p.brightness, useMaterial3: true);

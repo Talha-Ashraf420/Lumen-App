@@ -1,14 +1,17 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'dart:async';
 import '../catalog_cache.dart';
 import '../home_config.dart';
 import '../library.dart';
 import '../models.dart';
+import '../playback.dart';
+import '../responsive.dart';
 import '../theme.dart';
+import '../tmdb.dart';
 import '../widgets.dart';
 import '../xtream.dart';
-import '../playback.dart';
 import 'movie_detail_screen.dart';
 import 'series_detail_screen.dart';
 
@@ -217,6 +220,36 @@ class _HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMi
               }
             }
 
+            final below = <Widget>[
+              AnimatedBuilder(animation: Library.instance, builder: (_, __) => _libraryRows()),
+              AnimatedBuilder(animation: Library.instance, builder: (_, __) => _recommendationRows(c, d.vodCats)),
+              ...shelves,
+            ];
+
+            if (isWide(context)) {
+              return CustomScrollView(
+                slivers: [
+                  SliverToBoxAdapter(
+                    child: SizedBox(
+                      height: MediaQuery.sizeOf(context).height,
+                      child: _SpotlightHero(
+                        client: c,
+                        future: heroCat == null
+                            ? Future.value(const <VodStream>[])
+                            : c
+                                .vodStreams(heroCat)
+                                .then((l) => l.where((m) => m.icon.isNotEmpty).take(8).toList())
+                                .catchError((_) => <VodStream>[]),
+                        onOpen: (m) => _push(MovieDetailScreen(client: c, movie: m)),
+                      ),
+                    ),
+                  ),
+                  SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.only(top: 12), child: Column(children: below))),
+                  const SliverToBoxAdapter(child: SizedBox(height: 80)),
+                ],
+              );
+            }
+
             return ListView(
               padding: const EdgeInsets.only(bottom: 120),
               children: [
@@ -229,9 +262,7 @@ class _HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMi
                         .then((l) => l.where((m) => m.icon.isNotEmpty).take(6).map(_movie).toList())
                         .catchError((_) => <HItem>[]),
                   ),
-                AnimatedBuilder(animation: Library.instance, builder: (_, __) => _libraryRows()),
-                AnimatedBuilder(animation: Library.instance, builder: (_, __) => _recommendationRows(c, d.vodCats)),
-                ...shelves,
+                ...below,
               ],
             );
           },
@@ -598,6 +629,221 @@ class _Shelf extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// Immersive desktop hero: full-bleed backdrop, big title, actions, and a
+/// poster rail along the bottom that swaps the spotlight (auto-advances).
+class _SpotlightHero extends StatefulWidget {
+  final XtreamClient client;
+  final Future<List<VodStream>> future;
+  final void Function(VodStream) onOpen;
+  const _SpotlightHero({required this.client, required this.future, required this.onOpen});
+  @override
+  State<_SpotlightHero> createState() => _SpotlightHeroState();
+}
+
+class _SpotlightHeroState extends State<_SpotlightHero> {
+  List<VodStream> _items = [];
+  int _index = 0;
+  Timer? _timer;
+  final Map<int, TmdbInfo?> _meta = {};
+
+  @override
+  void initState() {
+    super.initState();
+    widget.future.then((l) {
+      if (!mounted) return;
+      setState(() => _items = l);
+      if (l.isNotEmpty) {
+        _fetchMeta(l.first);
+        _timer = Timer.periodic(const Duration(seconds: 8), (_) => _advance());
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _advance() {
+    if (_items.length < 2) return;
+    _select((_index + 1) % _items.length);
+  }
+
+  void _select(int i) {
+    setState(() => _index = i);
+    _fetchMeta(_items[i]);
+  }
+
+  void _fetchMeta(VodStream m) {
+    if (_meta.containsKey(m.streamId)) return;
+    _meta[m.streamId] = null;
+    Tmdb.movie(m.name).then((t) {
+      if (mounted) setState(() => _meta[m.streamId] = t);
+    });
+  }
+
+  MediaRef _ref(VodStream m) => MediaRef(kind: 'movie', id: m.streamId, name: m.name, image: m.icon, cat: m.categoryId);
+
+  void _play(VodStream m) {
+    final ext = m.containerExtension.isEmpty ? 'mp4' : m.containerExtension;
+    final url = widget.client.streamUrl('movie', m.streamId, ext: ext);
+    PlaybackController.instance.open([
+      PlayerItem(url, m.name, progressKey: 'movie:${m.streamId}', poster: m.icon, ext: ext, favRef: _ref(m)),
+    ], 0);
+  }
+
+  Widget _chip(Widget child) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+        ),
+        child: child,
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    if (_items.isEmpty) {
+      return ColoredBox(color: bg, child: Center(child: CircularProgressIndicator(color: accent, strokeWidth: 2)));
+    }
+    final m = _items[_index];
+    final t = _meta[m.streamId];
+    final backdrop = (t?.backdrop.isNotEmpty == true) ? t!.backdrop : m.icon;
+    final rating = (t?.rating ?? 0) > 0 ? t!.rating : m.rating;
+    final year = _year(m.name);
+    final genre = t?.genres ?? '';
+    final overview = t?.overview ?? '';
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 500),
+          child: CachedNetworkImage(
+            key: ValueKey(backdrop),
+            imageUrl: backdrop,
+            fit: BoxFit.cover,
+            errorWidget: (_, _, _) => ColoredBox(color: surfaceHi),
+          ),
+        ),
+        // left + bottom scrims for legibility, fading into the page bg
+        const DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+              colors: [Colors.black87, Colors.transparent],
+              stops: [0.0, 0.75],
+            ),
+          ),
+        ),
+        DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.bottomCenter,
+              end: Alignment.topCenter,
+              colors: [bg, bg.withValues(alpha: 0)],
+              stops: const [0.0, 0.4],
+            ),
+          ),
+        ),
+        // content
+        Positioned(
+          left: 64,
+          right: 64,
+          bottom: 178,
+          child: SizedBox(
+            width: 640,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(m.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: kHero(color: Colors.white))
+                    .animate(key: ValueKey('t${m.streamId}'))
+                    .fadeIn(duration: 400.ms)
+                    .slideY(begin: 0.15, end: 0),
+                const SizedBox(height: 16),
+                Wrap(spacing: 10, runSpacing: 8, children: [
+                  if (rating > 0)
+                    _chip(Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(Icons.star_rounded, color: gold, size: 15),
+                      const SizedBox(width: 4),
+                      Text(rating.toStringAsFixed(1), style: TextStyle(color: gold, fontWeight: FontWeight.w800, fontSize: 13)),
+                    ])),
+                  if (year.isNotEmpty) _chip(Text(year, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13))),
+                  if (genre.isNotEmpty) _chip(Text(genre, style: const TextStyle(color: Colors.white70, fontSize: 13))),
+                ]),
+                if (overview.isNotEmpty) ...[
+                  const SizedBox(height: 18),
+                  Text(overview, maxLines: 2, overflow: TextOverflow.ellipsis, style: kBody(color: Colors.white70)),
+                ],
+                const SizedBox(height: 26),
+                Row(children: [
+                  PillButton(icon: Icons.play_arrow_rounded, label: 'Play', onTap: () => _play(m)),
+                  const SizedBox(width: 12),
+                  PillButton(icon: Icons.info_outline_rounded, label: 'Details', filled: false, onTap: () => widget.onOpen(m)),
+                  const SizedBox(width: 12),
+                  AnimatedBuilder(
+                    animation: Library.instance,
+                    builder: (_, __) {
+                      final fav = Library.instance.isFav(_ref(m).key);
+                      return GestureDetector(
+                        onTap: () => Library.instance.toggleFav(_ref(m)),
+                        child: Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white.withValues(alpha: 0.14),
+                            border: Border.all(color: Colors.white.withValues(alpha: 0.28)),
+                          ),
+                          child: Icon(fav ? Icons.favorite_rounded : Icons.favorite_border_rounded, color: Colors.white, size: 22),
+                        ),
+                      );
+                    },
+                  ),
+                ]),
+              ],
+            ),
+          ),
+        ),
+        // featured poster rail
+        Positioned(
+          left: 64,
+          right: 24,
+          bottom: 40,
+          height: 122,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: _items.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 14),
+            itemBuilder: (_, i) {
+              final sel = i == _index;
+              return GestureDetector(
+                onTap: () => _select(i),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  width: 82,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: sel ? accent : Colors.white.withValues(alpha: 0.14), width: sel ? 2.5 : 1),
+                    boxShadow: sel ? glow(Colors.black, blur: 16, y: 6) : null,
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: _items[i].icon.isNotEmpty
+                      ? CachedNetworkImage(imageUrl: _items[i].icon, fit: BoxFit.cover, errorWidget: (_, _, _) => ColoredBox(color: surfaceHi))
+                      : ColoredBox(color: surfaceHi),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }

@@ -180,9 +180,9 @@ class Aurora extends StatelessWidget {
       child: Stack(
         children: [
           Positioned.fill(child: ColoredBox(color: bg)),
-          Positioned(top: -160, left: -120, child: _blob(accent.withValues(alpha: 0.26), 380)),
-          Positioned(top: 80, right: -140, child: _blob(accent2.withValues(alpha: 0.18), 340)),
-          Positioned(bottom: -160, left: 20, child: _blob(const Color(0xFF3B2D6B).withValues(alpha: 0.4), 320)),
+          Positioned(top: -160, left: -120, child: _blob(accent.withValues(alpha: 0.22), 380)),
+          Positioned(top: 80, right: -140, child: _blob(accent2.withValues(alpha: 0.14), 340)),
+          Positioned(bottom: -160, left: 20, child: _blob(const Color(0xFF11433A).withValues(alpha: 0.4), 320)),
         ],
       ),
     );
@@ -213,6 +213,38 @@ class BrandedLoading extends StatelessWidget {
     );
     if (!background) return content;
     return Stack(children: [Aurora(), content]);
+  }
+}
+
+/// Pill action button (filled accent or glass) used by hero / detail.
+class PillButton extends StatelessWidget {
+  final IconData? icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool filled;
+  const PillButton({super.key, required this.label, required this.onTap, this.icon, this.filled = true});
+  @override
+  Widget build(BuildContext context) {
+    final fg = filled ? Colors.white : Colors.white;
+    return HoverScale(
+      scale: 1.03,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 14),
+          decoration: BoxDecoration(
+            color: filled ? accent : Colors.white.withValues(alpha: 0.14),
+            borderRadius: BorderRadius.circular(30),
+            border: filled ? null : Border.all(color: Colors.white.withValues(alpha: 0.28)),
+            boxShadow: filled ? glow(accent, blur: 26, y: 10) : null,
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            if (icon != null) ...[Icon(icon, color: fg, size: 20), const SizedBox(width: 8)],
+            Text(label, style: TextStyle(color: fg, fontWeight: FontWeight.w800, fontSize: 15)),
+          ]),
+        ),
+      ),
+    );
   }
 }
 

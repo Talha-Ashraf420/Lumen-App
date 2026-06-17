@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -66,22 +67,12 @@ class _HomeShellState extends State<HomeShell> {
     );
   }
 
-  // ---- desktop: left sidebar + centered content ----
+  // ---- desktop: floating glass sidebar + full-bleed content ----
   Widget _wideLayout(List<Widget> pages) {
     return Row(
       children: [
         _Sidebar(nav: _nav, index: _index, onSelect: _select),
-        Expanded(
-          child: SafeArea(
-            child: Align(
-              alignment: Alignment.topCenter,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: kMaxContent),
-                child: IndexedStack(index: _index, children: pages),
-              ),
-            ),
-          ),
-        ),
+        Expanded(child: IndexedStack(index: _index, children: pages)),
       ],
     );
   }
@@ -138,7 +129,7 @@ class _HomeShellState extends State<HomeShell> {
   }
 }
 
-/// Desktop left navigation sidebar.
+/// Desktop floating glass navigation rail with grouped items + hairline dividers.
 class _Sidebar extends StatelessWidget {
   final List<({IconData icon, String label})> nav;
   final int index;
@@ -147,28 +138,47 @@ class _Sidebar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 228,
-      decoration: BoxDecoration(
-        color: surface.withValues(alpha: 0.55),
-        border: Border(right: BorderSide(color: line)),
-      ),
-      child: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(22, 22, 20, 22),
-              child: Wordmark(size: 26),
+    Widget item(int i) =>
+        _RailItem(icon: nav[i].icon, label: nav[i].label, selected: i == index, onTap: () => onSelect(i));
+
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+        child: Container(
+          width: 236,
+          decoration: BoxDecoration(
+            color: surface.withValues(alpha: isDark ? 0.42 : 0.72),
+            border: Border(right: BorderSide(color: line)),
+          ),
+          child: SafeArea(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Padding(padding: EdgeInsets.fromLTRB(24, 26, 20, 24), child: Wordmark(size: 24)),
+                _label('Browse'),
+                item(0), item(1), item(2),
+                _divider(),
+                _label('Library'),
+                item(3),
+                const Spacer(),
+                _divider(),
+                item(4),
+                const SizedBox(height: 14),
+              ],
             ),
-            for (var i = 0; i < nav.length; i++)
-              _RailItem(icon: nav[i].icon, label: nav[i].label, selected: i == index, onTap: () => onSelect(i)),
-            const Spacer(),
-          ],
+          ),
         ),
       ),
     );
   }
+
+  Widget _label(String s) =>
+      Padding(padding: const EdgeInsets.fromLTRB(26, 10, 20, 8), child: Text(s.toUpperCase(), style: kSection()));
+
+  Widget _divider() => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+        child: Divider(height: 1, color: line),
+      );
 }
 
 class _RailItem extends StatefulWidget {
@@ -195,18 +205,26 @@ class _RailItemState extends State<_RailItem> {
         onTap: widget.onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 160),
-          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          margin: const EdgeInsets.fromLTRB(14, 2, 14, 2),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
           decoration: BoxDecoration(
-            color: sel ? accent : (_hover ? surfaceHi.withValues(alpha: 0.7) : Colors.transparent),
+            color: _hover && !sel ? surfaceHi.withValues(alpha: 0.6) : Colors.transparent,
             borderRadius: BorderRadius.circular(14),
           ),
           child: Row(
             children: [
-              Icon(widget.icon, size: 21, color: sel ? Colors.white : muted),
+              // active indicator bar
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 160),
+                width: 3,
+                height: sel ? 20 : 0,
+                decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(2)),
+              ),
+              const SizedBox(width: 11),
+              Icon(widget.icon, size: 21, color: sel ? accent : muted),
               const SizedBox(width: 14),
               Text(widget.label,
-                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: sel ? Colors.white : textHi)),
+                  style: TextStyle(fontWeight: sel ? FontWeight.w800 : FontWeight.w600, fontSize: 14.5, color: sel ? textHi : muted)),
             ],
           ),
         ),
