@@ -5,11 +5,11 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../library.dart';
 import '../models.dart';
+import '../playback.dart';
 import '../responsive.dart';
 import '../theme.dart';
 import '../tmdb.dart';
 import '../xtream.dart';
-import 'player_screen.dart';
 
 class SeriesDetailScreen extends StatefulWidget {
   final XtreamClient client;
@@ -55,7 +55,7 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
         favRef: ref,
       );
     }).toList();
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => PlayerScreen(items: items, index: index)));
+    PlaybackController.instance.open(items, index);
   }
 
   @override

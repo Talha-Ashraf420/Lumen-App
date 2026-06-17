@@ -6,9 +6,9 @@ import '../models.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import '../xtream.dart';
+import '../playback.dart';
 import 'category_sheet.dart';
 import 'movie_detail_screen.dart';
-import 'player_screen.dart';
 import 'series_detail_screen.dart';
 
 String _year(String s) => RegExp(r'(19|20)\d{2}').firstMatch(s)?.group(0) ?? '';
@@ -142,7 +142,7 @@ class SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClien
   _Res _ser(Series s) => _Res(s.name, s.cover, s.rating, _year(s.releaseDate.isEmpty ? s.name : s.releaseDate), false,
       () => _push(SeriesDetailScreen(client: widget.client, seriesId: s.seriesId, title: s.name)));
   _Res _liv(LiveStream s) => _Res(s.name, s.icon, 0, '', true,
-      () => _push(PlayerScreen(items: [_liveItem(s)])));
+      () => PlaybackController.instance.open([_liveItem(s)], 0));
 
   PlayerItem _liveItem(LiveStream s) {
     final url = widget.client.streamUrl('live', s.streamId, ext: 'ts');
@@ -405,7 +405,7 @@ class SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClien
       items = chans
           .asMap()
           .entries
-          .map((e) => _Res(e.value.name, e.value.icon, 0, '', true, () => _push(PlayerScreen(items: pl, index: e.key))))
+          .map((e) => _Res(e.value.name, e.value.icon, 0, '', true, () => PlaybackController.instance.open(pl, e.key)))
           .toList();
     }
 

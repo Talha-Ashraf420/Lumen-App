@@ -7,8 +7,8 @@ import '../models.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import '../xtream.dart';
+import '../playback.dart';
 import 'category_sheet.dart';
-import 'player_screen.dart';
 
 /// The "Live" tab — a TV guide: channel rows with now/next + progress, a category
 /// filter, tap-to-play (with channel zapping), and a full-day schedule sheet that
@@ -74,7 +74,7 @@ class _GuideScreenState extends State<GuideScreen> with AutomaticKeepAliveClient
 
   void _play(List<LiveStream> all, int index) {
     final pl = all.map(_liveItem).toList();
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => PlayerScreen(items: pl, index: index)));
+    PlaybackController.instance.open(pl, index);
   }
 
   @override
@@ -153,11 +153,9 @@ class _GuideScreenState extends State<GuideScreen> with AutomaticKeepAliveClient
         onWatch: (entry) {
           Navigator.pop(context);
           final url = widget.client.timeshiftUrl(channel.streamId, entry.timeshiftStart, entry.durationMinutes);
-          Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => PlayerScreen(items: [
-              PlayerItem(url, '${channel.name} · ${entry.title}', ext: 'ts', poster: channel.icon),
-            ]),
-          ));
+          PlaybackController.instance.open([
+            PlayerItem(url, '${channel.name} · ${entry.title}', ext: 'ts', poster: channel.icon),
+          ], 0);
         },
       ),
     );

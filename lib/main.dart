@@ -15,7 +15,7 @@ import 'theme.dart';
 import 'widgets.dart';
 import 'xtream.dart';
 import 'screens/login_screen.dart';
-import 'screens/mini_player.dart';
+import 'screens/player_host.dart';
 import 'screens/shell.dart';
 
 Future<void> main() async {
@@ -62,11 +62,11 @@ class LumenApp extends StatelessWidget {
           // Flip instantly (no lerp) — our global palette getters switch at once,
           // and a non-const home forces the whole subtree to re-read them.
           themeAnimationDuration: Duration.zero,
-          // Float the mini-player above every screen.
+          // The player lives above every screen (full-screen or docked mini).
           builder: (context, child) => Stack(
             children: [
               child ?? const SizedBox.shrink(),
-              const Positioned.fill(child: MiniPlayer()),
+              const Positioned.fill(child: PlayerHost()),
             ],
           ),
           home: _Gate(),

@@ -4,9 +4,9 @@ import '../models.dart';
 import '../responsive.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import '../playback.dart';
 import '../xtream.dart';
 import 'movie_detail_screen.dart';
-import 'player_screen.dart';
 import 'series_detail_screen.dart';
 
 class MyListScreen extends StatelessWidget {
@@ -14,18 +14,16 @@ class MyListScreen extends StatelessWidget {
   const MyListScreen({super.key, required this.client});
 
   void _open(BuildContext context, MediaRef r) {
-    Widget? w;
-    switch (r.kind) {
-      case 'movie':
-        w = MovieDetailScreen(client: client, movie: VodStream(r.id, r.name, r.image, '', 'mp4', 0, ''));
-      case 'series':
-        w = SeriesDetailScreen(client: client, seriesId: r.id, title: r.name);
-      case 'live':
-        w = PlayerScreen(items: [
-          PlayerItem(r.url, r.name, isLive: true, poster: r.image, favRef: r, epg: () => client.shortEpg(r.id))
-        ]);
+    if (r.kind == 'live') {
+      PlaybackController.instance.open([
+        PlayerItem(r.url, r.name, isLive: true, poster: r.image, favRef: r, epg: () => client.shortEpg(r.id))
+      ], 0);
+      return;
     }
-    if (w != null) Navigator.of(context).push(MaterialPageRoute(builder: (_) => w!));
+    final w = r.kind == 'series'
+        ? SeriesDetailScreen(client: client, seriesId: r.id, title: r.name)
+        : MovieDetailScreen(client: client, movie: VodStream(r.id, r.name, r.image, '', 'mp4', 0, ''));
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => w));
   }
 
   @override

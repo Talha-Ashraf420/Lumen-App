@@ -8,8 +8,8 @@ import '../models.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import '../xtream.dart';
+import '../playback.dart';
 import 'movie_detail_screen.dart';
-import 'player_screen.dart';
 import 'series_detail_screen.dart';
 
 String _year(String s) => RegExp(r'(19|20)\d{2}').firstMatch(s)?.group(0) ?? '';
@@ -79,7 +79,7 @@ class _HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMi
     return chans
         .asMap()
         .entries
-        .map((e) => HItem(e.value.name, e.value.icon, 0, 'Live', () => _push(PlayerScreen(items: pl, index: e.key))))
+        .map((e) => HItem(e.value.name, e.value.icon, 0, 'Live', () => PlaybackController.instance.open(pl, e.key)))
         .toList();
   }
 
@@ -87,9 +87,9 @@ class _HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMi
 
   /// Resume a continue-watching entry straight into the player.
   void _resume(Progress pr) {
-    _push(PlayerScreen(items: [
+    PlaybackController.instance.open([
       PlayerItem(pr.url, pr.title, progressKey: pr.key, poster: pr.poster, ext: pr.ext),
-    ]));
+    ], 0);
   }
 
   /// Re-open a recently-watched item by reconstructing its destination.
@@ -102,9 +102,9 @@ class _HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMi
       case 'series':
         _push(SeriesDetailScreen(client: widget.client, seriesId: r.id, title: r.name));
       case 'live':
-        _push(PlayerScreen(items: [
+        PlaybackController.instance.open([
           PlayerItem(r.url, r.name, isLive: true, poster: r.image, favRef: r, epg: () => widget.client.shortEpg(r.id)),
-        ]));
+        ], 0);
     }
   }
 
