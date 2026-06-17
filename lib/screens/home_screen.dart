@@ -732,22 +732,25 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
       fit: StackFit.expand,
       children: [
         AnimatedSwitcher(
-          duration: const Duration(milliseconds: 500),
-          child: CachedNetworkImage(
+          duration: const Duration(milliseconds: 600),
+          child: SizedBox.expand(
             key: ValueKey(backdrop),
-            imageUrl: backdrop,
-            fit: BoxFit.cover,
-            errorWidget: (_, _, _) => ColoredBox(color: surfaceHi),
+            child: CachedNetworkImage(
+              imageUrl: backdrop,
+              fit: BoxFit.cover,
+              alignment: Alignment.topCenter,
+              errorWidget: (_, _, _) => ColoredBox(color: surfaceHi),
+            ),
           ),
         ),
         // left + bottom scrims for legibility, fading into the page bg
-        const DecoratedBox(
+        DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.centerLeft,
               end: Alignment.centerRight,
-              colors: [Colors.black87, Colors.transparent],
-              stops: [0.0, 0.75],
+              colors: [bg, bg.withValues(alpha: 0.45), Colors.transparent],
+              stops: const [0.0, 0.35, 0.7],
             ),
           ),
         ),
@@ -756,18 +759,17 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
             gradient: LinearGradient(
               begin: Alignment.bottomCenter,
               end: Alignment.topCenter,
-              colors: [bg, bg.withValues(alpha: 0)],
-              stops: const [0.0, 0.4],
+              colors: [bg, bg.withValues(alpha: 0.85), bg.withValues(alpha: 0)],
+              stops: const [0.0, 0.22, 0.6],
             ),
           ),
         ),
         // content
         Positioned(
           left: 64,
-          right: 64,
-          bottom: 178,
+          bottom: 188,
           child: SizedBox(
-            width: 640,
+            width: 600,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
