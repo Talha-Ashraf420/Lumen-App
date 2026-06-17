@@ -63,10 +63,23 @@ class LumenApp extends StatelessWidget {
           // and a non-const home forces the whole subtree to re-read them.
           themeAnimationDuration: Duration.zero,
           // The player lives above every screen (full-screen or docked mini).
+          // It gets its own Navigator + Material so the controls have a proper
+          // Overlay (seek slider), text style, and a navigator for sheets.
           builder: (context, child) => Stack(
             children: [
               child ?? const SizedBox.shrink(),
-              const Positioned.fill(child: PlayerHost()),
+              Positioned.fill(
+                child: Navigator(
+                  onGenerateRoute: (settings) => PageRouteBuilder(
+                    settings: settings,
+                    opaque: false,
+                    pageBuilder: (_, _, _) => const Material(
+                      type: MaterialType.transparency,
+                      child: PlayerHost(),
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
           home: _Gate(),
