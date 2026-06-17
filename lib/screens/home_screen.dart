@@ -7,6 +7,7 @@ import '../home_config.dart';
 import '../library.dart';
 import '../models.dart';
 import '../playback.dart';
+import '../refresh.dart';
 import '../responsive.dart';
 import '../theme.dart';
 import '../tmdb.dart';
@@ -44,6 +45,22 @@ class _HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMi
   void initState() {
     super.initState();
     _future = _loadHome();
+    contentRefresh.addListener(_onRefresh);
+  }
+
+  @override
+  void dispose() {
+    contentRefresh.removeListener(_onRefresh);
+    super.dispose();
+  }
+
+  void _onRefresh() {
+    if (mounted) setState(() => _future = _loadHome());
+  }
+
+  Future<void> _pullRefresh() async {
+    refreshContent(); // clears caches + bumps the notifier (reloads _future)
+    await _future;
   }
 
   Future<_HomeData> _loadHome() async {
@@ -225,7 +242,10 @@ class _HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMi
             ];
 
             if (isWide(context)) {
-              return CustomScrollView(
+              return RefreshIndicator(
+                onRefresh: _pullRefresh,
+                color: accent,
+                child: CustomScrollView(
                 slivers: [
                   SliverToBoxAdapter(
                     child: _SpotlightHero(
@@ -242,23 +262,28 @@ class _HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMi
                   SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.only(top: 12), child: Column(children: below))),
                   const SliverToBoxAdapter(child: SizedBox(height: 80)),
                 ],
+                ),
               );
             }
 
-            return ListView(
-              padding: const EdgeInsets.only(bottom: 120),
-              children: [
-                _searchBar(),
-                const SizedBox(height: 14),
-                if (heroCat != null)
-                  _HeroCarousel(
-                    future: c
-                        .vodStreams(heroCat)
-                        .then((l) => l.where((m) => m.icon.isNotEmpty).take(6).map(_movie).toList())
-                        .catchError((_) => <HItem>[]),
-                  ),
-                ...below,
-              ],
+            return RefreshIndicator(
+              onRefresh: _pullRefresh,
+              color: accent,
+              child: ListView(
+                padding: const EdgeInsets.only(bottom: 120),
+                children: [
+                  _searchBar(),
+                  const SizedBox(height: 14),
+                  if (heroCat != null)
+                    _HeroCarousel(
+                      future: c
+                          .vodStreams(heroCat)
+                          .then((l) => l.where((m) => m.icon.isNotEmpty).take(6).map(_movie).toList())
+                          .catchError((_) => <HItem>[]),
+                    ),
+                  ...below,
+                ],
+              ),
             );
           },
         );

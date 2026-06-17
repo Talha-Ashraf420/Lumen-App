@@ -49,7 +49,7 @@ class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin
 
   Future<void> _load() async {
     try {
-      final pool = await Discovery.pool(widget.client, target: 90, categoryId: _cat);
+      final pool = await Discovery.pool(widget.client, target: 250, categoryId: _cat);
       if (!mounted) return;
       setState(() {
         _pool = pool;

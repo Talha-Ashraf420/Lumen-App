@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../catalog_cache.dart';
 import '../library.dart';
+import '../refresh.dart';
 import '../responsive.dart';
 import '../models.dart';
 import '../theme.dart';
@@ -51,14 +52,30 @@ class SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClien
   @override
   void initState() {
     super.initState();
+    _loadCats();
+    contentRefresh.addListener(_onRefresh);
+  }
+
+  void _loadCats() {
     final c = widget.client;
     CatalogCache.instance.vod(c).then((v) => mounted ? setState(() => _movieCats = v) : null);
     CatalogCache.instance.series(c).then((v) => mounted ? setState(() => _seriesCats = v) : null);
     CatalogCache.instance.live(c).then((v) => mounted ? setState(() => _liveCats = v) : null);
   }
 
+  void _onRefresh() {
+    if (!mounted) return;
+    setState(() {
+      _movieByCat.clear();
+      _seriesByCat.clear();
+      _liveByCat.clear();
+    });
+    _loadCats();
+  }
+
   @override
   void dispose() {
+    contentRefresh.removeListener(_onRefresh);
     _ctrl.dispose();
     super.dispose();
   }

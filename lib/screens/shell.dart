@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../models.dart';
+import '../refresh.dart';
 import '../responsive.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -154,7 +155,25 @@ class _Sidebar extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Padding(padding: EdgeInsets.fromLTRB(24, 26, 20, 24), child: Wordmark(size: 24)),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 26, 14, 24),
+                  child: Row(
+                    children: [
+                      const Wordmark(size: 24),
+                      const Spacer(),
+                      IconButton(
+                        tooltip: 'Refresh',
+                        onPressed: () {
+                          refreshContent();
+                          ScaffoldMessenger.of(context)
+                            ..hideCurrentSnackBar()
+                            ..showSnackBar(const SnackBar(content: Text('Refreshing content…'), duration: Duration(seconds: 2)));
+                        },
+                        icon: Icon(Icons.refresh_rounded, color: muted, size: 20),
+                      ),
+                    ],
+                  ),
+                ),
                 _label('Browse'),
                 item(0), item(1), item(2),
                 _divider(),

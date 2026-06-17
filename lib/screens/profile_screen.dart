@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../home_config.dart';
 import '../models.dart';
+import '../refresh.dart';
 import '../store.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -172,6 +173,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const SizedBox(width: 14),
               const Expanded(child: Text('Your Lumen', style: TextStyle(fontWeight: FontWeight.w700))),
               Icon(Icons.chevron_right_rounded, color: subtle),
+            ]),
+          ),
+        ),
+        const SizedBox(height: 10),
+        GestureDetector(
+          onTap: () {
+            refreshContent();
+            ScaffoldMessenger.of(context)
+              ..hideCurrentSnackBar()
+              ..showSnackBar(const SnackBar(content: Text('Refreshing content…'), duration: Duration(seconds: 2)));
+          },
+          child: Glass(
+            radius: 18,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+            child: Row(children: [
+              Icon(Icons.refresh_rounded, color: accent, size: 20),
+              const SizedBox(width: 14),
+              const Expanded(child: Text('Refresh content', style: TextStyle(fontWeight: FontWeight.w700))),
+              Text('Reload catalog', style: TextStyle(color: subtle, fontSize: 13)),
             ]),
           ),
         ),
