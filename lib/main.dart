@@ -62,21 +62,21 @@ class LumenApp extends StatelessWidget {
           // Flip instantly (no lerp) — our global palette getters switch at once,
           // and a non-const home forces the whole subtree to re-read them.
           themeAnimationDuration: Duration.zero,
-          // The player lives above every screen (full-screen or docked mini).
-          // It gets its own Navigator + Material so the controls have a proper
-          // Overlay (seek slider), text style, and a navigator for sheets.
+          // The player floats above every screen (full-screen or docked mini).
+          // A bare Overlay (+ Material) gives the controls an Overlay (seek
+          // slider) and a text style, while passing clicks through wherever the
+          // player isn't painting — so the app stays interactive (e.g. while the
+          // mini is docked).
           builder: (context, child) => Stack(
             children: [
               child ?? const SizedBox.shrink(),
               Positioned.fill(
-                child: Navigator(
-                  onGenerateRoute: (settings) => PageRouteBuilder(
-                    settings: settings,
-                    opaque: false,
-                    pageBuilder: (_, _, _) => const Material(
-                      type: MaterialType.transparency,
-                      child: PlayerHost(),
-                    ),
+                child: Material(
+                  type: MaterialType.transparency,
+                  child: Overlay(
+                    initialEntries: [
+                      OverlayEntry(maintainState: true, opaque: false, builder: (_) => const PlayerHost()),
+                    ],
                   ),
                 ),
               ),
