@@ -3,6 +3,8 @@ description: "A new Flutter project."
 
 flutter_launcher_icons:
   ios: true
+  macos:
+    generate: true
   remove_alpha_ios: true
   image_path: "assets/icon/lumen_icon.png"
 # The following line prevents the package from being accidentally published to
