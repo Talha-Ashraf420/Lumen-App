@@ -149,5 +149,7 @@ jobs:
         with:
           tag_name: latest
           name: Latest build
-          prerelease: true
+          # Must NOT be a prerelease, or the /releases/latest/ download URLs 404.
+          prerelease: false
+          make_latest: true
           files: out/*
