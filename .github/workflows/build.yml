@@ -9,6 +9,10 @@ on:
     tags: ['v*']
   workflow_dispatch:
 
+# Needed so the release job can publish/update the "latest" release.
+permissions:
+  contents: write
+
 env:
   FLUTTER_VERSION: 3.38.9 # matches local dev SDK (Dart 3.10.x)
 
@@ -118,3 +122,30 @@ jobs:
           name: Lumen-iOS-unsigned
           path: Lumen-iOS-unsigned.zip
           if-no-files-found: error
+
+  # Collect every platform build and publish them to a rolling "latest" GitHub
+  # Release, so the README can offer stable one-click download links.
+  release:
+    needs: [android, windows, macos, linux, ios]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - name: Stage release assets (stable names)
+        run: |
+          mkdir -p out
+          cp dist/Lumen-Android-apk/app-release.apk out/Lumen-Android.apk
+          cp dist/Lumen-Windows/Lumen-Windows.zip out/Lumen-Windows.zip
+          cp dist/Lumen-macOS/Lumen-macOS.zip out/Lumen-macOS.zip
+          cp dist/Lumen-Linux/Lumen-Linux-x64.tar.gz out/Lumen-Linux-x64.tar.gz
+          cp dist/Lumen-iOS-unsigned/Lumen-iOS-unsigned.zip out/Lumen-iOS-unsigned.zip
+          ls -la out
+      - name: Publish to "latest" release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest build
+          prerelease: true
+          files: out/*
