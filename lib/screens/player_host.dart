@@ -8,7 +8,6 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 import 'package:window_manager/window_manager.dart';
 import '../library.dart';
-import '../models.dart';
 import '../playback.dart';
 import '../theme.dart';
 
@@ -341,24 +340,51 @@ class _PlayerHostState extends State<PlayerHost> {
   KeyEventResult _onKey(FocusNode node, KeyEvent e) {
     if (pc.minimized || (e is! KeyDownEvent && e is! KeyRepeatEvent)) return KeyEventResult.ignored;
     final k = e.logicalKey;
-    if (k == LogicalKeyboardKey.space) {
-      pc.player!.playOrPause();
+    // TV remote / D-pad center, gamepad A, keyboard space/enter → show controls
+    // first if hidden, otherwise play/pause (direct transport — the expected
+    // TV video UX, no focus-hunting among tiny buttons).
+    final isSelect = k == LogicalKeyboardKey.select ||
+        k == LogicalKeyboardKey.enter ||
+        k == LogicalKeyboardKey.numpadEnter ||
+        k == LogicalKeyboardKey.space ||
+        k == LogicalKeyboardKey.gameButtonA;
+    if (isSelect) {
+      if (!_controls) {
+        setState(() => _controls = true);
+      } else {
+        pc.player!.playOrPause();
+      }
       _scheduleHide();
-    } else if (k == LogicalKeyboardKey.arrowRight) {
+    } else if (k == LogicalKeyboardKey.mediaPlayPause) {
+      pc.player!.playOrPause();
+      setState(() => _controls = true);
+      _scheduleHide();
+    } else if (k == LogicalKeyboardKey.arrowRight || k == LogicalKeyboardKey.mediaTrackNext) {
       if (!_isLive) {
         _seekBy(10);
         _flashHud('+10s', Icons.forward_10_rounded);
+      } else if (_hasNext) {
+        _go(pc.index + 1);
       }
-    } else if (k == LogicalKeyboardKey.arrowLeft) {
+    } else if (k == LogicalKeyboardKey.arrowLeft || k == LogicalKeyboardKey.mediaTrackPrevious) {
       if (!_isLive) {
         _seekBy(-10);
         _flashHud('−10s', Icons.replay_10_rounded);
+      } else if (_hasPrev) {
+        _go(pc.index - 1);
       }
+    } else if (k == LogicalKeyboardKey.arrowUp) {
+      // reveal controls (and bump volume hint on keyboard)
+      setState(() => _controls = true);
+      _scheduleHide();
     } else if (k == LogicalKeyboardKey.keyF) {
       _toggleFullscreen();
     } else if (k == LogicalKeyboardKey.keyM) {
       _toggleMute();
-    } else if (k == LogicalKeyboardKey.escape || k == LogicalKeyboardKey.arrowDown) {
+    } else if (k == LogicalKeyboardKey.escape ||
+        k == LogicalKeyboardKey.goBack ||
+        k == LogicalKeyboardKey.browserBack ||
+        k == LogicalKeyboardKey.arrowDown) {
       _minimize();
     } else {
       return KeyEventResult.ignored;

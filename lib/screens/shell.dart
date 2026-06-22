@@ -200,52 +200,42 @@ class _Sidebar extends StatelessWidget {
       );
 }
 
-class _RailItem extends StatefulWidget {
+class _RailItem extends StatelessWidget {
   final IconData icon;
   final String label;
   final bool selected;
   final VoidCallback onTap;
   const _RailItem({required this.icon, required this.label, required this.selected, required this.onTap});
-  @override
-  State<_RailItem> createState() => _RailItemState();
-}
 
-class _RailItemState extends State<_RailItem> {
-  bool _hover = false;
   @override
   Widget build(BuildContext context) {
-    final sel = widget.selected;
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: widget.onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
-          margin: const EdgeInsets.fromLTRB(14, 2, 14, 2),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-          decoration: BoxDecoration(
-            color: _hover && !sel ? surfaceHi.withValues(alpha: 0.6) : Colors.transparent,
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Row(
-            children: [
-              // active indicator bar
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 160),
-                width: 3,
-                height: sel ? 20 : 0,
-                decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(2)),
-              ),
-              const SizedBox(width: 11),
-              Icon(widget.icon, size: 21, color: sel ? accent : muted),
-              const SizedBox(width: 14),
-              Text(widget.label,
-                  style: TextStyle(fontWeight: sel ? FontWeight.w800 : FontWeight.w600, fontSize: 14.5, color: sel ? textHi : muted)),
-            ],
-          ),
+    final sel = selected;
+    return FocusableTap(
+      onTap: onTap,
+      builder: (context, active) => AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        margin: const EdgeInsets.fromLTRB(14, 2, 14, 2),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        decoration: BoxDecoration(
+          color: active && !sel ? surfaceHi.withValues(alpha: 0.7) : Colors.transparent,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: active ? accent.withValues(alpha: 0.6) : Colors.transparent),
+        ),
+        child: Row(
+          children: [
+            // active indicator bar
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              width: 3,
+              height: sel ? 20 : 0,
+              decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(2)),
+            ),
+            const SizedBox(width: 11),
+            Icon(icon, size: 21, color: sel ? accent : muted),
+            const SizedBox(width: 14),
+            Text(label,
+                style: TextStyle(fontWeight: sel ? FontWeight.w800 : FontWeight.w600, fontSize: 14.5, color: sel ? textHi : muted)),
+          ],
         ),
       ),
     );

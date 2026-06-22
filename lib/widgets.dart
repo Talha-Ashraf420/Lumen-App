@@ -1,10 +1,60 @@
 import 'dart:ui';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lottie/lottie.dart';
 import 'theme.dart';
+
+/// Wraps a tappable element so it responds to BOTH mouse hover AND TV
+/// remote / D-pad focus. [builder] is given an `active` flag (hovered or
+/// focused) so callers can reuse their existing hover styling as the focus
+/// highlight. Enter / Space / D-pad-center / gamepad-A all activate [onTap];
+/// arrow keys move focus between [FocusableTap]s automatically (Flutter's
+/// default directional traversal), and the focused widget scrolls into view.
+class FocusableTap extends StatefulWidget {
+  final Widget Function(BuildContext context, bool active) builder;
+  final VoidCallback onTap;
+  final bool autofocus;
+  const FocusableTap({super.key, required this.builder, required this.onTap, this.autofocus = false});
+  @override
+  State<FocusableTap> createState() => _FocusableTapState();
+}
+
+class _FocusableTapState extends State<FocusableTap> {
+  bool _hover = false;
+  bool _focus = false;
+
+  static const _activators = <ShortcutActivator, Intent>{
+    SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
+    SingleActivator(LogicalKeyboardKey.numpadEnter): ActivateIntent(),
+    SingleActivator(LogicalKeyboardKey.space): ActivateIntent(),
+    SingleActivator(LogicalKeyboardKey.select): ActivateIntent(),
+    SingleActivator(LogicalKeyboardKey.gameButtonA): ActivateIntent(),
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    return FocusableActionDetector(
+      autofocus: widget.autofocus,
+      mouseCursor: SystemMouseCursors.click,
+      shortcuts: _activators,
+      actions: {
+        ActivateIntent: CallbackAction<ActivateIntent>(onInvoke: (_) {
+          widget.onTap();
+          return null;
+        }),
+      },
+      onShowHoverHighlight: (v) => setState(() => _hover = v),
+      onShowFocusHighlight: (v) => setState(() => _focus = v),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: widget.builder(context, _hover || _focus),
+      ),
+    );
+  }
+}
 
 /// The Lumen wordmark: a violet play-beam mark + "Lumen" in Manrope. Rendered
 /// natively (not from SVG) so the font renders reliably and it adapts to theme.
@@ -166,7 +216,19 @@ class SearchField extends StatelessWidget {
         ],
       ),
     );
-    if (onTap != null) return GestureDetector(onTap: onTap, child: field);
+    if (onTap != null) {
+      return FocusableTap(
+        onTap: onTap!,
+        builder: (context, active) => AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: active ? accent : Colors.transparent, width: 1.5),
+          ),
+          child: field,
+        ),
+      );
+    }
     return field;
   }
 }
@@ -225,22 +287,30 @@ class PillButton extends StatelessWidget {
   const PillButton({super.key, required this.label, required this.onTap, this.icon, this.filled = true});
   @override
   Widget build(BuildContext context) {
-    final fg = filled ? Colors.white : Colors.white;
-    return HoverScale(
-      scale: 1.03,
-      child: GestureDetector(
-        onTap: onTap,
+    const fg = Colors.white;
+    return FocusableTap(
+      onTap: onTap,
+      builder: (context, active) => AnimatedScale(
+        scale: active ? 1.04 : 1.0,
+        duration: const Duration(milliseconds: 140),
+        curve: Curves.easeOut,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 14),
           decoration: BoxDecoration(
-            color: filled ? accent : Colors.white.withValues(alpha: 0.14),
+            color: filled
+                ? accent
+                : Colors.white.withValues(alpha: active ? 0.26 : 0.14),
             borderRadius: BorderRadius.circular(30),
-            border: filled ? null : Border.all(color: Colors.white.withValues(alpha: 0.28)),
-            boxShadow: filled ? glow(accent, blur: 26, y: 10) : null,
+            border: filled
+                ? null
+                : Border.all(color: Colors.white.withValues(alpha: active ? 0.7 : 0.28), width: active ? 1.5 : 1),
+            boxShadow: filled
+                ? glow(accent, blur: active ? 34 : 26, y: 10)
+                : (active ? glow(Colors.white, blur: 18, y: 6, a: 0.18) : null),
           ),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             if (icon != null) ...[Icon(icon, color: fg, size: 20), const SizedBox(width: 8)],
-            Text(label, style: TextStyle(color: fg, fontWeight: FontWeight.w800, fontSize: 15)),
+            Text(label, style: const TextStyle(color: fg, fontWeight: FontWeight.w800, fontSize: 15)),
           ]),
         ),
       ),
@@ -292,13 +362,14 @@ double posterShelfHeight({bool live = false}) =>
 
 /// Premium movie/series poster tile: art fills the card, title + year + rating
 /// overlaid on a gradient; hover reveals a play affordance + accent glow.
-class PosterCard extends StatefulWidget {
+class PosterCard extends StatelessWidget {
   final String name;
   final String image;
   final double rating;
   final String? subtitle; // year
   final int index;
   final VoidCallback onTap;
+  final bool autofocus;
   const PosterCard({
     super.key,
     required this.name,
@@ -307,17 +378,23 @@ class PosterCard extends StatefulWidget {
     this.rating = 0,
     this.subtitle,
     this.index = 0,
+    this.autofocus = false,
   });
-  @override
-  State<PosterCard> createState() => _PosterCardState();
-}
-
-class _PosterCardState extends State<PosterCard> {
-  bool _hover = false;
 
   @override
   Widget build(BuildContext context) {
-    final w = widget;
+    return FocusableTap(
+      autofocus: autofocus,
+      onTap: onTap,
+      builder: (context, active) => _visual(context, active),
+    )
+        .animate()
+        .fadeIn(duration: 320.ms, delay: (index.clamp(0, 12) * 30).ms)
+        .slideY(begin: 0.1, end: 0, curve: Curves.easeOutCubic);
+  }
+
+  Widget _visual(BuildContext context, bool active) {
+    final w = this;
     final card = AspectRatio(
       aspectRatio: 2 / 3,
       child: ClipRRect(
@@ -380,9 +457,9 @@ class _PosterCardState extends State<PosterCard> {
                   ]),
                 ),
               ),
-            // hover veil + play
+            // hover / focus veil + play
             AnimatedOpacity(
-              opacity: _hover ? 1 : 0,
+              opacity: active ? 1 : 0,
               duration: const Duration(milliseconds: 180),
               child: ColoredBox(
                 color: Colors.black.withValues(alpha: 0.32),
@@ -407,32 +484,21 @@ class _PosterCardState extends State<PosterCard> {
       ),
     );
 
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: AnimatedScale(
-          scale: _hover ? 1.05 : 1.0,
-          duration: const Duration(milliseconds: 170),
-          curve: Curves.easeOut,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 170),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: _hover
-                  ? [BoxShadow(color: accent.withValues(alpha: 0.34), blurRadius: 26, offset: const Offset(0, 12))]
-                  : [BoxShadow(color: Colors.black.withValues(alpha: isDark ? 0.45 : 0.18), blurRadius: 14, offset: const Offset(0, 7))],
-            ),
-            child: card,
-          ),
+    return AnimatedScale(
+      scale: active ? 1.05 : 1.0,
+      duration: const Duration(milliseconds: 170),
+      curve: Curves.easeOut,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 170),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: active
+              ? [BoxShadow(color: accent.withValues(alpha: 0.34), blurRadius: 26, offset: const Offset(0, 12))]
+              : [BoxShadow(color: Colors.black.withValues(alpha: isDark ? 0.45 : 0.18), blurRadius: 14, offset: const Offset(0, 7))],
         ),
+        child: card,
       ),
-    )
-        .animate()
-        .fadeIn(duration: 320.ms, delay: (widget.index.clamp(0, 12) * 30).ms)
-        .slideY(begin: 0.1, end: 0, curve: Curves.easeOutCubic);
+    );
   }
 }
 
@@ -514,7 +580,24 @@ class ChannelCard extends StatelessWidget {
             style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
       ],
     );
-    return HoverScale(child: GestureDetector(onTap: onTap, child: tile))
+    return FocusableTap(
+      onTap: onTap,
+      builder: (context, active) => AnimatedScale(
+        scale: active ? 1.05 : 1.0,
+        duration: const Duration(milliseconds: 150),
+        curve: Curves.easeOut,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: active
+                ? [BoxShadow(color: accent.withValues(alpha: 0.4), blurRadius: 22, offset: const Offset(0, 10))]
+                : null,
+          ),
+          child: tile,
+        ),
+      ),
+    )
         .animate()
         .fadeIn(duration: 300.ms, delay: (index.clamp(0, 12) * 28).ms)
         .slideY(begin: 0.08, end: 0, curve: Curves.easeOutCubic);
