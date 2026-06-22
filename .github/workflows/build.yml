@@ -85,7 +85,7 @@ jobs:
       - name: Install Linux build deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build libgtk-3-dev clang cmake pkg-config libmpv-dev mpv
+          sudo apt-get install -y ninja-build libgtk-3-dev clang cmake pkg-config libmpv-dev mpv libsecret-1-dev libjsoncpp-dev
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
@@ -127,6 +127,8 @@ jobs:
   # Release, so the README can offer stable one-click download links.
   release:
     needs: [android, windows, macos, linux, ios]
+    # Publish whatever built successfully, even if some platform job failed.
+    if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
       - name: Download all build artifacts
@@ -136,11 +138,11 @@ jobs:
       - name: Stage release assets (stable names)
         run: |
           mkdir -p out
-          cp dist/Lumen-Android-apk/app-release.apk out/Lumen-Android.apk
-          cp dist/Lumen-Windows/Lumen-Windows.zip out/Lumen-Windows.zip
-          cp dist/Lumen-macOS/Lumen-macOS.zip out/Lumen-macOS.zip
-          cp dist/Lumen-Linux/Lumen-Linux-x64.tar.gz out/Lumen-Linux-x64.tar.gz
-          cp dist/Lumen-iOS-unsigned/Lumen-iOS-unsigned.zip out/Lumen-iOS-unsigned.zip
+          cp dist/Lumen-Android-apk/app-release.apk out/Lumen-Android.apk || echo "skip android"
+          cp dist/Lumen-Windows/Lumen-Windows.zip out/Lumen-Windows.zip || echo "skip windows"
+          cp dist/Lumen-macOS/Lumen-macOS.zip out/Lumen-macOS.zip || echo "skip macos"
+          cp dist/Lumen-Linux/Lumen-Linux-x64.tar.gz out/Lumen-Linux-x64.tar.gz || echo "skip linux"
+          cp dist/Lumen-iOS-unsigned/Lumen-iOS-unsigned.zip out/Lumen-iOS-unsigned.zip || echo "skip ios"
           ls -la out
       - name: Publish to "latest" release
         uses: softprops/action-gh-release@v2
