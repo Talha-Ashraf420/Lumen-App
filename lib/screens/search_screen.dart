@@ -24,7 +24,10 @@ class _Res {
 
 class SearchScreen extends StatefulWidget {
   final XtreamClient client;
-  const SearchScreen({super.key, required this.client});
+  /// When set ('movie' | 'series' | 'live'), the screen opens straight into
+  /// that catalog (used by the desktop sidebar's Movies/Series/Live entries).
+  final String? initialSection;
+  const SearchScreen({super.key, required this.client, this.initialSection});
   @override
   State<SearchScreen> createState() => SearchScreenState();
 }
@@ -32,7 +35,7 @@ class SearchScreen extends StatefulWidget {
 class SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClientMixin {
   final _ctrl = TextEditingController();
   String _q = '';
-  String _section = 'all'; // all | movie | series | live
+  late String _section = widget.initialSection ?? 'all'; // all | movie | series | live
   String _cat = 'all';
   String _sort = 'default';
 

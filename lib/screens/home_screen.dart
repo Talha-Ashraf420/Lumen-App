@@ -534,56 +534,60 @@ class _ContinueCard extends StatelessWidget {
       child: SizedBox(
         width: 240,
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // AspectRatio is the PARENT and the Stack fills it, so the play
+            // button, gradient and progress bar all align to the 16:9 thumbnail.
             ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: Stack(
-                children: [
-                  AspectRatio(
-                    aspectRatio: 16 / 9,
-                    child: progress.poster.isNotEmpty
+              borderRadius: BorderRadius.circular(14),
+              child: AspectRatio(
+                aspectRatio: 16 / 9,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    progress.poster.isNotEmpty
                         ? CachedNetworkImage(
                             imageUrl: progress.poster,
                             fit: BoxFit.cover,
                             errorWidget: (_, _, _) => ColoredBox(color: surfaceHi),
                           )
                         : ColoredBox(color: surfaceHi),
-                  ),
-                  const Positioned.fill(
-                    child: DecoratedBox(
+                    const DecoratedBox(
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
                           colors: [Colors.transparent, Colors.black54],
-                          stops: [0.5, 1],
+                          stops: [0.55, 1],
                         ),
                       ),
                     ),
-                  ),
-                  Center(
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.45),
-                        shape: BoxShape.circle,
+                    Center(
+                      child: Container(
+                        width: 46,
+                        height: 46,
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.5),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white24),
+                        ),
+                        child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 26),
                       ),
-                      child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 30),
                     ),
-                  ),
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    child: LinearProgressIndicator(
-                      value: progress.fraction.toDouble(),
-                      minHeight: 4,
-                      backgroundColor: Colors.white24,
-                      valueColor: AlwaysStoppedAnimation(accent),
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: LinearProgressIndicator(
+                        value: progress.fraction.toDouble(),
+                        minHeight: 4,
+                        backgroundColor: Colors.white24,
+                        valueColor: AlwaysStoppedAnimation(accent),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
             const SizedBox(height: 8),

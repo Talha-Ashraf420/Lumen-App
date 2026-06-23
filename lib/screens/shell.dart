@@ -29,6 +29,11 @@ class _HomeShellState extends State<HomeShell> {
   // (e.g. the Live guide loading EPG) that can trip the provider.
   final Set<int> _visited = {0};
 
+  // Total destinations (mobile shows 0–4; desktop sidebar adds Movies/Series/
+  // Live = 5/6/7 — see _pageFor and _Sidebar).
+  static const _pageCount = 8;
+
+  // Mobile bottom-nav tabs (indices 0–4).
   static const _nav = [
     (icon: Icons.home_rounded, label: 'Home'),
     (icon: Icons.auto_awesome_rounded, label: 'Discover'),
@@ -42,7 +47,10 @@ class _HomeShellState extends State<HomeShell> {
         1 => GlobeScreen(client: widget.client),
         2 => SearchScreen(client: widget.client),
         3 => MyListScreen(client: widget.client),
-        _ => ProfileScreen(client: widget.client, onLogout: widget.onLogout, onSwitch: widget.onSwitch),
+        4 => ProfileScreen(client: widget.client, onLogout: widget.onLogout, onSwitch: widget.onSwitch),
+        5 => SearchScreen(client: widget.client, initialSection: 'movie'),
+        6 => SearchScreen(client: widget.client, initialSection: 'series'),
+        _ => SearchScreen(client: widget.client, initialSection: 'live'),
       };
 
   void _select(int i) {
@@ -54,7 +62,7 @@ class _HomeShellState extends State<HomeShell> {
   Widget build(BuildContext context) {
     _visited.add(_index);
     final pages = [
-      for (var i = 0; i < _nav.length; i++)
+      for (var i = 0; i < _pageCount; i++)
         _visited.contains(i) ? _pageFor(i) : const SizedBox.shrink(),
     ];
     final wide = isWide(context);
@@ -72,7 +80,7 @@ class _HomeShellState extends State<HomeShell> {
   Widget _wideLayout(List<Widget> pages) {
     return Row(
       children: [
-        _Sidebar(nav: _nav, index: _index, onSelect: _select),
+        _Sidebar(index: _index, onSelect: _select),
         Expanded(child: IndexedStack(index: _index, children: pages)),
       ],
     );
@@ -132,15 +140,24 @@ class _HomeShellState extends State<HomeShell> {
 
 /// Desktop floating glass navigation rail with grouped items + hairline dividers.
 class _Sidebar extends StatelessWidget {
-  final List<({IconData icon, String label})> nav;
   final int index;
   final ValueChanged<int> onSelect;
-  const _Sidebar({required this.nav, required this.index, required this.onSelect});
+  const _Sidebar({required this.index, required this.onSelect});
+
+  // Page indices match _HomeShellState._pageFor.
+  static const _browse = [
+    (icon: Icons.home_rounded, label: 'Home', page: 0),
+    (icon: Icons.auto_awesome_rounded, label: 'Discover', page: 1),
+    (icon: Icons.movie_rounded, label: 'Movies', page: 5),
+    (icon: Icons.video_library_rounded, label: 'Series', page: 6),
+    (icon: Icons.live_tv_rounded, label: 'Live TV', page: 7),
+    (icon: Icons.search_rounded, label: 'Search', page: 2),
+  ];
 
   @override
   Widget build(BuildContext context) {
-    Widget item(int i) =>
-        _RailItem(icon: nav[i].icon, label: nav[i].label, selected: i == index, onTap: () => onSelect(i));
+    Widget rail(IconData icon, String label, int page) =>
+        _RailItem(icon: icon, label: label, selected: page == index, onTap: () => onSelect(page));
 
     return ClipRect(
       child: BackdropFilter(
@@ -156,7 +173,7 @@ class _Sidebar extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 26, 14, 24),
+                  padding: const EdgeInsets.fromLTRB(24, 26, 14, 20),
                   child: Row(
                     children: [
                       const Wordmark(size: 24),
@@ -174,14 +191,23 @@ class _Sidebar extends StatelessWidget {
                     ],
                   ),
                 ),
-                _label('Browse'),
-                item(0), item(1), item(2),
+                // Scrollable nav so it never overflows on short windows.
+                Expanded(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _label('Browse'),
+                        for (final it in _browse) rail(it.icon, it.label, it.page),
+                        _divider(),
+                        _label('Library'),
+                        rail(Icons.favorite_rounded, 'My List', 3),
+                      ],
+                    ),
+                  ),
+                ),
                 _divider(),
-                _label('Library'),
-                item(3),
-                const Spacer(),
-                _divider(),
-                item(4),
+                rail(Icons.person_rounded, 'Profile', 4),
                 const SizedBox(height: 14),
               ],
             ),

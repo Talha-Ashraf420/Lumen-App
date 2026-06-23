@@ -157,8 +157,14 @@ class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin
         padding: const EdgeInsets.fromLTRB(8, 6, 16, 0),
         child: Row(
           children: [
-            IconButton(onPressed: () => Navigator.of(context).pop(), icon: const Icon(Icons.arrow_back_rounded)),
-            const SizedBox(width: 4),
+            // Discover is a root tab (not a pushed route), so only show a back
+            // button when there's actually something to pop — otherwise popping
+            // would unwind the whole app shell and leave a black screen.
+            if (Navigator.of(context).canPop()) ...[
+              IconButton(onPressed: () => Navigator.of(context).pop(), icon: const Icon(Icons.arrow_back_rounded)),
+              const SizedBox(width: 4),
+            ] else
+              const SizedBox(width: 4),
             const Text('Discover', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
             const Spacer(),
             Text('${_pool.length}', style: TextStyle(color: subtle, fontWeight: FontWeight.w700)),

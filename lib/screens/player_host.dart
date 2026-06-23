@@ -253,11 +253,23 @@ class _PlayerHostState extends State<PlayerHost> {
     );
   }
 
+  // Desktop: any mouse movement reveals the controls, and the cursor is hidden
+  // while they're hidden during playback (like a native video player).
+  void _onHover(PointerHoverEvent e) {
+    if (!_isDesktop) return;
+    if (!_controls && mounted) setState(() => _controls = true);
+    _scheduleHide();
+  }
+
   Widget _fullLayer() {
     return Positioned.fill(
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: _tap,
+      child: MouseRegion(
+        opaque: false,
+        cursor: (_isDesktop && !_controls) ? SystemMouseCursors.none : MouseCursor.defer,
+        onHover: _onHover,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: _tap,
         onDoubleTapDown: (d) => _doubleTapX = d.localPosition.dx,
         onDoubleTap: _onDoubleTap,
         onLongPressStart: _isLive ? null : (_) => _holdSpeedStart(),
@@ -282,6 +294,7 @@ class _PlayerHostState extends State<PlayerHost> {
             ),
             if (_panelKind != null) _panel(),
           ],
+        ),
         ),
       ),
     );
