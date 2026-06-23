@@ -53,6 +53,115 @@ class XtreamClient {
   static const _ua = 'Lumen/1.0 (Flutter)';
   static const _timeout = Duration(seconds: 25);
 
+  // ---- plain M3U mode state (populated lazily by _ensureM3u) ----
+  Future<void>? _m3uLoad;
+  final List<Category> _m3uCats = [];
+  final List<LiveStream> _m3uChannels = [];
+  final Map<int, String> _m3uUrlById = {}; // streamId -> direct stream URL
+  final Map<int, String> _m3uTvgById = {}; // streamId -> tvg-id (XMLTV key)
+  final Map<String, List<EpgEntry>> _xmltv = {}; // tvg-id -> programmes
+
+  Future<void> _ensureM3u() => _m3uLoad ??= _loadM3u();
+
+  Future<void> _loadM3u() async {
+    final res = await http
+        .get(Uri.parse(creds.m3uUrl!), headers: {'User-Agent': _ua})
+        .timeout(_timeout, onTimeout: () => throw XtreamException('Playlist timed out.'));
+    if (res.statusCode != 200) throw XtreamException('Playlist returned ${res.statusCode}');
+    _parseM3u(res.body);
+    if (_m3uChannels.isEmpty) throw XtreamException('No channels found in this playlist.');
+    if ((creds.epgUrl ?? '').isNotEmpty) {
+      try {
+        final epg = await http.get(Uri.parse(creds.epgUrl!), headers: {'User-Agent': _ua}).timeout(_timeout);
+        if (epg.statusCode == 200) _parseXmltv(epg.body);
+      } catch (_) {/* EPG is best-effort */}
+    }
+  }
+
+  void _parseM3u(String body) {
+    final attr = (String key, String line) =>
+        RegExp('$key="([^"]*)"', caseSensitive: false).firstMatch(line)?.group(1) ?? '';
+    final lines = body.split(RegExp(r'\r?\n'));
+    final groups = <String>{};
+    int id = 1;
+    String? extinf;
+    for (var raw in lines) {
+      final line = raw.trim();
+      if (line.isEmpty) continue;
+      if (line.toUpperCase().startsWith('#EXTINF')) {
+        extinf = line;
+      } else if (line.startsWith('#')) {
+        continue; // other directives
+      } else if (extinf != null) {
+        final name = extinf.contains(',') ? extinf.substring(extinf.lastIndexOf(',') + 1).trim() : 'Channel $id';
+        final group = attr('group-title', extinf).isEmpty ? 'Uncategorized' : attr('group-title', extinf);
+        final logo = attr('tvg-logo', extinf);
+        final tvg = attr('tvg-id', extinf);
+        groups.add(group);
+        _m3uChannels.add(LiveStream(id, name, logo, group, tvg));
+        _m3uUrlById[id] = line;
+        if (tvg.isNotEmpty) _m3uTvgById[id] = tvg;
+        id++;
+        extinf = null;
+      }
+    }
+    _m3uCats
+      ..clear()
+      ..addAll(groups.map((g) => Category(g, g)));
+  }
+
+  void _parseXmltv(String xml) {
+    // Lightweight regex parse (XMLTV is a flat list of <programme> elements).
+    final re = RegExp(
+      r'<programme\b[^>]*\bstart="([^"]+)"[^>]*\bstop="([^"]+)"[^>]*\bchannel="([^"]+)"[^>]*>(.*?)</programme>',
+      caseSensitive: false,
+      dotAll: true,
+    );
+    final titleRe = RegExp(r'<title[^>]*>(.*?)</title>', caseSensitive: false, dotAll: true);
+    final descRe = RegExp(r'<desc[^>]*>(.*?)</desc>', caseSensitive: false, dotAll: true);
+    String unescape(String s) => s
+        .replaceAll('&amp;', '&')
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .replaceAll('&quot;', '"')
+        .replaceAll('&#39;', "'")
+        .trim();
+    for (final m in re.allMatches(xml)) {
+      final start = _xmltvTime(m.group(1)!);
+      final stop = _xmltvTime(m.group(2)!);
+      if (start == null || stop == null) continue;
+      final ch = m.group(3)!;
+      final inner = m.group(4)!;
+      final title = unescape(titleRe.firstMatch(inner)?.group(1) ?? '');
+      final desc = unescape(descRe.firstMatch(inner)?.group(1) ?? '');
+      (_xmltv[ch] ??= []).add(EpgEntry(title, desc, start, stop));
+    }
+    for (final list in _xmltv.values) {
+      list.sort((a, b) => a.start.compareTo(b.start));
+    }
+  }
+
+  // XMLTV time: "YYYYMMDDHHMMSS +HHMM" (offset optional). Returns local time.
+  DateTime? _xmltvTime(String s) {
+    final m = RegExp(r'^\s*(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})?\s*([+-]\d{4})?').firstMatch(s);
+    if (m == null) return null;
+    final y = int.parse(m.group(1)!), mo = int.parse(m.group(2)!), d = int.parse(m.group(3)!);
+    final h = int.parse(m.group(4)!), mi = int.parse(m.group(5)!), se = int.parse(m.group(6) ?? '0');
+    final off = m.group(7);
+    var dt = DateTime.utc(y, mo, d, h, mi, se);
+    if (off != null && off.length == 5) {
+      final sign = off[0] == '-' ? -1 : 1;
+      dt = dt.subtract(Duration(hours: sign * int.parse(off.substring(1, 3)), minutes: sign * int.parse(off.substring(3, 5))));
+    }
+    return dt.toLocal();
+  }
+
+  List<EpgEntry> _m3uEpgFor(int streamId) {
+    final tvg = _m3uTvgById[streamId];
+    if (tvg == null) return const [];
+    return _xmltv[tvg] ?? const [];
+  }
+
   Uri _playerApi(Map<String, String> params) {
     return Uri.parse('${creds.baseUrl}/player_api.php').replace(queryParameters: {
       'username': creds.username,
@@ -76,6 +185,10 @@ class XtreamClient {
 
   /// Validate credentials.
   Future<Map<String, dynamic>> authenticate() async {
+    if (creds.isM3u) {
+      await _ensureM3u();
+      return {'auth': 1, 'username': creds.username};
+    }
     final data = await _get({});
     if (data is! Map || data['user_info'] == null || (data['user_info']['auth'] ?? 0) == 0) {
       throw XtreamException('Invalid username or password.');
@@ -88,30 +201,52 @@ class XtreamClient {
     return data.whereType<Map>().map((e) => f(e.cast<String, dynamic>())).toList();
   }
 
-  Future<List<Category>> liveCategories() async =>
-      _list(await _get({'action': 'get_live_categories'}), Category.fromJson);
-  Future<List<LiveStream>> liveStreams(String? categoryId) async => _list(
-      await _get({'action': 'get_live_streams', if (categoryId != null) 'category_id': categoryId}),
-      LiveStream.fromJson);
+  Future<List<Category>> liveCategories() async {
+    if (creds.isM3u) {
+      await _ensureM3u();
+      return List.of(_m3uCats);
+    }
+    return _list(await _get({'action': 'get_live_categories'}), Category.fromJson);
+  }
 
+  Future<List<LiveStream>> liveStreams(String? categoryId) async {
+    if (creds.isM3u) {
+      await _ensureM3u();
+      if (categoryId == null) return List.of(_m3uChannels);
+      return _m3uChannels.where((c) => c.categoryId == categoryId).toList();
+    }
+    return _list(
+        await _get({'action': 'get_live_streams', if (categoryId != null) 'category_id': categoryId}),
+        LiveStream.fromJson);
+  }
+
+  // Plain M3U playlists carry only live channels — VOD/series are empty.
   Future<List<Category>> vodCategories() async =>
-      _list(await _get({'action': 'get_vod_categories'}), Category.fromJson);
-  Future<List<VodStream>> vodStreams(String? categoryId) async => _list(
-      await _get({'action': 'get_vod_streams', if (categoryId != null) 'category_id': categoryId}),
-      VodStream.fromJson);
+      creds.isM3u ? const [] : _list(await _get({'action': 'get_vod_categories'}), Category.fromJson);
+  Future<List<VodStream>> vodStreams(String? categoryId) async => creds.isM3u
+      ? const []
+      : _list(await _get({'action': 'get_vod_streams', if (categoryId != null) 'category_id': categoryId}),
+          VodStream.fromJson);
   Future<VodInfo> vodInfo(int id) async =>
       VodInfo.fromJson((await _get({'action': 'get_vod_info', 'vod_id': '$id'})).cast<String, dynamic>());
 
   Future<List<Category>> seriesCategories() async =>
-      _list(await _get({'action': 'get_series_categories'}), Category.fromJson);
-  Future<List<Series>> series(String? categoryId) async => _list(
-      await _get({'action': 'get_series', if (categoryId != null) 'category_id': categoryId}),
-      Series.fromJson);
+      creds.isM3u ? const [] : _list(await _get({'action': 'get_series_categories'}), Category.fromJson);
+  Future<List<Series>> series(String? categoryId) async => creds.isM3u
+      ? const []
+      : _list(await _get({'action': 'get_series', if (categoryId != null) 'category_id': categoryId}),
+          Series.fromJson);
   Future<SeriesInfo> seriesInfo(int id) async => SeriesInfo.fromJson(
       (await _get({'action': 'get_series_info', 'series_id': '$id'})).cast<String, dynamic>());
 
   /// Now/next EPG for a live channel (base64 titles decoded in the model).
   Future<List<EpgEntry>> shortEpg(int streamId, {int limit = 4}) async {
+    if (creds.isM3u) {
+      await _ensureM3u();
+      final all = _m3uEpgFor(streamId);
+      final now = DateTime.now();
+      return all.where((e) => e.end.isAfter(now)).take(limit).toList();
+    }
     final data = await _get({'action': 'get_short_epg', 'stream_id': '$streamId', 'limit': '$limit'});
     final listings = (data is Map) ? data['epg_listings'] : null;
     return _list(listings, EpgEntry.fromJson);
@@ -119,6 +254,10 @@ class XtreamClient {
 
   /// Full-day EPG schedule for a live channel (used by the guide + catch-up).
   Future<List<EpgEntry>> simpleDataTable(int streamId) async {
+    if (creds.isM3u) {
+      await _ensureM3u();
+      return List.of(_m3uEpgFor(streamId));
+    }
     final data = await _get({'action': 'get_simple_data_table', 'stream_id': '$streamId'});
     final listings = (data is Map) ? data['epg_listings'] : null;
     return _list(listings, EpgEntry.fromJson);
@@ -135,6 +274,10 @@ class XtreamClient {
 
   /// Direct provider media URL — fed straight to the native (mpv) player.
   String streamUrl(String kind, Object id, {String ext = 'ts'}) {
+    if (creds.isM3u) {
+      // M3U channels carry their own direct URL (loaded by liveStreams).
+      return _m3uUrlById[id is int ? id : int.tryParse('$id') ?? -1] ?? '';
+    }
     final e = ext.replaceFirst(RegExp(r'^\.'), '');
     return '${creds.baseUrl}/$kind/${creds.username}/${creds.password}/$id.$e';
   }

@@ -43,29 +43,41 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  /// Paste a playlist / panel URL and derive Xtream credentials from it. Most
-  /// IPTV "M3U URL" links are get.php?username=…&password=… and map cleanly to a
-  /// full Xtream login (catalog + EPG).
+  /// Add a playlist. Two cases are handled:
+  ///  • an Xtream-backed link (get.php?username=…&password=…) → full catalog+EPG;
+  ///  • a plain .m3u playlist URL (+ optional XMLTV EPG URL) → live channels.
   Future<void> _pasteUrl() async {
-    final ctrl = TextEditingController();
+    final urlCtrl = TextEditingController();
+    final epgCtrl = TextEditingController();
     String? err;
     final creds = await showDialog<XtreamCredentials>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) => AlertDialog(
           backgroundColor: surface,
-          title: const Text('Paste M3U / playlist URL'),
+          title: const Text('Add M3U / playlist'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               TextField(
-                controller: ctrl,
+                controller: urlCtrl,
                 autocorrect: false,
                 enableSuggestions: false,
                 minLines: 1,
                 maxLines: 3,
-                decoration: const InputDecoration(hintText: 'http://host:port/get.php?username=…&password=…'),
+                decoration: const InputDecoration(labelText: 'Playlist URL', hintText: 'https://…/playlist.m3u  or  get.php?username=…'),
               ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: epgCtrl,
+                autocorrect: false,
+                enableSuggestions: false,
+                decoration: const InputDecoration(labelText: 'XMLTV EPG URL (optional)', hintText: 'https://…/epg.xml'),
+              ),
+              const SizedBox(height: 6),
+              Text('Tip: Xtream links bring the full catalog. Plain .m3u links load live channels.',
+                  style: TextStyle(color: subtle, fontSize: 11.5)),
               if (err != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 10),
@@ -78,12 +90,33 @@ class _LoginScreenState extends State<LoginScreen> {
             FilledButton(
               style: FilledButton.styleFrom(backgroundColor: accent, foregroundColor: bg),
               onPressed: () {
-                final c = credentialsFromUrl(ctrl.text);
-                if (c == null) {
-                  setLocal(() => err = 'Couldn’t read an Xtream login from that URL. Plain (non-Xtream) playlists aren’t supported yet.');
+                final raw = urlCtrl.text.trim();
+                if (raw.isEmpty) {
+                  setLocal(() => err = 'Enter a playlist URL.');
                   return;
                 }
-                Navigator.pop(ctx, c);
+                // Xtream-backed link → full login.
+                final x = credentialsFromUrl(raw);
+                if (x != null) {
+                  Navigator.pop(ctx, x);
+                  return;
+                }
+                // Plain M3U playlist.
+                if (!RegExp(r'^https?://', caseSensitive: false).hasMatch(raw)) {
+                  setLocal(() => err = 'Enter a valid http(s) URL.');
+                  return;
+                }
+                final epg = epgCtrl.text.trim();
+                Navigator.pop(
+                  ctx,
+                  XtreamCredentials(
+                    baseUrl: raw,
+                    username: Uri.tryParse(raw)?.host ?? 'playlist',
+                    password: '',
+                    m3uUrl: raw,
+                    epgUrl: epg.isEmpty ? null : epg,
+                  ),
+                );
               },
               child: const Text('Connect'),
             ),

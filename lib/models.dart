@@ -5,11 +5,35 @@ class XtreamCredentials {
   final String baseUrl; // scheme + host[:port], no trailing slash
   final String username;
   final String password;
-  const XtreamCredentials({required this.baseUrl, required this.username, required this.password});
+  // Plain (non-Xtream) playlist support: when [m3uUrl] is set the client runs
+  // in M3U mode, serving channels parsed from the playlist (and EPG from the
+  // optional XMLTV [epgUrl]) instead of hitting the Xtream API.
+  final String? m3uUrl;
+  final String? epgUrl;
+  const XtreamCredentials({
+    required this.baseUrl,
+    required this.username,
+    required this.password,
+    this.m3uUrl,
+    this.epgUrl,
+  });
 
-  Map<String, dynamic> toJson() => {'baseUrl': baseUrl, 'username': username, 'password': password};
-  factory XtreamCredentials.fromJson(Map<String, dynamic> j) =>
-      XtreamCredentials(baseUrl: j['baseUrl'], username: j['username'], password: j['password']);
+  bool get isM3u => (m3uUrl ?? '').isNotEmpty;
+
+  Map<String, dynamic> toJson() => {
+        'baseUrl': baseUrl,
+        'username': username,
+        'password': password,
+        if (m3uUrl != null) 'm3uUrl': m3uUrl,
+        if (epgUrl != null) 'epgUrl': epgUrl,
+      };
+  factory XtreamCredentials.fromJson(Map<String, dynamic> j) => XtreamCredentials(
+        baseUrl: j['baseUrl'],
+        username: j['username'],
+        password: j['password'],
+        m3uUrl: j['m3uUrl'],
+        epgUrl: j['epgUrl'],
+      );
 }
 
 int _toInt(dynamic v) => v is int ? v : int.tryParse('${v ?? ''}') ?? 0;
