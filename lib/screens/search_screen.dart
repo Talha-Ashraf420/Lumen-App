@@ -187,9 +187,31 @@ class SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClien
     return _curCats.firstWhere((c) => c.id == _cat, orElse: () => Category('all', 'All categories')).name;
   }
 
+  // Dedicated browse mode (Movies / Series / Live sidebar entries): a titled
+  // catalog page — no search bar or section chips, just category + sort + grid.
+  bool get _browse => widget.initialSection != null;
+  String get _sectionTitle => switch (_section) {
+        'movie' => 'Movies',
+        'series' => 'Series',
+        'live' => 'Live TV',
+        _ => 'Browse',
+      };
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    if (_browse) {
+      return Column(
+        children: [
+          const SizedBox(height: 10),
+          _browseHeader(),
+          const SizedBox(height: 14),
+          _categoryRow(),
+          const SizedBox(height: 8),
+          Expanded(child: _body()),
+        ],
+      );
+    }
     return Column(
       children: [
         const SizedBox(height: 6),
@@ -200,6 +222,29 @@ class SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClien
         const SizedBox(height: 6),
         Expanded(child: _body()),
       ],
+    );
+  }
+
+  Widget _browseHeader() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 8, 16, 0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Text(_sectionTitle,
+              style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800, letterSpacing: -0.6)),
+          const SizedBox(width: 12),
+          Icon(
+            _section == 'movie'
+                ? Icons.movie_rounded
+                : _section == 'series'
+                    ? Icons.video_library_rounded
+                    : Icons.live_tv_rounded,
+            color: accent,
+            size: 24,
+          ),
+        ],
+      ),
     );
   }
 
