@@ -69,6 +69,7 @@ class _PlayerHostState extends State<PlayerHost> {
 
   static final bool _isDesktop =
       !kIsWeb && (Platform.isMacOS || Platform.isWindows || Platform.isLinux);
+  static final bool _isAndroid = !kIsWeb && Platform.isAndroid;
 
   PlayerItem get _item => pc.item;
   bool get _isLive => pc.isLive;
@@ -724,6 +725,12 @@ class _PlayerHostState extends State<PlayerHost> {
                 IconButton(onPressed: _toggleMute, icon: Icon(_muted ? Icons.volume_off_rounded : Icons.volume_up_rounded, color: Colors.white)),
                 IconButton(onPressed: _pickSubtitles, icon: const Icon(Icons.closed_caption_rounded, color: Colors.white)),
                 IconButton(onPressed: _openSettings, icon: const Icon(Icons.tune_rounded, color: Colors.white)),
+                if (_isAndroid)
+                  IconButton(
+                    tooltip: 'Picture-in-picture',
+                    onPressed: () => Pip.instance.enter(),
+                    icon: const Icon(Icons.picture_in_picture_alt_rounded, color: Colors.white),
+                  ),
                 const Spacer(),
                 if (_isLive)
                   const Padding(
