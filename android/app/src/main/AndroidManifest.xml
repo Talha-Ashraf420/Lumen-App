@@ -5,6 +5,8 @@
          optional so the app is installable on TVs (which have no touchscreen). -->
     <uses-feature android:name="android.software.leanback" android:required="false"/>
     <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>
+    <!-- Picture-in-Picture (keep video playing when app is backgrounded) -->
+    <uses-feature android:name="android.software.picture_in_picture" android:required="false"/>
 
     <application
         android:label="Lumen"
@@ -18,6 +20,8 @@
             android:launchMode="singleTop"
             android:taskAffinity=""
             android:theme="@style/LaunchTheme"
+            android:supportsPictureInPicture="true"
+            android:resizeableActivity="true"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">

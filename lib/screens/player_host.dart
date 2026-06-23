@@ -8,6 +8,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 import 'package:window_manager/window_manager.dart';
 import '../library.dart';
+import '../pip.dart';
 import '../playback.dart';
 import '../theme.dart';
 
@@ -78,12 +79,15 @@ class _PlayerHostState extends State<PlayerHost> {
   void initState() {
     super.initState();
     pc.addListener(_onPc);
+    Pip.instance.init();
+    Pip.instance.active.addListener(_onPip);
     ScreenBrightness.instance.current.then((b) => _curBri = b).catchError((_) => _curBri = 0.5);
   }
 
   @override
   void dispose() {
     pc.removeListener(_onPc);
+    Pip.instance.active.removeListener(_onPip);
     _hideTimer?.cancel();
     _hudTimer?.cancel();
     _sleepTimer?.cancel();
@@ -91,8 +95,14 @@ class _PlayerHostState extends State<PlayerHost> {
     super.dispose();
   }
 
+  void _onPip() {
+    if (mounted) setState(() {});
+  }
+
   void _onPc() {
     final has = pc.hasMedia;
+    // Only allow the OS to enter PiP when a video is actually loaded.
+    Pip.instance.setAllowed(has);
     if (has && !_hadMedia) {
       // fresh playback
       _controls = true;
@@ -187,7 +197,10 @@ class _PlayerHostState extends State<PlayerHost> {
     if (!pc.hasMedia || pc.controller == null) {
       return const IgnorePointer(child: SizedBox.expand());
     }
-    final mini = pc.minimized;
+    // In PiP the OS shows the whole activity shrunk — force the video full-bleed
+    // and drop all chrome so only the picture is visible.
+    final pip = Pip.instance.active.value;
+    final mini = pc.minimized && !pip;
     return Focus(
       focusNode: _focus,
       autofocus: true,
@@ -245,7 +258,7 @@ class _PlayerHostState extends State<PlayerHost> {
                   ),
                 ),
               ),
-              if (mini) _miniLayer(mx, my, mw, mh) else _fullLayer(),
+              if (mini) _miniLayer(mx, my, mw, mh) else if (!pip) _fullLayer(),
             ],
           );
         },
