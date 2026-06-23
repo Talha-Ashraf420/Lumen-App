@@ -43,6 +43,57 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  /// Paste a playlist / panel URL and derive Xtream credentials from it. Most
+  /// IPTV "M3U URL" links are get.php?username=…&password=… and map cleanly to a
+  /// full Xtream login (catalog + EPG).
+  Future<void> _pasteUrl() async {
+    final ctrl = TextEditingController();
+    String? err;
+    final creds = await showDialog<XtreamCredentials>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          backgroundColor: surface,
+          title: const Text('Paste M3U / playlist URL'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: ctrl,
+                autocorrect: false,
+                enableSuggestions: false,
+                minLines: 1,
+                maxLines: 3,
+                decoration: const InputDecoration(hintText: 'http://host:port/get.php?username=…&password=…'),
+              ),
+              if (err != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: Text(err!, style: const TextStyle(color: Color(0xFFFFB4B4), fontSize: 13)),
+                ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancel', style: TextStyle(color: muted))),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: accent, foregroundColor: bg),
+              onPressed: () {
+                final c = credentialsFromUrl(ctrl.text);
+                if (c == null) {
+                  setLocal(() => err = 'Couldn’t read an Xtream login from that URL. Plain (non-Xtream) playlists aren’t supported yet.');
+                  return;
+                }
+                Navigator.pop(ctx, c);
+              },
+              child: const Text('Connect'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (creds != null) _connect(creds);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -65,8 +116,8 @@ class _LoginScreenState extends State<LoginScreen> {
                   children: [
                     const Wordmark(size: 42),
                     const SizedBox(height: 14),
-                    Text('Sign in with your Xtream / X3U codes.',
-                        style: TextStyle(color: muted)),
+                    Text('Sign in with your Xtream / X3U codes — or paste an M3U URL.',
+                        textAlign: TextAlign.center, style: TextStyle(color: muted)),
                     const SizedBox(height: 24),
                     if (_profiles.isNotEmpty) ...[
                       ..._profiles.map((p) => Padding(
@@ -114,7 +165,14 @@ class _LoginScreenState extends State<LoginScreen> {
                             : const Text('Connect', style: TextStyle(fontWeight: FontWeight.bold)),
                       ),
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 6),
+                    TextButton.icon(
+                      onPressed: _busy ? null : _pasteUrl,
+                      icon: Icon(Icons.link_rounded, size: 18, color: accent),
+                      label: Text('Have an M3U / playlist URL?',
+                          style: TextStyle(color: accent, fontWeight: FontWeight.w600)),
+                    ),
+                    const SizedBox(height: 8),
                     Text('Credentials are stored only on this device.',
                         style: TextStyle(color: subtle, fontSize: 12)),
                   ],
