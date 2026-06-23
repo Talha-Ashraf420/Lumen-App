@@ -55,6 +55,7 @@ dependencies:
   url_launcher: ^6.3.0
   flutter_card_swiper: ^7.0.1
   window_manager: ^0.4.2
+  linked_scroll_controller: ^0.2.0
 
 dev_dependencies:
   flutter_test:

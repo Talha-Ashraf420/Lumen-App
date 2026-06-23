@@ -8,6 +8,7 @@ import '../responsive.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import '../xtream.dart';
+import 'epg_guide_screen.dart';
 import 'globe_screen.dart';
 import 'home_screen.dart';
 import 'mylist_screen.dart';
@@ -30,8 +31,8 @@ class _HomeShellState extends State<HomeShell> {
   final Set<int> _visited = {0};
 
   // Total destinations (mobile shows 0–4; desktop sidebar adds Movies/Series/
-  // Live = 5/6/7 — see _pageFor and _Sidebar).
-  static const _pageCount = 8;
+  // Live/TV-Guide = 5/6/7/8 — see _pageFor and _Sidebar).
+  static const _pageCount = 9;
 
   // Mobile bottom-nav tabs (indices 0–4).
   static const _nav = [
@@ -50,7 +51,8 @@ class _HomeShellState extends State<HomeShell> {
         4 => ProfileScreen(client: widget.client, onLogout: widget.onLogout, onSwitch: widget.onSwitch),
         5 => SearchScreen(client: widget.client, initialSection: 'movie'),
         6 => SearchScreen(client: widget.client, initialSection: 'series'),
-        _ => SearchScreen(client: widget.client, initialSection: 'live'),
+        7 => SearchScreen(client: widget.client, initialSection: 'live'),
+        _ => EpgGuideScreen(client: widget.client),
       };
 
   void _select(int i) {
@@ -151,6 +153,7 @@ class _Sidebar extends StatelessWidget {
     (icon: Icons.movie_rounded, label: 'Movies', page: 5),
     (icon: Icons.video_library_rounded, label: 'Series', page: 6),
     (icon: Icons.live_tv_rounded, label: 'Live TV', page: 7),
+    (icon: Icons.grid_view_rounded, label: 'TV Guide', page: 8),
     (icon: Icons.search_rounded, label: 'Search', page: 2),
   ];
 
