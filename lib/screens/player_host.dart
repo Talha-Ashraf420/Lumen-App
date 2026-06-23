@@ -34,6 +34,7 @@ class _PlayerHostState extends State<PlayerHost> {
   double _rate = 1.0;
   double _zoomScale = 1.0, _zoomStart = 1.0;
   bool _hadMedia = false;
+  bool _introDismissed = false; // hides the Skip-intro pill once used/dismissed
 
   // gesture state
   String? _gMode;
@@ -111,6 +112,7 @@ class _PlayerHostState extends State<PlayerHost> {
       _fit = BoxFit.contain;
       _rate = 1.0;
       _panelKind = null;
+      _introDismissed = false;
       _scheduleHide();
     } else if (!has && _hadMedia) {
       _exitFullscreen();
@@ -306,6 +308,8 @@ class _PlayerHostState extends State<PlayerHost> {
               duration: const Duration(milliseconds: 220),
               child: IgnorePointer(ignoring: !_controls, child: _overlay()),
             ),
+            // Skip-intro / Up-next prompts (shown regardless of control chrome).
+            _autoOverlays(),
             if (_panelKind != null) _panel(),
           ],
         ),
@@ -570,6 +574,107 @@ class _PlayerHostState extends State<PlayerHost> {
       });
     }
     setState(() {});
+  }
+
+  // ---- skip-intro / up-next overlays ----
+  Widget _autoOverlays() {
+    if (_isLive) return const SizedBox.shrink();
+    final isEpisode = pc.item.progressKey?.startsWith('ep:') ?? false;
+    return StreamBuilder<Duration>(
+      stream: pc.player!.stream.position,
+      builder: (_, snap) {
+        final secs = (snap.data ?? Duration.zero).inSeconds;
+        final total = pc.player!.state.duration.inSeconds;
+        final remaining = total - secs;
+        // Up-next countdown takes priority near the end.
+        if (_hasNext && pc.autoAdvance && total > 0 && remaining >= 0 && remaining <= 20) {
+          return _nextEpisodeCard(remaining);
+        }
+        // Skip intro for episodes, early in playback.
+        if (isEpisode && !_introDismissed && secs >= 5 && secs < 80) {
+          return _skipIntroPill();
+        }
+        return const SizedBox.shrink();
+      },
+    );
+  }
+
+  Widget _skipIntroPill() {
+    return Positioned(
+      right: 24,
+      bottom: 100,
+      child: GestureDetector(
+        onTap: () {
+          final pos = pc.player!.state.position.inSeconds;
+          final target = pos < 80 ? 90 : pos + 80;
+          pc.player!.seek(Duration(seconds: target));
+          setState(() => _introDismissed = true);
+          _scheduleHide();
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.65),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.white24),
+          ),
+          child: const Row(mainAxisSize: MainAxisSize.min, children: [
+            Text('Skip intro', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+            SizedBox(width: 6),
+            Icon(Icons.fast_forward_rounded, color: Colors.white, size: 18),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _nextEpisodeCard(int remaining) {
+    final next = pc.items[pc.index + 1];
+    return Positioned(
+      right: 24,
+      bottom: 100,
+      child: Container(
+        width: 300,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.82),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white24),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Up next in ${remaining}s', style: TextStyle(color: accent, fontWeight: FontWeight.w800, fontSize: 12.5)),
+            const SizedBox(height: 6),
+            Text(next.title,
+                maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                GestureDetector(
+                  onTap: () => pc.go(pc.index + 1),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
+                    decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(20)),
+                    child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(Icons.play_arrow_rounded, color: Colors.white, size: 18),
+                      SizedBox(width: 4),
+                      Text('Play now', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13)),
+                    ]),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                GestureDetector(
+                  onTap: pc.cancelAutoAdvance,
+                  child: const Text('Dismiss', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w700, fontSize: 13)),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   // ---- full controls ----

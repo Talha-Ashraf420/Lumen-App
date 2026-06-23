@@ -39,6 +39,9 @@ class PlaybackController extends ChangeNotifier {
   int index = 0;
   bool minimized = false;
   List<EpgEntry> epg = const [];
+  // Whether to auto-play the next item when this one finishes (user can cancel
+  // from the "Up next" card to watch the credits). Reset per item.
+  bool autoAdvance = true;
 
   bool _resumed = false;
   int _lastSave = 0;
@@ -59,7 +62,7 @@ class PlaybackController extends ChangeNotifier {
       controller = VideoController(player!);
       _posSub = player!.stream.position.listen(_onPosition);
       _completedSub = player!.stream.completed.listen((done) {
-        if (done && !isLive && hasNext) go(index + 1);
+        if (done && !isLive && hasNext && autoAdvance) go(index + 1);
       });
       _statsTimer = Timer.periodic(const Duration(seconds: 15), (_) => _tickStats());
     }
@@ -77,8 +80,14 @@ class PlaybackController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void cancelAutoAdvance() {
+    autoAdvance = false;
+    notifyListeners();
+  }
+
   void _openCurrent() {
     _resumed = false;
+    autoAdvance = true;
     epg = const [];
     player!.open(Media(item.url, httpHeaders: const {'User-Agent': 'VLC/3.0.20 LibVLC/3.0.20'}));
     if (item.favRef != null) Library.instance.addRecent(item.favRef!);
