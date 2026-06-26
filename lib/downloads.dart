@@ -74,9 +74,17 @@ class Downloads extends ChangeNotifier {
   final Map<String, http.Client> _active = {};
   int _lastNotify = 0;
 
+  String? get folderPath => _dir?.path;
+
   Future<void> load() async {
-    final base = await getApplicationDocumentsDirectory();
-    _dir = Directory('${base.path}/lumen_downloads');
+    // Prefer the user's real Downloads folder so files are browsable in Finder /
+    // Explorer; fall back to the app documents dir (e.g. iOS) where it's null.
+    Directory? base;
+    try {
+      base = await getDownloadsDirectory();
+    } catch (_) {}
+    base ??= await getApplicationDocumentsDirectory();
+    _dir = Directory('${base.path}/Lumen');
     if (!await _dir!.exists()) await _dir!.create(recursive: true);
     try {
       final index = File('${_dir!.path}/index.json');
@@ -94,6 +102,12 @@ class Downloads extends ChangeNotifier {
   }
 
   String pathOf(DownloadItem d) => '${_dir!.path}/${d.fileName}';
+
+  static String _sanitize(String s) {
+    var t = s.replaceAll(RegExp(r'[\\/:*?"<>|]'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (t.length > 120) t = t.substring(0, 120).trim();
+    return t.isEmpty ? 'file' : t;
+  }
 
   DownloadItem? find(String id) {
     for (final d in items) {
@@ -138,13 +152,22 @@ class Downloads extends ChangeNotifier {
     if (_dir == null) await load();
     if (isDownloaded(id) || isActive(id)) return;
     final safeExt = ext.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '');
+    final e = safeExt.isEmpty ? 'mp4' : safeExt;
+    // Organize into Movies/ and Series/<show>/ with human-readable filenames.
+    final parts = title.split(' · ');
+    final String rel;
+    if (kind == 'episode' && parts.length > 1) {
+      rel = 'Series/${_sanitize(parts.first)}/${_sanitize(parts.sublist(1).join(' · '))}.$e';
+    } else {
+      rel = 'Movies/${_sanitize(title)}.$e';
+    }
     final d = DownloadItem(
       id: id,
       title: title,
       poster: poster,
       kind: kind,
       remoteUrl: remoteUrl,
-      fileName: '${id.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_')}.${safeExt.isEmpty ? 'mp4' : safeExt}',
+      fileName: rel,
       progressKey: progressKey,
     );
     items.removeWhere((x) => x.id == id); // clear any prior failed entry
@@ -155,6 +178,7 @@ class Downloads extends ChangeNotifier {
     _active[id] = client;
     IOSink? sink;
     final file = File(pathOf(d));
+    await file.parent.create(recursive: true); // ensure Movies//Series/<show>/ exists
     try {
       final resp = await client.send(http.Request('GET', Uri.parse(remoteUrl))
         ..headers['User-Agent'] = 'VLC/3.0.20 LibVLC/3.0.20');

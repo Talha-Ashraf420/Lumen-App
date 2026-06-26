@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../downloads.dart';
 import '../playback.dart';
 import '../theme.dart';
@@ -33,36 +34,60 @@ class DownloadsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: Downloads.instance,
-      builder: (_, __) {
-        final items = Downloads.instance.items;
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 8, 16, 10),
-              child: Row(
-                children: [
-                  const Text('Downloads', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
-                  const SizedBox(width: 12),
-                  Icon(Icons.download_rounded, color: accent, size: 22),
-                ],
-              ),
-            ),
-            Expanded(
-              child: items.isEmpty
-                  ? _empty()
-                  : ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(14, 4, 14, 120),
-                      itemCount: items.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 10),
-                      itemBuilder: (_, i) => _row(context, items[i]),
-                    ),
-            ),
-          ],
-        );
-      },
+    // Self-contained (Scaffold) so it renders correctly whether it's a sidebar
+    // tab (wrapped by the shell) or pushed as a route from Profile.
+    final canBack = Navigator.of(context).canPop();
+    return Scaffold(
+      // Transparent as a tab (Aurora shows through, like other tabs); solid when
+      // pushed as its own route so there's no black backdrop.
+      backgroundColor: canBack ? bg : Colors.transparent,
+      body: SafeArea(
+        child: AnimatedBuilder(
+          animation: Downloads.instance,
+          builder: (_, __) {
+            final items = Downloads.instance.items;
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: EdgeInsets.fromLTRB(canBack ? 6 : 18, 8, 16, 10),
+                  child: Row(
+                    children: [
+                      if (canBack)
+                        IconButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          icon: Icon(Icons.arrow_back_rounded, color: textHi),
+                        ),
+                      const Text('Downloads', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
+                      const SizedBox(width: 12),
+                      Icon(Icons.download_rounded, color: accent, size: 22),
+                      const Spacer(),
+                      TextButton.icon(
+                        onPressed: () {
+                          final p = Downloads.instance.folderPath;
+                          if (p != null) launchUrl(Uri.file(p));
+                        },
+                        icon: Icon(Icons.folder_open_rounded, color: accent, size: 18),
+                        label: Text('Open folder', style: TextStyle(color: accent, fontWeight: FontWeight.w700, fontSize: 13)),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: items.isEmpty
+                      ? _empty()
+                      : ListView.separated(
+                          padding: const EdgeInsets.fromLTRB(14, 4, 14, 120),
+                          itemCount: items.length,
+                          separatorBuilder: (_, __) => const SizedBox(height: 10),
+                          itemBuilder: (_, i) => _row(context, items[i]),
+                        ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
     );
   }
 
@@ -127,11 +152,10 @@ class DownloadsScreen extends StatelessWidget {
                   else ...[
                     Row(children: [
                       Text(d.total > 0 ? '${(d.progress * 100).round()}%' : 'Downloading…',
-                          style: TextStyle(color: muted, fontSize: 12, fontWeight: FontWeight.w600)),
-                      if (d.total > 0) ...[
-                        const SizedBox(width: 8),
-                        Text('${_bytes(d.received)} / ${_bytes(d.total)}', style: TextStyle(color: subtle, fontSize: 11)),
-                      ],
+                          style: TextStyle(color: accent, fontSize: 12, fontWeight: FontWeight.w700)),
+                      const SizedBox(width: 8),
+                      Text(d.total > 0 ? '${_bytes(d.received)} / ${_bytes(d.total)}' : _bytes(d.received),
+                          style: TextStyle(color: subtle, fontSize: 11)),
                     ]),
                     const SizedBox(height: 6),
                     ClipRRect(

@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import '../downloads.dart';
 import '../models.dart';
 import '../refresh.dart';
 import '../responsive.dart';
@@ -161,8 +162,27 @@ class _Sidebar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Widget rail(IconData icon, String label, int page) =>
-        _RailItem(icon: icon, label: label, selected: page == index, onTap: () => onSelect(page));
+    Widget rail(IconData icon, String label, int page, {Widget? trailing}) =>
+        _RailItem(icon: icon, label: label, selected: page == index, onTap: () => onSelect(page), trailing: trailing);
+
+    // Live indicator of active downloads, shown on the Downloads rail item.
+    final dlIndicator = AnimatedBuilder(
+      animation: Downloads.instance,
+      builder: (_, __) {
+        final active = Downloads.instance.items.where((d) => d.status == DlStatus.downloading).toList();
+        if (active.isEmpty) return const SizedBox.shrink();
+        final withSize = active.where((d) => d.total > 0).toList();
+        final avg = withSize.isEmpty ? null : withSize.fold<double>(0, (s, d) => s + d.progress) / withSize.length;
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(width: 14, height: 14, child: CircularProgressIndicator(value: avg, strokeWidth: 2, color: accent)),
+            const SizedBox(width: 6),
+            Text('${active.length}', style: TextStyle(color: accent, fontWeight: FontWeight.w800, fontSize: 12)),
+          ],
+        );
+      },
+    );
 
     return ClipRect(
       child: BackdropFilter(
@@ -207,7 +227,7 @@ class _Sidebar extends StatelessWidget {
                         _divider(),
                         _label('Library'),
                         rail(Icons.favorite_rounded, 'My List', 3),
-                        rail(Icons.download_rounded, 'Downloads', 9),
+                        rail(Icons.download_rounded, 'Downloads', 9, trailing: dlIndicator),
                       ],
                     ),
                   ),
@@ -237,7 +257,8 @@ class _RailItem extends StatelessWidget {
   final String label;
   final bool selected;
   final VoidCallback onTap;
-  const _RailItem({required this.icon, required this.label, required this.selected, required this.onTap});
+  final Widget? trailing;
+  const _RailItem({required this.icon, required this.label, required this.selected, required this.onTap, this.trailing});
 
   @override
   Widget build(BuildContext context) {
@@ -265,8 +286,13 @@ class _RailItem extends StatelessWidget {
             const SizedBox(width: 11),
             Icon(icon, size: 21, color: sel ? accent : muted),
             const SizedBox(width: 14),
-            Text(label,
-                style: TextStyle(fontWeight: sel ? FontWeight.w800 : FontWeight.w600, fontSize: 14.5, color: sel ? textHi : muted)),
+            Expanded(
+              child: Text(label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontWeight: sel ? FontWeight.w800 : FontWeight.w600, fontSize: 14.5, color: sel ? textHi : muted)),
+            ),
+            if (trailing != null) trailing!,
           ],
         ),
       ),
