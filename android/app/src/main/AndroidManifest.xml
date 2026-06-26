@@ -1,5 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- In-app update: download and launch the installer for a new APK -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
 
     <!-- Android TV / Google TV: declare leanback support, and mark touchscreen
          optional so the app is installable on TVs (which have no touchscreen). -->

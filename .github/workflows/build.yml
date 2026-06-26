@@ -31,7 +31,7 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
       - run: flutter pub get
-      - run: flutter build apk --release
+      - run: flutter build apk --release --dart-define=APP_BUILD=${{ github.run_number }}
       - uses: actions/upload-artifact@v4
         with:
           name: Lumen-Android-apk
@@ -49,7 +49,7 @@ jobs:
           cache: true
       - run: flutter config --enable-windows-desktop
       - run: flutter pub get
-      - run: flutter build windows --release
+      - run: flutter build windows --release --dart-define=APP_BUILD=${{ github.run_number }}
       - name: Package portable zip
         run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath Lumen-Windows.zip
       - uses: actions/upload-artifact@v4
@@ -69,7 +69,7 @@ jobs:
           cache: true
       - run: flutter config --enable-macos-desktop
       - run: flutter pub get
-      - run: flutter build macos --release
+      - run: flutter build macos --release --dart-define=APP_BUILD=${{ github.run_number }}
       - name: Zip .app
         run: ditto -c -k --sequesterRsrc --keepParent build/macos/Build/Products/Release/lumen_tv.app Lumen-macOS.zip
       - uses: actions/upload-artifact@v4
@@ -93,7 +93,7 @@ jobs:
           cache: true
       - run: flutter config --enable-linux-desktop
       - run: flutter pub get
-      - run: flutter build linux --release
+      - run: flutter build linux --release --dart-define=APP_BUILD=${{ github.run_number }}
       - name: Package tarball
         run: tar -czf Lumen-Linux-x64.tar.gz -C build/linux/x64/release/bundle .
       - uses: actions/upload-artifact@v4
@@ -114,7 +114,7 @@ jobs:
       - run: flutter pub get
       # Unsigned build (CI has no signing certs). Produces Runner.app that must
       # be re-signed / sideloaded (e.g. with AltStore or Sideloadly) to install.
-      - run: flutter build ios --release --no-codesign
+      - run: flutter build ios --release --no-codesign --dart-define=APP_BUILD=${{ github.run_number }}
       - name: Zip unsigned .app
         run: ditto -c -k --sequesterRsrc --keepParent build/ios/iphoneos/Runner.app Lumen-iOS-unsigned.zip
       - uses: actions/upload-artifact@v4
@@ -148,7 +148,13 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
-          name: Latest build
+          name: Build ${{ github.run_number }}
+          # The app reads this 'build:' line to detect newer builds for in-app update.
+          body: |
+            build: ${{ github.run_number }}
+
+            Lumen automatic build. Install links are below.
+            On Android the app can update itself from here.
           # Must NOT be a prerelease, or the /releases/latest/ download URLs 404.
           prerelease: false
           make_latest: true

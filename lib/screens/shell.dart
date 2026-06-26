@@ -5,6 +5,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../downloads.dart';
 import '../models.dart';
 import '../refresh.dart';
+import '../updater.dart';
 import '../responsive.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -13,6 +14,7 @@ import 'downloads_screen.dart';
 import 'epg_guide_screen.dart';
 import 'globe_screen.dart';
 import 'home_screen.dart';
+import 'update_dialog.dart';
 import 'mylist_screen.dart';
 import 'profile_screen.dart';
 import 'search_screen.dart';
@@ -44,6 +46,18 @@ class _HomeShellState extends State<HomeShell> {
     (icon: Icons.favorite_rounded, label: 'My List'),
     (icon: Icons.person_rounded, label: 'Profile'),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    // Quietly check for a newer build once per launch (skip dev builds).
+    if (kBuildNumber > 0) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        final info = await Updater.instance.check();
+        if (info != null && mounted) showUpdateFlow(context, info);
+      });
+    }
+  }
 
   Widget _pageFor(int i) => switch (i) {
         0 => HomeScreen(client: widget.client, onBrowse: () => _select(2)),

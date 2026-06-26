@@ -6,11 +6,13 @@ import '../models.dart';
 import '../refresh.dart';
 import '../store.dart';
 import '../theme.dart';
+import '../updater.dart';
 import '../widgets.dart';
 import '../xtream.dart';
 import 'customize_home_screen.dart';
 import 'downloads_screen.dart';
 import 'login_screen.dart';
+import 'update_dialog.dart';
 import 'stats_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -58,6 +60,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _delete(XtreamCredentials p) async {
     final left = await Store.removeProfile(p);
     if (mounted) setState(() => _profiles = left);
+  }
+
+  bool _checkingUpdate = false;
+  Future<void> _checkForUpdates() async {
+    if (_checkingUpdate) return;
+    setState(() => _checkingUpdate = true);
+    final info = await Updater.instance.check();
+    if (!mounted) return;
+    setState(() => _checkingUpdate = false);
+    if (info != null) {
+      showUpdateFlow(context, info);
+    } else {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text('You’re on the latest (${Updater.instance.currentLabel}).'), duration: const Duration(seconds: 2)));
+    }
   }
 
   String _expiry() {
@@ -215,6 +233,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const SizedBox(width: 14),
               const Expanded(child: Text('Refresh content', style: TextStyle(fontWeight: FontWeight.w700))),
               Text('Reload catalog', style: TextStyle(color: subtle, fontSize: 13)),
+            ]),
+          ),
+        ),
+        const SizedBox(height: 10),
+        GestureDetector(
+          onTap: _checkForUpdates,
+          child: Glass(
+            radius: 18,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+            child: Row(children: [
+              Icon(Icons.system_update_rounded, color: accent, size: 20),
+              const SizedBox(width: 14),
+              const Expanded(child: Text('Check for updates', style: TextStyle(fontWeight: FontWeight.w700))),
+              if (_checkingUpdate)
+                SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: accent))
+              else
+                Text(Updater.instance.currentLabel, style: TextStyle(color: subtle, fontSize: 13)),
             ]),
           ),
         ),
