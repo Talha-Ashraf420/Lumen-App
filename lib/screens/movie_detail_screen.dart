@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../downloads.dart';
 import '../library.dart';
 import '../models.dart';
 import '../responsive.dart';
@@ -62,6 +63,45 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
       name: widget.movie.name,
       image: widget.movie.icon,
       cat: widget.movie.categoryId);
+
+  String get _dlId => 'movie:${widget.movie.streamId}';
+
+  void _download() {
+    final ext = _info?.containerExtension.isNotEmpty == true ? _info!.containerExtension : widget.movie.containerExtension;
+    final url = widget.client.streamUrl('movie', widget.movie.streamId, ext: ext);
+    Downloads.instance.start(
+      id: _dlId,
+      title: widget.movie.name,
+      poster: widget.movie.icon,
+      kind: 'movie',
+      remoteUrl: url,
+      ext: ext,
+      progressKey: _dlId,
+    );
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(const SnackBar(content: Text('Downloading…'), duration: Duration(seconds: 2)));
+  }
+
+  Future<void> _removeDownload(DownloadItem d) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: surface,
+        title: const Text('Remove download?'),
+        content: const Text('This deletes the offline copy from this device.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Cancel', style: TextStyle(color: muted))),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: accent, foregroundColor: bg),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) Downloads.instance.delete(d);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -148,6 +188,44 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
           },
         );
 
+    Widget dlBtn() => AnimatedBuilder(
+      animation: Downloads.instance,
+      builder: (_, __) {
+        final d = Downloads.instance.find(_dlId);
+        Widget inner;
+        VoidCallback? onTap;
+        if (d?.status == DlStatus.completed) {
+          inner = Icon(Icons.download_done_rounded, color: accent, size: 22);
+          onTap = () => _removeDownload(d!);
+        } else if (d?.status == DlStatus.downloading) {
+          onTap = () => Downloads.instance.cancel(_dlId);
+          inner = SizedBox(
+            width: 22,
+            height: 22,
+            child: Stack(alignment: Alignment.center, children: [
+              CircularProgressIndicator(value: d!.total > 0 ? d.progress : null, strokeWidth: 2.4, color: accent),
+              Icon(Icons.close_rounded, size: 12, color: textHi),
+            ]),
+          );
+        } else {
+          inner = Icon(Icons.download_rounded, color: textHi, size: 22);
+          onTap = _download;
+        }
+        return GestureDetector(
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.all(15),
+            decoration: BoxDecoration(
+              color: surfaceHi.withValues(alpha: 0.8),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: line),
+            ),
+            child: inner,
+          ),
+        );
+      },
+    );
+
     Widget actions(bool expandPlay) {
       final play = GestureDetector(
         onTap: _play,
@@ -179,6 +257,8 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
               ),
             ),
           ],
+          const SizedBox(width: 12),
+          dlBtn(),
           const SizedBox(width: 12),
           favBtn(),
         ],

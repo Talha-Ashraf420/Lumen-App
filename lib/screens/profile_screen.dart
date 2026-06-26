@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../downloads.dart';
 import '../home_config.dart';
 import '../models.dart';
 import '../refresh.dart';
@@ -8,6 +9,7 @@ import '../theme.dart';
 import '../widgets.dart';
 import '../xtream.dart';
 import 'customize_home_screen.dart';
+import 'downloads_screen.dart';
 import 'login_screen.dart';
 import 'stats_screen.dart';
 
@@ -173,6 +175,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const SizedBox(width: 14),
               const Expanded(child: Text('Your Lumen', style: TextStyle(fontWeight: FontWeight.w700))),
               Icon(Icons.chevron_right_rounded, color: subtle),
+            ]),
+          ),
+        ),
+        const SizedBox(height: 10),
+        GestureDetector(
+          onTap: () =>
+              Navigator.of(context).push(MaterialPageRoute(builder: (_) => DownloadsScreen(client: widget.client))),
+          child: Glass(
+            radius: 18,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+            child: Row(children: [
+              Icon(Icons.download_rounded, color: accent, size: 20),
+              const SizedBox(width: 14),
+              const Expanded(child: Text('Downloads', style: TextStyle(fontWeight: FontWeight.w700))),
+              AnimatedBuilder(
+                animation: Downloads.instance,
+                builder: (_, __) {
+                  final n = Downloads.instance.completedCount;
+                  return Text(n == 0 ? 'Offline' : '$n offline', style: TextStyle(color: subtle, fontSize: 13));
+                },
+              ),
             ]),
           ),
         ),

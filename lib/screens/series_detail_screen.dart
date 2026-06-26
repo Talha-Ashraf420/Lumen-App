@@ -3,6 +3,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../downloads.dart';
 import '../library.dart';
 import '../models.dart';
 import '../playback.dart';
@@ -58,6 +59,19 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
     PlaybackController.instance.open(items, index);
   }
 
+  void _downloadEpisode(Episode e, SeriesInfo info) {
+    final t = e.title.isEmpty ? 'Episode ${e.episodeNum}' : e.title;
+    Downloads.instance.start(
+      id: 'ep:${e.id}',
+      title: '${widget.title} · $t',
+      poster: e.image.isNotEmpty ? e.image : info.cover,
+      kind: 'episode',
+      remoteUrl: widget.client.streamUrl('series', e.id, ext: e.containerExtension),
+      ext: e.containerExtension,
+      progressKey: 'ep:${e.id}',
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -93,7 +107,13 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
                     sliver: SliverList.separated(
                       itemCount: eps.length,
                       separatorBuilder: (_, __) => const SizedBox(height: 12),
-                      itemBuilder: (_, i) => _EpisodeTile(ep: eps[i], fallback: info.cover, index: i, onTap: () => _playEpisodes(eps, i, info)),
+                      itemBuilder: (_, i) => _EpisodeTile(
+                        ep: eps[i],
+                        fallback: info.cover,
+                        index: i,
+                        onTap: () => _playEpisodes(eps, i, info),
+                        onDownload: () => _downloadEpisode(eps[i], info),
+                      ),
                     ),
                   ),
                 ],
@@ -328,7 +348,8 @@ class _EpisodeTile extends StatelessWidget {
   final String fallback; // series cover used when episode image is missing
   final int index;
   final VoidCallback onTap;
-  const _EpisodeTile({required this.ep, required this.fallback, required this.index, required this.onTap});
+  final VoidCallback onDownload;
+  const _EpisodeTile({required this.ep, required this.fallback, required this.index, required this.onTap, required this.onDownload});
 
   @override
   Widget build(BuildContext context) {
@@ -373,11 +394,45 @@ class _EpisodeTile extends StatelessWidget {
                 ],
               ),
             ),
-            Container(
-              margin: const EdgeInsets.only(left: 6),
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(color: accent, shape: BoxShape.circle, boxShadow: glow(accent, blur: 12, y: 3, a: 0.4)),
-              child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 20),
+            AnimatedBuilder(
+              animation: Downloads.instance,
+              builder: (_, __) {
+                final d = Downloads.instance.find('ep:${ep.id}');
+                if (d?.status == DlStatus.completed) {
+                  return Padding(
+                    padding: const EdgeInsets.only(left: 4),
+                    child: Icon(Icons.download_done_rounded, color: accent, size: 22),
+                  );
+                }
+                if (d?.status == DlStatus.downloading) {
+                  return GestureDetector(
+                    onTap: () => Downloads.instance.cancel('ep:${ep.id}'),
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 4),
+                      child: SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(value: d!.total > 0 ? d.progress : null, strokeWidth: 2.2, color: accent),
+                      ),
+                    ),
+                  );
+                }
+                return IconButton(
+                  onPressed: onDownload,
+                  visualDensity: VisualDensity.compact,
+                  icon: Icon(Icons.download_rounded, color: muted, size: 20),
+                  tooltip: 'Download',
+                );
+              },
+            ),
+            GestureDetector(
+              onTap: onTap,
+              child: Container(
+                margin: const EdgeInsets.only(left: 6),
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(color: accent, shape: BoxShape.circle, boxShadow: glow(accent, blur: 12, y: 3, a: 0.4)),
+                child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 20),
+              ),
             ),
           ],
         ),

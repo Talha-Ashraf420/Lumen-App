@@ -8,6 +8,7 @@ import '../responsive.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import '../xtream.dart';
+import 'downloads_screen.dart';
 import 'epg_guide_screen.dart';
 import 'globe_screen.dart';
 import 'home_screen.dart';
@@ -31,8 +32,8 @@ class _HomeShellState extends State<HomeShell> {
   final Set<int> _visited = {0};
 
   // Total destinations (mobile shows 0–4; desktop sidebar adds Movies/Series/
-  // Live/TV-Guide = 5/6/7/8 — see _pageFor and _Sidebar).
-  static const _pageCount = 9;
+  // Live/TV-Guide/Downloads = 5/6/7/8/9 — see _pageFor and _Sidebar).
+  static const _pageCount = 10;
 
   // Mobile bottom-nav tabs (indices 0–4).
   static const _nav = [
@@ -52,7 +53,8 @@ class _HomeShellState extends State<HomeShell> {
         5 => SearchScreen(client: widget.client, initialSection: 'movie'),
         6 => SearchScreen(client: widget.client, initialSection: 'series'),
         7 => SearchScreen(client: widget.client, initialSection: 'live'),
-        _ => EpgGuideScreen(client: widget.client),
+        8 => EpgGuideScreen(client: widget.client),
+        _ => DownloadsScreen(client: widget.client),
       };
 
   void _select(int i) {
@@ -205,6 +207,7 @@ class _Sidebar extends StatelessWidget {
                         _divider(),
                         _label('Library'),
                         rail(Icons.favorite_rounded, 'My List', 3),
+                        rail(Icons.download_rounded, 'Downloads', 9),
                       ],
                     ),
                   ),

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:window_manager/window_manager.dart';
 import 'catalog_cache.dart';
+import 'downloads.dart';
 import 'epg_cache.dart';
 import 'home_config.dart';
 import 'models.dart';
@@ -107,6 +108,7 @@ class _GateState extends State<_Gate> {
     HomeConfig.instance.load();
     WatchStats.instance.load();
     ThemeController.instance.load();
+    Downloads.instance.load();
     Store.active().then((c) => setState(() {
           _creds = c;
           _loading = false;
