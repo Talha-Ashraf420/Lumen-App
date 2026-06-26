@@ -5,7 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
-enum DlStatus { queued, downloading, completed, failed }
+enum DlStatus { queued, downloading, paused, completed, failed }
 
 class DownloadItem {
   final String id; // 'movie:123' / 'ep:456'
@@ -72,6 +72,7 @@ class Downloads extends ChangeNotifier {
   final List<DownloadItem> items = [];
   Directory? _dir;
   final Map<String, http.Client> _active = {};
+  final Set<String> _pausing = {}; // ids being paused (keep the partial file)
   int _lastNotify = 0;
 
   // Most IPTV/Xtream accounts allow only one connection at a time, so a second
@@ -97,9 +98,17 @@ class Downloads extends ChangeNotifier {
         final list = (jsonDecode(await index.readAsString()) as List)
             .map((e) => DownloadItem.fromJson((e as Map).cast<String, dynamic>()))
             .toList();
-        // Keep only completed entries whose file still exists; drop partials.
+        // Restore completed files, and paused downloads (resync received from the
+        // partial file on disk); drop anything whose file vanished.
         for (final d in list) {
-          if (d.status == DlStatus.completed && await File(pathOf(d)).exists()) items.add(d);
+          final f = File(pathOf(d));
+          if (!await f.exists()) continue;
+          if (d.status == DlStatus.completed) {
+            items.add(d);
+          } else if (d.status == DlStatus.paused) {
+            d.received = await f.length();
+            items.add(d);
+          }
         }
       }
     } catch (_) {}
@@ -132,8 +141,10 @@ class Downloads extends ChangeNotifier {
   Future<void> _persist() async {
     if (_dir == null) return;
     try {
-      await File('${_dir!.path}/index.json')
-          .writeAsString(jsonEncode(items.where((d) => d.status == DlStatus.completed).map((d) => d.toJson()).toList()));
+      await File('${_dir!.path}/index.json').writeAsString(jsonEncode(items
+          .where((d) => d.status == DlStatus.completed || d.status == DlStatus.paused)
+          .map((d) => d.toJson())
+          .toList()));
     } catch (_) {}
   }
 
@@ -208,25 +219,49 @@ class Downloads extends ChangeNotifier {
     final file = File(pathOf(d));
     try {
       await file.parent.create(recursive: true); // ensure Movies//Series/<show>/ exists
-      final resp = await client.send(http.Request('GET', Uri.parse(d.remoteUrl))
-        ..headers['User-Agent'] = 'VLC/3.0.20 LibVLC/3.0.20');
+      // Resume: if a partial file exists, continue from its current size.
+      var startAt = 0;
+      if (await file.exists()) {
+        final len = await file.length();
+        if (len > 0 && (d.total == 0 || len < d.total)) startAt = len;
+      }
+      final req = http.Request('GET', Uri.parse(d.remoteUrl))..headers['User-Agent'] = 'VLC/3.0.20 LibVLC/3.0.20';
+      if (startAt > 0) req.headers['range'] = 'bytes=$startAt-';
+      final resp = await client.send(req);
       if (resp.statusCode >= 400) throw Exception('HTTP ${resp.statusCode}');
-      d.total = resp.contentLength ?? 0;
-      sink = file.openWrite();
+      if (startAt > 0 && resp.statusCode == 206) {
+        // Server honored the range — append to the partial file.
+        d.received = startAt;
+        final cl = resp.contentLength ?? 0;
+        d.total = cl > 0 ? startAt + cl : d.total;
+        sink = file.openWrite(mode: FileMode.append);
+      } else {
+        // No range support (or fresh) — (re)start from the beginning.
+        d.received = 0;
+        d.total = resp.contentLength ?? 0;
+        sink = file.openWrite();
+      }
       await for (final chunk in resp.stream) {
         if (!_active.containsKey(d.id)) {
-          // cancelled
+          // stopped — either paused (keep partial) or cancelled (delete)
+          await sink!.flush();
           await sink.close();
-          await file.delete().catchError((_) => file);
-          items.remove(d);
+          sink = null;
+          if (_pausing.remove(d.id)) {
+            d.status = DlStatus.paused;
+            await _persist();
+          } else {
+            await file.delete().catchError((_) => file);
+            items.remove(d);
+          }
           notifyListeners();
           return;
         }
-        sink.add(chunk);
+        sink!.add(chunk);
         d.received += chunk.length;
         _maybeNotify();
       }
-      await sink.flush();
+      await sink!.flush();
       await sink.close();
       sink = null;
       d.status = DlStatus.completed;
@@ -235,28 +270,60 @@ class Downloads extends ChangeNotifier {
       try {
         await sink?.close();
       } catch (_) {}
-      try {
-        await file.delete();
-      } catch (_) {}
+      // Keep the partial on failure so it can be resumed; mark failed.
       d.status = DlStatus.failed;
     } finally {
       _active.remove(d.id);
+      _pausing.remove(d.id);
       client.close();
       _maybeNotify(force: true);
       _pump(); // start the next queued download
     }
   }
 
+  /// Pause an active or queued download, keeping any partial bytes.
+  void pause(String id) {
+    final d = find(id);
+    if (d == null) return;
+    if (_active.containsKey(id)) {
+      _pausing.add(id);
+      _active.remove(id); // loop stops, keeps the partial, marks paused
+    } else if (d.status == DlStatus.queued) {
+      d.status = DlStatus.paused;
+    }
+    notifyListeners();
+    _pump();
+  }
+
+  /// Resume a paused or failed download (re-queues; _run continues via Range).
+  void resume(String id) {
+    final d = find(id);
+    if (d == null || (d.status != DlStatus.paused && d.status != DlStatus.failed)) return;
+    d.status = DlStatus.queued;
+    notifyListeners();
+    _pump();
+  }
+
   void cancel(String id) {
     final d = find(id);
     if (d == null) return;
     if (_active.containsKey(id)) {
-      _active.remove(id); // the running loop notices and cleans up the file
+      _pausing.remove(id); // ensure the loop treats this as a cancel (delete)
+      _active.remove(id);
     } else {
-      items.remove(d); // still queued — just drop it
+      _deleteFile(d);
+      items.remove(d);
     }
     notifyListeners();
+    _persist();
     _pump();
+  }
+
+  Future<void> _deleteFile(DownloadItem d) async {
+    try {
+      final f = File(pathOf(d));
+      if (await f.exists()) await f.delete();
+    } catch (_) {}
   }
 
   Future<void> delete(DownloadItem d) async {

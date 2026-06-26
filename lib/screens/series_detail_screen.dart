@@ -414,15 +414,26 @@ class _EpisodeTile extends StatelessWidget {
                 }
                 if (d?.status == DlStatus.downloading) {
                   return GestureDetector(
-                    onTap: () => Downloads.instance.cancel('ep:${ep.id}'),
+                    onTap: () => Downloads.instance.pause('ep:${ep.id}'),
                     child: Padding(
                       padding: const EdgeInsets.only(left: 4),
                       child: SizedBox(
                         width: 22,
                         height: 22,
-                        child: CircularProgressIndicator(value: d!.total > 0 ? d.progress : null, strokeWidth: 2.2, color: accent),
+                        child: Stack(alignment: Alignment.center, children: [
+                          CircularProgressIndicator(value: d!.total > 0 ? d.progress : null, strokeWidth: 2.2, color: accent),
+                          Icon(Icons.pause_rounded, size: 11, color: muted),
+                        ]),
                       ),
                     ),
+                  );
+                }
+                if (d?.status == DlStatus.paused) {
+                  return IconButton(
+                    onPressed: () => Downloads.instance.resume('ep:${ep.id}'),
+                    visualDensity: VisualDensity.compact,
+                    icon: Icon(Icons.play_arrow_rounded, color: accent, size: 22),
+                    tooltip: 'Resume',
                   );
                 }
                 return IconButton(

@@ -157,8 +157,12 @@ class DownloadsScreen extends StatelessWidget {
                     ])
                   else ...[
                     Row(children: [
-                      Text(d.total > 0 ? '${(d.progress * 100).round()}%' : 'Downloading…',
-                          style: TextStyle(color: accent, fontSize: 12, fontWeight: FontWeight.w700)),
+                      Text(
+                          d.status == DlStatus.paused
+                              ? 'Paused'
+                              : (d.total > 0 ? '${(d.progress * 100).round()}%' : 'Downloading…'),
+                          style: TextStyle(
+                              color: d.status == DlStatus.paused ? muted : accent, fontSize: 12, fontWeight: FontWeight.w700)),
                       const SizedBox(width: 8),
                       Text(d.total > 0 ? '${_bytes(d.received)} / ${_bytes(d.total)}' : _bytes(d.received),
                           style: TextStyle(color: subtle, fontSize: 11)),
@@ -177,18 +181,30 @@ class DownloadsScreen extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(width: 6),
-            if (d.status == DlStatus.downloading || d.status == DlStatus.queued)
+            const SizedBox(width: 2),
+            if (d.status == DlStatus.downloading)
               IconButton(
-                onPressed: () => Downloads.instance.cancel(d.id),
-                icon: Icon(Icons.close_rounded, color: muted),
-                tooltip: 'Cancel',
-              )
-            else
+                onPressed: () => Downloads.instance.pause(d.id),
+                icon: Icon(Icons.pause_rounded, color: accent),
+                tooltip: 'Pause',
+              ),
+            if (d.status == DlStatus.paused || d.status == DlStatus.failed)
+              IconButton(
+                onPressed: () => Downloads.instance.resume(d.id),
+                icon: Icon(Icons.play_arrow_rounded, color: accent),
+                tooltip: 'Resume',
+              ),
+            if (d.status == DlStatus.completed)
               IconButton(
                 onPressed: () => Downloads.instance.delete(d),
                 icon: Icon(Icons.delete_outline_rounded, color: muted),
                 tooltip: 'Remove',
+              )
+            else
+              IconButton(
+                onPressed: () => Downloads.instance.cancel(d.id),
+                icon: Icon(Icons.close_rounded, color: muted),
+                tooltip: 'Cancel',
               ),
           ],
         ),

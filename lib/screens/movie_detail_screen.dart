@@ -201,13 +201,23 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
           onTap = () => Downloads.instance.cancel(_dlId);
           inner = Icon(Icons.schedule_rounded, color: muted, size: 22);
         } else if (d?.status == DlStatus.downloading) {
-          onTap = () => Downloads.instance.cancel(_dlId);
+          onTap = () => Downloads.instance.pause(_dlId);
           inner = SizedBox(
             width: 22,
             height: 22,
             child: Stack(alignment: Alignment.center, children: [
               CircularProgressIndicator(value: d!.total > 0 ? d.progress : null, strokeWidth: 2.4, color: accent),
-              Icon(Icons.close_rounded, size: 12, color: textHi),
+              Icon(Icons.pause_rounded, size: 12, color: textHi),
+            ]),
+          );
+        } else if (d?.status == DlStatus.paused) {
+          onTap = () => Downloads.instance.resume(_dlId);
+          inner = SizedBox(
+            width: 22,
+            height: 22,
+            child: Stack(alignment: Alignment.center, children: [
+              CircularProgressIndicator(value: d!.total > 0 ? d.progress : null, strokeWidth: 2.4, color: accent.withValues(alpha: 0.5)),
+              Icon(Icons.play_arrow_rounded, size: 13, color: textHi),
             ]),
           );
         } else {
