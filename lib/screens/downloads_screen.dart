@@ -149,6 +149,12 @@ class DownloadsScreen extends StatelessWidget {
                     Text('Ready · ${_bytes(d.received)}', style: TextStyle(color: accent, fontSize: 12, fontWeight: FontWeight.w600))
                   else if (failed)
                     Text('Failed — tap remove and retry', style: TextStyle(color: const Color(0xFFFF6B6B), fontSize: 12))
+                  else if (d.status == DlStatus.queued)
+                    Row(children: [
+                      Icon(Icons.schedule_rounded, color: muted, size: 14),
+                      const SizedBox(width: 6),
+                      Text('Queued — waiting for current download', style: TextStyle(color: muted, fontSize: 12)),
+                    ])
                   else ...[
                     Row(children: [
                       Text(d.total > 0 ? '${(d.progress * 100).round()}%' : 'Downloading…',
@@ -172,7 +178,7 @@ class DownloadsScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 6),
-            if (d.status == DlStatus.downloading)
+            if (d.status == DlStatus.downloading || d.status == DlStatus.queued)
               IconButton(
                 onPressed: () => Downloads.instance.cancel(d.id),
                 icon: Icon(Icons.close_rounded, color: muted),

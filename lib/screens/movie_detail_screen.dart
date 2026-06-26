@@ -197,6 +197,9 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
         if (d?.status == DlStatus.completed) {
           inner = Icon(Icons.download_done_rounded, color: accent, size: 22);
           onTap = () => _removeDownload(d!);
+        } else if (d?.status == DlStatus.queued) {
+          onTap = () => Downloads.instance.cancel(_dlId);
+          inner = Icon(Icons.schedule_rounded, color: muted, size: 22);
         } else if (d?.status == DlStatus.downloading) {
           onTap = () => Downloads.instance.cancel(_dlId);
           inner = SizedBox(

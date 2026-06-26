@@ -183,7 +183,9 @@ class _Sidebar extends StatelessWidget {
     final dlIndicator = AnimatedBuilder(
       animation: Downloads.instance,
       builder: (_, __) {
-        final active = Downloads.instance.items.where((d) => d.status == DlStatus.downloading).toList();
+        final active = Downloads.instance.items
+            .where((d) => d.status == DlStatus.downloading || d.status == DlStatus.queued)
+            .toList();
         if (active.isEmpty) return const SizedBox.shrink();
         final withSize = active.where((d) => d.total > 0).toList();
         final avg = withSize.isEmpty ? null : withSize.fold<double>(0, (s, d) => s + d.progress) / withSize.length;

@@ -5,7 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
-enum DlStatus { downloading, completed, failed }
+enum DlStatus { queued, downloading, completed, failed }
 
 class DownloadItem {
   final String id; // 'movie:123' / 'ep:456'
@@ -73,6 +73,11 @@ class Downloads extends ChangeNotifier {
   Directory? _dir;
   final Map<String, http.Client> _active = {};
   int _lastNotify = 0;
+
+  // Most IPTV/Xtream accounts allow only one connection at a time, so a second
+  // simultaneous download makes the provider drop the first. Run downloads
+  // through a queue (one at a time) to avoid that.
+  static const int maxConcurrent = 1;
 
   String? get folderPath => _dir?.path;
 
@@ -150,7 +155,8 @@ class Downloads extends ChangeNotifier {
     String? progressKey,
   }) async {
     if (_dir == null) await load();
-    if (isDownloaded(id) || isActive(id)) return;
+    final existing = find(id);
+    if (existing != null && existing.status != DlStatus.failed) return; // already downloaded/queued/active
     final safeExt = ext.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '');
     final e = safeExt.isEmpty ? 'mp4' : safeExt;
     // Organize into Movies/ and Series/<show>/ with human-readable filenames.
@@ -169,24 +175,46 @@ class Downloads extends ChangeNotifier {
       remoteUrl: remoteUrl,
       fileName: rel,
       progressKey: progressKey,
+      status: DlStatus.queued,
     );
-    items.removeWhere((x) => x.id == id); // clear any prior failed entry
+    items.removeWhere((x) => x.id == id && x.status == DlStatus.failed); // clear a prior failed entry
     items.insert(0, d);
     notifyListeners();
+    _pump();
+  }
 
+  /// Start queued downloads up to the concurrency limit.
+  void _pump() {
+    if (_active.length >= maxConcurrent) return;
+    // Oldest queued first (items are inserted at the front, so scan from the end).
+    DownloadItem? next;
+    for (var i = items.length - 1; i >= 0; i--) {
+      if (items[i].status == DlStatus.queued) {
+        next = items[i];
+        break;
+      }
+    }
+    if (next == null) return;
+    _run(next);
+    if (_active.length < maxConcurrent) _pump(); // fill remaining slots
+  }
+
+  Future<void> _run(DownloadItem d) async {
     final client = http.Client();
-    _active[id] = client;
+    _active[d.id] = client;
+    d.status = DlStatus.downloading;
+    _maybeNotify(force: true);
     IOSink? sink;
     final file = File(pathOf(d));
-    await file.parent.create(recursive: true); // ensure Movies//Series/<show>/ exists
     try {
-      final resp = await client.send(http.Request('GET', Uri.parse(remoteUrl))
+      await file.parent.create(recursive: true); // ensure Movies//Series/<show>/ exists
+      final resp = await client.send(http.Request('GET', Uri.parse(d.remoteUrl))
         ..headers['User-Agent'] = 'VLC/3.0.20 LibVLC/3.0.20');
       if (resp.statusCode >= 400) throw Exception('HTTP ${resp.statusCode}');
       d.total = resp.contentLength ?? 0;
       sink = file.openWrite();
       await for (final chunk in resp.stream) {
-        if (!_active.containsKey(id)) {
+        if (!_active.containsKey(d.id)) {
           // cancelled
           await sink.close();
           await file.delete().catchError((_) => file);
@@ -202,7 +230,6 @@ class Downloads extends ChangeNotifier {
       await sink.close();
       sink = null;
       d.status = DlStatus.completed;
-      _maybeNotify(force: true);
       await _persist();
     } catch (_) {
       try {
@@ -212,17 +239,24 @@ class Downloads extends ChangeNotifier {
         await file.delete();
       } catch (_) {}
       d.status = DlStatus.failed;
-      _maybeNotify(force: true);
     } finally {
-      _active.remove(id);
+      _active.remove(d.id);
       client.close();
+      _maybeNotify(force: true);
+      _pump(); // start the next queued download
     }
   }
 
   void cancel(String id) {
-    // The download loop notices the missing client and cleans up.
-    _active.remove(id);
+    final d = find(id);
+    if (d == null) return;
+    if (_active.containsKey(id)) {
+      _active.remove(id); // the running loop notices and cleans up the file
+    } else {
+      items.remove(d); // still queued — just drop it
+    }
     notifyListeners();
+    _pump();
   }
 
   Future<void> delete(DownloadItem d) async {
@@ -234,6 +268,7 @@ class Downloads extends ChangeNotifier {
     items.remove(d);
     notifyListeners();
     await _persist();
+    _pump();
   }
 
   int get completedCount => items.where((d) => d.status == DlStatus.completed).length;

@@ -404,6 +404,14 @@ class _EpisodeTile extends StatelessWidget {
                     child: Icon(Icons.download_done_rounded, color: accent, size: 22),
                   );
                 }
+                if (d?.status == DlStatus.queued) {
+                  return IconButton(
+                    onPressed: () => Downloads.instance.cancel('ep:${ep.id}'),
+                    visualDensity: VisualDensity.compact,
+                    icon: Icon(Icons.schedule_rounded, color: muted, size: 20),
+                    tooltip: 'Queued — tap to cancel',
+                  );
+                }
                 if (d?.status == DlStatus.downloading) {
                   return GestureDetector(
                     onTap: () => Downloads.instance.cancel('ep:${ep.id}'),
