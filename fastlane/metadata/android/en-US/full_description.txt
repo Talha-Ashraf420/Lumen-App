@@ -1,0 +1,34 @@
+Lumen is a fast, beautiful player for the IPTV service you already pay for. Sign in with your Xtream / X3U codes or paste an M3U playlist URL, and enjoy Live TV, Movies and Series with a clean, modern interface.
+
+Lumen is a PLAYER only. It comes with no channels, movies or other content — you bring your own subscription or playlist.
+
+LIVE TV
+• Full TV-guide grid (channels × time) with now/next and a "jump to now" line
+• Catch-up / archive playback where your provider supports it
+• Optional XMLTV EPG when you use a plain M3U playlist
+
+MOVIES & SERIES
+• Rich artwork, ratings, cast and trailers (TMDB)
+• Continue watching and Recently watched
+• Next-episode autoplay with a countdown, plus Skip-intro
+
+OFFLINE
+• Download movies and episodes for offline viewing
+• Pause / resume downloads; files saved to a real folder
+
+A PLAYER THAT FEELS PREMIUM
+• Polished video player: audio & subtitle tracks, subtitle styling, playback speed, sleep timer
+• Picture-in-Picture — keep watching while you use other apps
+• Floating mini-player while you browse
+
+MAKE IT YOURS
+• Light / Dark / System themes
+• Choose your own accent colour — the whole UI recolours to match
+• Multiple profiles, customisable Home, search with sort & filter
+
+BUILT FOR EVERY SCREEN
+• Phones and tablets
+• Android TV / Google TV with full remote (D-pad) navigation
+• Also available for macOS, Windows and Linux
+
+Lumen does not host, provide or stream any content. It is a third-party client for your own legally obtained IPTV subscription or playlist. You are responsible for the sources you add.
