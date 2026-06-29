@@ -1,0 +1,21 @@
+name: 💡 Feature request
+description: Suggest an idea or improvement
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What's the idea?
+      description: What would you like Lumen to do, and why is it useful?
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: How might it work? (optional)
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: Contribution
+      options:
+        - label: I'd be willing to help implement this

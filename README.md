@@ -4,6 +4,11 @@ A native, premium **IPTV player** for your own Xtream / X3U subscription — Liv
 
 > Bring your own provider. Lumen plays the IPTV service **you already pay for** — it ships with no channels or content of its own.
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-22CBA8.svg)](LICENSE)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-22CBA8.svg)](CONTRIBUTING.md)
+![Platforms](https://img.shields.io/badge/platforms-Android%20·%20TV%20·%20iOS%20·%20macOS%20·%20Windows%20·%20Linux-3DDC84)
+[![Stars](https://img.shields.io/github/stars/Talha-Ashraf420/Lumen-App?style=social)](https://github.com/Talha-Ashraf420/Lumen-App/stargazers)
+
 ---
 
 ## ⬇️ Download (one click)
@@ -92,3 +97,24 @@ flutter build macos --release     # macOS
 flutter build windows --release   # Windows (on Windows)
 flutter build linux --release     # Linux
 ```
+
+## 🤝 Contributing
+
+Contributions are very welcome! Lumen is friendly to newcomers.
+
+- Read **[CONTRIBUTING.md](CONTRIBUTING.md)** for setup, project layout and conventions.
+- Pick up a [`good first issue`](https://github.com/Talha-Ashraf420/Lumen-App/labels/good%20first%20issue) or [`help wanted`](https://github.com/Talha-Ashraf420/Lumen-App/labels/help%20wanted).
+- Have questions or ideas? Start a [Discussion](https://github.com/Talha-Ashraf420/Lumen-App/discussions).
+- New here? The [architecture write-up](docs/blog/building-lumen.md) is a good primer.
+
+### 🗺️ Roadmap / help wanted
+- **Cast to TV** (Chromecast / DLNA) — the big open feature
+- Localization / translations
+- Background downloads on Android
+- Windows & Linux polish, accessibility, more keyboard/remote shortcuts
+
+If you're using Lumen, a ⭐ really helps others find it.
+
+## 📄 License
+
+[MIT](LICENSE) © Talha Ashraf. Lumen is a player only and includes no content; you are responsible for the sources you add.
