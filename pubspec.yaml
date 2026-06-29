@@ -58,6 +58,7 @@ dependencies:
   linked_scroll_controller: ^0.2.0
   path_provider: ^2.1.4
   open_filex: ^4.5.0
+  flutter_colorpicker: ^1.1.0
 
 dev_dependencies:
   flutter_test:
