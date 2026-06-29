@@ -46,9 +46,12 @@ class LumenApp extends StatelessWidget {
   const LumenApp({super.key});
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<ThemeMode>(
-      valueListenable: ThemeController.instance.mode,
-      builder: (context, mode, _) {
+    return AnimatedBuilder(
+      // Rebuild on theme-mode AND accent-colour changes.
+      animation: ThemeController.instance.listenable,
+      builder: (context, _) {
+        final mode = ThemeController.instance.mode.value;
+        final accent = ThemeController.instance.accent.value;
         // Resolve & publish the active palette for this build (used by the
         // theme-aware colour getters across the app).
         final platform = MediaQuery.maybePlatformBrightnessOf(context) ?? Brightness.dark;
@@ -57,8 +60,8 @@ class LumenApp extends StatelessWidget {
           title: 'Lumen',
           debugShowCheckedModeBanner: false,
           navigatorKey: rootNavKey,
-          theme: buildTheme(lightPalette),
-          darkTheme: buildTheme(darkPalette),
+          theme: buildTheme(lightPaletteFor(accent)),
+          darkTheme: buildTheme(darkPaletteFor(accent)),
           themeMode: mode,
           // Flip instantly (no lerp) — our global palette getters switch at once,
           // and a non-const home forces the whole subtree to re-read them.

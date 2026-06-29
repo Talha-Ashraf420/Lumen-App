@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import '../downloads.dart';
 import '../home_config.dart';
 import '../library.dart';
@@ -299,6 +300,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: Text('Appearance', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
         ),
         const _ThemeSelector(),
+        const SizedBox(height: 18),
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 12),
+          child: Text('ACCENT COLOUR', style: kSection()),
+        ),
+        const _AccentPicker(),
         const SizedBox(height: 20),
         GestureDetector(
           onTap: widget.onLogout,
@@ -440,6 +447,96 @@ class _ThemeSelector extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// Accent-colour picker: preset swatches + a custom colour wheel.
+class _AccentPicker extends StatelessWidget {
+  const _AccentPicker();
+
+  Future<void> _pickCustom(BuildContext context, Color initial) async {
+    var picked = initial;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: surface,
+        title: const Text('Custom accent'),
+        content: SingleChildScrollView(
+          child: ColorPicker(
+            pickerColor: initial,
+            onColorChanged: (c) => picked = c,
+            enableAlpha: false,
+            displayThumbColor: true,
+            labelTypes: const [],
+            pickerAreaHeightPercent: 0.7,
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Cancel', style: TextStyle(color: muted))),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: picked, foregroundColor: Colors.white),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Apply'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) ThemeController.instance.setAccent(picked);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<Color>(
+      valueListenable: ThemeController.instance.accent,
+      builder: (context, current, _) {
+        final cur = current.toARGB32();
+        final isCustom = !accentPresets.any((c) => c.toARGB32() == cur);
+        return Wrap(
+          spacing: 14,
+          runSpacing: 14,
+          children: [
+            for (final c in accentPresets)
+              _swatch(color: c, selected: c.toARGB32() == cur, onTap: () => ThemeController.instance.setAccent(c)),
+            // custom colour wheel
+            GestureDetector(
+              onTap: () => _pickCustom(context, current),
+              child: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: const SweepGradient(colors: [
+                    Color(0xFFFF0000), Color(0xFFFFFF00), Color(0xFF00FF00),
+                    Color(0xFF00FFFF), Color(0xFF0000FF), Color(0xFFFF00FF), Color(0xFFFF0000),
+                  ]),
+                  border: Border.all(color: isCustom ? Colors.white : Colors.transparent, width: 3),
+                ),
+                child: Icon(isCustom ? Icons.check_rounded : Icons.colorize_rounded,
+                    color: Colors.white, size: 18),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _swatch({required Color color, required bool selected, required VoidCallback onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: color,
+          shape: BoxShape.circle,
+          border: Border.all(color: selected ? Colors.white : Colors.transparent, width: 3),
+          boxShadow: selected ? [BoxShadow(color: color.withValues(alpha: 0.55), blurRadius: 12, offset: const Offset(0, 4))] : null,
+        ),
+        child: selected ? const Icon(Icons.check_rounded, color: Colors.white, size: 18) : null,
+      ),
     );
   }
 }

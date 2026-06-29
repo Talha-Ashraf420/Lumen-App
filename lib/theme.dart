@@ -35,35 +35,67 @@ class Palette {
   });
 }
 
-const _accent = Color(0xFF22CBA8); // shared brand accent (teal)
+const defaultAccent = Color(0xFF22CBA8); // teal
 
-const darkPalette = Palette(
-  bg: Color(0xFF0A1412),
-  surface: Color(0xFF121B18),
-  surfaceHi: Color(0xFF1B2723),
-  line: Color(0x14FFFFFF),
-  textHi: Color(0xFFEAF3EF),
-  muted: Color(0xFF9DB1A9),
-  subtle: Color(0xFF6A7C75),
-  accent: Color(0xFF22CBA8),
-  accentDark: Color(0xFF14A88B),
-  gold: Color(0xFFFFC15E),
-  brightness: Brightness.dark,
-);
+/// A few curated accent presets shown in the picker (plus a custom option).
+const accentPresets = <Color>[
+  Color(0xFF22CBA8), // teal
+  Color(0xFF06B6D4), // cyan
+  Color(0xFF3B82F6), // blue
+  Color(0xFF6366F1), // indigo
+  Color(0xFFA855F7), // purple
+  Color(0xFFEC4899), // pink
+  Color(0xFFEF4444), // red
+  Color(0xFFF97316), // orange
+  Color(0xFFF59E0B), // amber
+  Color(0xFF22C55E), // green
+];
 
-const lightPalette = Palette(
-  bg: Color(0xFFF5F8F7),
-  surface: Color(0xFFFFFFFF),
-  surfaceHi: Color(0xFFEAF0EE),
-  line: Color(0x14000000),
-  textHi: Color(0xFF0C1714),
-  muted: Color(0xFF5C6B66),
-  subtle: Color(0xFF93A29C),
-  accent: Color(0xFF0E9E86),
-  accentDark: Color(0xFF0B7E6B),
-  gold: Color(0xFFD9982E),
-  brightness: Brightness.light,
-);
+Color _shade(Color c, double dl) {
+  final h = HSLColor.fromColor(c);
+  return h.withLightness((h.lightness + dl).clamp(0.0, 1.0)).toColor();
+}
+
+/// Build a dark palette graded toward the chosen accent's hue — surfaces pick up
+/// a subtle tint so the whole UI feels coherent, not just the accent button.
+Palette darkPaletteFor(Color a) {
+  final h = HSLColor.fromColor(a).hue;
+  Color t(double l, double s) => HSLColor.fromAHSL(1, h, s, l).toColor();
+  return Palette(
+    bg: t(0.055, 0.34),
+    surface: t(0.085, 0.26),
+    surfaceHi: t(0.135, 0.20),
+    line: const Color(0x14FFFFFF),
+    textHi: t(0.95, 0.10),
+    muted: t(0.66, 0.12),
+    subtle: t(0.48, 0.10),
+    accent: a,
+    accentDark: _shade(a, -0.12),
+    gold: const Color(0xFFFFC15E),
+    brightness: Brightness.dark,
+  );
+}
+
+Palette lightPaletteFor(Color a) {
+  final h = HSLColor.fromColor(a).hue;
+  Color t(double l, double s) => HSLColor.fromAHSL(1, h, s, l).toColor();
+  return Palette(
+    bg: t(0.965, 0.30),
+    surface: const Color(0xFFFFFFFF),
+    surfaceHi: t(0.93, 0.22),
+    line: const Color(0x14000000),
+    textHi: t(0.10, 0.30),
+    muted: t(0.40, 0.16),
+    subtle: t(0.60, 0.10),
+    accent: _shade(a, -0.08),
+    accentDark: _shade(a, -0.20),
+    gold: const Color(0xFFD9982E),
+    brightness: Brightness.light,
+  );
+}
+
+Palette darkPalette = darkPaletteFor(defaultAccent);
+Palette lightPalette = lightPaletteFor(defaultAccent);
 
 /// The palette in effect for the current frame. The root widget assigns this
 /// from the resolved brightness before the tree builds, so the existing
@@ -145,7 +177,13 @@ class ThemeController {
   static final ThemeController instance = ThemeController._();
   static const _key = 'lumen_theme_mode';
 
+  static const _accentKey = 'lumen_accent_color';
+
   final ValueNotifier<ThemeMode> mode = ValueNotifier(ThemeMode.dark);
+  final ValueNotifier<Color> accent = ValueNotifier(defaultAccent);
+
+  /// Rebuild signal for both theme mode and accent changes.
+  Listenable get listenable => Listenable.merge([mode, accent]);
 
   Future<void> load() async {
     final p = await SharedPreferences.getInstance();
@@ -157,12 +195,20 @@ class ThemeController {
       case 'dark':
         mode.value = ThemeMode.dark;
     }
+    final c = p.getInt(_accentKey);
+    if (c != null) accent.value = Color(c);
   }
 
   Future<void> set(ThemeMode m) async {
     mode.value = m;
     final p = await SharedPreferences.getInstance();
     await p.setString(_key, m.name);
+  }
+
+  Future<void> setAccent(Color c) async {
+    accent.value = c;
+    final p = await SharedPreferences.getInstance();
+    await p.setInt(_accentKey, c.toARGB32());
   }
 }
 
@@ -174,7 +220,8 @@ Palette resolvePalette(ThemeMode mode, Brightness platform) {
     ThemeMode.light => false,
     ThemeMode.system => platform == Brightness.dark,
   };
-  final p = wantDark ? darkPalette : lightPalette;
+  final a = ThemeController.instance.accent.value;
+  final p = wantDark ? darkPaletteFor(a) : lightPaletteFor(a);
   activePalette = p;
   SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
