@@ -267,7 +267,17 @@ class BrandedLoading extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Lottie.asset('assets/lumen_loader.json', width: 132, height: 132, repeat: true),
+          Lottie.asset(
+            'assets/lumen_loader.json',
+            width: 132,
+            height: 132,
+            repeat: true,
+            // Recolour the whole animation to the current theme accent.
+            delegates: LottieDelegates(values: [
+              ValueDelegate.color(const ['**'], value: accent),
+              ValueDelegate.strokeColor(const ['**'], value: accent),
+            ]),
+          ),
           const SizedBox(height: 10),
           Wordmark(size: 30),
         ],
