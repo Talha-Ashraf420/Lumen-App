@@ -184,6 +184,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
         const SizedBox(height: 24),
         const Padding(
           padding: EdgeInsets.fromLTRB(4, 0, 4, 10),
+          child: Text('Appearance', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+        ),
+        const _ThemeSelector(),
+        const SizedBox(height: 18),
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 12),
+          child: Text('ACCENT COLOUR', style: kSection()),
+        ),
+        const _AccentPicker(),
+        const SizedBox(height: 24),
+        const Padding(
+          padding: EdgeInsets.fromLTRB(4, 0, 4, 10),
           child: Text('Home', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
         ),
         GestureDetector(
@@ -294,19 +306,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ]),
           ),
         ),
-        const SizedBox(height: 24),
-        const Padding(
-          padding: EdgeInsets.fromLTRB(4, 0, 4, 10),
-          child: Text('Appearance', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-        ),
-        const _ThemeSelector(),
-        const SizedBox(height: 18),
-        Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 12),
-          child: Text('ACCENT COLOUR', style: kSection()),
-        ),
-        const _AccentPicker(),
-        const SizedBox(height: 20),
+        const SizedBox(height: 28),
         GestureDetector(
           onTap: widget.onLogout,
           child: Container(
