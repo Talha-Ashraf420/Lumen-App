@@ -27,7 +27,10 @@ class SearchScreen extends StatefulWidget {
   /// When set ('movie' | 'series' | 'live'), the screen opens straight into
   /// that catalog (used by the desktop sidebar's Movies/Series/Live entries).
   final String? initialSection;
-  const SearchScreen({super.key, required this.client, this.initialSection});
+  /// Optional category to preselect (used by Home's "See all").
+  final String? initialCategory;
+  final String? initialCategoryName;
+  const SearchScreen({super.key, required this.client, this.initialSection, this.initialCategory, this.initialCategoryName});
   @override
   State<SearchScreen> createState() => SearchScreenState();
 }
@@ -36,7 +39,7 @@ class SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClien
   final _ctrl = TextEditingController();
   String _q = '';
   late String _section = widget.initialSection ?? 'all'; // all | movie | series | live
-  String _cat = 'all';
+  late String _cat = widget.initialCategory ?? 'all';
   String _sort = 'default';
 
   // Streams cached per category id ('all' = whole catalog). Many providers
@@ -231,8 +234,12 @@ class SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClien
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          Text(_sectionTitle,
-              style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800, letterSpacing: -0.6)),
+          Flexible(
+            child: Text(widget.initialCategoryName ?? _sectionTitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800, letterSpacing: -0.6)),
+          ),
           const SizedBox(width: 12),
           Icon(
             _section == 'movie'

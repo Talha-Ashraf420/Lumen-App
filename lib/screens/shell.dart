@@ -217,7 +217,7 @@ class _Sidebar extends StatelessWidget {
                   padding: const EdgeInsets.fromLTRB(24, 26, 14, 20),
                   child: Row(
                     children: [
-                      const Wordmark(size: 24),
+                      Wordmark(size: 24),
                       const Spacer(),
                       IconButton(
                         tooltip: 'Refresh',

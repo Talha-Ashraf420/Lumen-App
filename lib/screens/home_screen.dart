@@ -14,6 +14,7 @@ import '../tmdb.dart';
 import '../widgets.dart';
 import '../xtream.dart';
 import 'movie_detail_screen.dart';
+import 'search_screen.dart';
 import 'series_detail_screen.dart';
 
 String _year(String s) => RegExp(r'(19|20)\d{2}').firstMatch(s)?.group(0) ?? '';
@@ -321,10 +322,17 @@ class _HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMi
                 .vodStreams(cat.id)
                 .then((l) => l.where((m) => m.icon.isNotEmpty).take(16).map(_movie).toList())
                 .catchError((_) => <HItem>[]),
-            onMore: widget.onBrowse,
+            onMore: () => _openCategory(c, 'movie', cat.id, cat.name),
           ),
       ],
     );
+  }
+
+  /// "See all" → open that shelf's category as a full browse grid.
+  void _openCategory(XtreamClient c, String section, String id, String name) {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => SearchScreen(client: c, initialSection: section, initialCategory: id, initialCategoryName: name),
+    ));
   }
 
   Widget _shelfFor(XtreamClient c, ShelfRef s) {
@@ -333,20 +341,20 @@ class _HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMi
         return _Shelf(
           title: s.name,
           future: c.vodStreams(s.id).then((l) => l.take(16).map(_movie).toList()).catchError((_) => <HItem>[]),
-          onMore: widget.onBrowse,
+          onMore: () => _openCategory(c, 'movie', s.id, s.name),
         );
       case 'series':
         return _Shelf(
           title: s.name,
           future: c.series(s.id).then((l) => l.take(16).map(_series).toList()).catchError((_) => <HItem>[]),
-          onMore: widget.onBrowse,
+          onMore: () => _openCategory(c, 'series', s.id, s.name),
         );
       default:
         return _Shelf(
           title: 'Live · ${s.name}',
           future: c.liveStreams(s.id).then((l) => _liveShelf(l.take(40).toList())).catchError((_) => <HItem>[]),
           live: true,
-          onMore: widget.onBrowse,
+          onMore: () => _openCategory(c, 'live', s.id, s.name),
         );
     }
   }
