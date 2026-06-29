@@ -1,0 +1,41 @@
+name: 🐛 Bug report
+description: Something isn't working
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: A clear description of the bug, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Go to ...
+        2. Tap ...
+        3. See error
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      multiple: true
+      options: [Android, Android TV, iOS, macOS, Windows, Linux]
+    validations:
+      required: true
+  - type: input
+    id: source
+    attributes:
+      label: Source type
+      placeholder: Xtream / plain M3U / M3U + XMLTV
+  - type: input
+    id: version
+    attributes:
+      label: App build
+      description: Profile → Check for updates shows "Build N"
+  - type: textarea
+    id: extra
+    attributes:
+      label: Screenshots / logs (optional)
