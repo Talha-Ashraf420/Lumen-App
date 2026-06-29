@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../downloads.dart';
 import '../home_config.dart';
+import '../library.dart';
 import '../models.dart';
 import '../refresh.dart';
 import '../store.dart';
@@ -60,6 +61,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _delete(XtreamCredentials p) async {
     final left = await Store.removeProfile(p);
     if (mounted) setState(() => _profiles = left);
+  }
+
+  Future<void> _clearHistory() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: surface,
+        title: const Text('Clear watch history?'),
+        content: const Text('This removes Continue watching and Recently watched. Your favourites and downloads are kept.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Cancel', style: TextStyle(color: muted))),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: accent, foregroundColor: bg),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Clear'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true && mounted) {
+      Library.instance.clearHistory();
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(content: Text('Watch history cleared'), duration: Duration(seconds: 2)));
+    }
   }
 
   bool _checkingUpdate = false;
@@ -250,6 +276,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: accent))
               else
                 Text(Updater.instance.currentLabel, style: TextStyle(color: subtle, fontSize: 13)),
+            ]),
+          ),
+        ),
+        const SizedBox(height: 10),
+        GestureDetector(
+          onTap: _clearHistory,
+          child: Glass(
+            radius: 18,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+            child: Row(children: [
+              Icon(Icons.history_rounded, color: accent, size: 20),
+              const SizedBox(width: 14),
+              const Expanded(child: Text('Clear watch history', style: TextStyle(fontWeight: FontWeight.w700))),
+              Text('Continue & Recent', style: TextStyle(color: subtle, fontSize: 13)),
             ]),
           ),
         ),

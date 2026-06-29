@@ -144,6 +144,15 @@ class Library extends ChangeNotifier {
     return l;
   }
 
+  /// Clear watch history: Continue-watching progress + Recently-watched.
+  /// Favourites are kept.
+  void clearHistory() {
+    recent.clear();
+    progress.clear();
+    notifyListeners();
+    _save();
+  }
+
   // ---- recently watched ----
   void addRecent(MediaRef ref) {
     recent.removeWhere((e) => e.key == ref.key);
