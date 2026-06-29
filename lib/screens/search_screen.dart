@@ -203,37 +203,52 @@ class SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClien
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    if (_browse) {
-      return Column(
-        children: [
-          const SizedBox(height: 10),
-          _browseHeader(),
-          const SizedBox(height: 14),
-          _categoryRow(),
-          const SizedBox(height: 8),
-          Expanded(child: _body()),
-        ],
-      );
-    }
-    return Column(
-      children: [
-        const SizedBox(height: 6),
-        _searchField(),
-        const SizedBox(height: 14),
-        _sectionChips(),
-        if (_section != 'all') ...[const SizedBox(height: 12), _categoryRow()],
-        const SizedBox(height: 6),
-        Expanded(child: _body()),
-      ],
+    // Self-contained Scaffold so it renders correctly whether it's a shell tab
+    // or pushed as a route (e.g. Home's "See all") — otherwise text loses its
+    // theme (red/yellow unstyled rendering) with no Material ancestor.
+    final canBack = Navigator.of(context).canPop();
+    final body = _browse
+        ? Column(
+            children: [
+              const SizedBox(height: 10),
+              _browseHeader(canBack),
+              const SizedBox(height: 14),
+              _categoryRow(),
+              const SizedBox(height: 8),
+              Expanded(child: _body()),
+            ],
+          )
+        : Column(
+            children: [
+              const SizedBox(height: 6),
+              _searchField(),
+              const SizedBox(height: 14),
+              _sectionChips(),
+              if (_section != 'all') ...[const SizedBox(height: 12), _categoryRow()],
+              const SizedBox(height: 6),
+              Expanded(child: _body()),
+            ],
+          );
+    return Scaffold(
+      backgroundColor: canBack ? bg : Colors.transparent,
+      body: SafeArea(top: canBack, bottom: false, child: body),
     );
   }
 
-  Widget _browseHeader() {
+  Widget _browseHeader(bool canBack) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 8, 16, 0),
+      padding: EdgeInsets.fromLTRB(canBack ? 4 : 18, 8, 16, 0),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
+          if (canBack)
+            Padding(
+              padding: const EdgeInsets.only(right: 2, bottom: 2),
+              child: IconButton(
+                onPressed: () => Navigator.of(context).pop(),
+                icon: Icon(Icons.arrow_back_rounded, color: textHi),
+              ),
+            ),
           Flexible(
             child: Text(widget.initialCategoryName ?? _sectionTitle,
                 maxLines: 1,
