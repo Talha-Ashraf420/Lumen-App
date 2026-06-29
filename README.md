@@ -44,6 +44,18 @@ Looking to list Lumen on a store? See **[STORE_LISTING.md](STORE_LISTING.md)**.
 
 ---
 
+## 📸 Screenshots
+
+| Home | Movie detail | Discover |
+|------|--------------|----------|
+| ![Home](docs/screenshots/home.png) | ![Detail](docs/screenshots/detail.png) | ![Discover](docs/screenshots/discover.png) |
+
+| Movies | Live TV |
+|--------|---------|
+| ![Movies](docs/screenshots/movies.png) | ![Live TV](docs/screenshots/live.png) |
+
+---
+
 ## ✨ Features
 
 - **Live TV** with EPG (now/next), catch-up, and a polished channel guide
