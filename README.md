@@ -28,6 +28,20 @@ Grab the latest build for your platform — no login required:
 
 > The download links resolve once the first CI run finishes publishing the **latest** release.
 
+### 🔄 Auto-update on Android (recommended)
+
+Install via **[Obtainium](https://github.com/ImranR98/Obtainium)** to get Lumen *and automatic updates* straight from GitHub Releases — no app store needed:
+
+[![Get it on Obtainium](https://img.shields.io/badge/Get%20it%20on-Obtainium-1A237E?style=for-the-badge&logo=android&logoColor=white)](https://apps.obtainium.imranr98.dev/redirect.html?r=obtainium://add/https://github.com/Talha-Ashraf420/Lumen-App)
+
+1. Install Obtainium, tap **Add App**.
+2. Paste `https://github.com/Talha-Ashraf420/Lumen-App` → **Add**.
+3. Obtainium installs it and notifies you whenever a new build is released.
+
+> First sideloaded install on Android shows the system "install unknown apps" prompt once — that's normal. Lumen also has a built-in updater (Profile → Check for updates).
+
+Looking to list Lumen on a store? See **[STORE_LISTING.md](STORE_LISTING.md)**.
+
 ---
 
 ## ✨ Features
