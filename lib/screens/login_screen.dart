@@ -147,7 +147,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Wordmark(size: 42),
+                    Wordmark(size: 42),
                     const SizedBox(height: 14),
                     Text('Sign in with your Xtream / X3U codes — or paste an M3U URL.',
                         textAlign: TextAlign.center, style: TextStyle(color: muted)),

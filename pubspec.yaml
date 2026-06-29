@@ -2,11 +2,14 @@ name: lumen_tv
 description: "A new Flutter project."
 
 flutter_launcher_icons:
+  android: true
   ios: true
   macos:
     generate: true
   remove_alpha_ios: true
   image_path: "assets/icon/lumen_icon.png"
+  adaptive_icon_background: "#0A1412"
+  adaptive_icon_foreground: "assets/icon/lumen_icon.png"
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev

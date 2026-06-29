@@ -269,7 +269,7 @@ class BrandedLoading extends StatelessWidget {
         children: [
           Lottie.asset('assets/lumen_loader.json', width: 132, height: 132, repeat: true),
           const SizedBox(height: 10),
-          const Wordmark(size: 30),
+          Wordmark(size: 30),
         ],
       ),
     );
