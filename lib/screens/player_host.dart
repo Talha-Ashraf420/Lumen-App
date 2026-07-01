@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io' show Platform;
+import 'dart:ui' show ImageFilter;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -10,6 +11,9 @@ import 'package:window_manager/window_manager.dart';
 import '../library.dart';
 import '../pip.dart';
 import '../playback.dart';
+import '../session.dart';
+import '../split.dart';
+import 'split_picker.dart';
 import '../theme.dart';
 
 /// The one and only player view — a persistent app-level overlay. A single
@@ -35,6 +39,11 @@ class _PlayerHostState extends State<PlayerHost> {
   double _zoomScale = 1.0, _zoomStart = 1.0;
   bool _hadMedia = false;
   bool _introDismissed = false; // hides the Skip-intro pill once used/dismissed
+
+  // split-screen: whether the MAIN (big, audio) slot is the primary player (pc).
+  // Swapping flips this — audio + big size follow the main slot.
+  bool _splitMainIsPc = true;
+  SplitController get sc => SplitController.instance;
 
   // gesture state
   String? _gMode;
@@ -81,6 +90,7 @@ class _PlayerHostState extends State<PlayerHost> {
   void initState() {
     super.initState();
     pc.addListener(_onPc);
+    sc.addListener(_onSplit);
     Pip.instance.init();
     Pip.instance.active.addListener(_onPip);
     ScreenBrightness.instance.current.then((b) => _curBri = b).catchError((_) => _curBri = 0.5);
@@ -89,6 +99,7 @@ class _PlayerHostState extends State<PlayerHost> {
   @override
   void dispose() {
     pc.removeListener(_onPc);
+    sc.removeListener(_onSplit);
     Pip.instance.active.removeListener(_onPip);
     _hideTimer?.cancel();
     _hudTimer?.cancel();
@@ -99,6 +110,238 @@ class _PlayerHostState extends State<PlayerHost> {
 
   void _onPip() {
     if (mounted) setState(() {});
+  }
+
+  void _onSplit() {
+    if (mounted) setState(() {});
+  }
+
+  // ---- split screen ----
+  Player get _mainPlayer => _splitMainIsPc ? pc.player! : sc.player!;
+
+  /// Route audio to the big (main) slot, mute the other.
+  void _applySplitAudio() {
+    if (!sc.active) return;
+    (_splitMainIsPc ? pc.player! : sc.player!).setVolume(_muted ? 0 : 100);
+    (_splitMainIsPc ? sc.player! : pc.player!).setVolume(0);
+  }
+
+  void _swapSplit() {
+    setState(() => _splitMainIsPc = !_splitMainIsPc);
+    _applySplitAudio();
+    _scheduleHide();
+  }
+
+  Future<void> _openSplitWith(PlayerItem it) async {
+    _splitMainIsPc = true; // pc keeps audio; the new pick is the small one
+    await sc.open(it);
+    _applySplitAudio();
+    setState(() {});
+  }
+
+  Future<void> _exitSplit() async {
+    await sc.close();
+    _splitMainIsPc = true;
+    pc.player?.setVolume(_muted ? 0 : 100);
+    if (mounted) setState(() {});
+  }
+
+  void _openSplitPicker() {
+    _hideTimer?.cancel();
+    setState(() {
+      _controls = true;
+      _panelKind = 'split';
+    });
+  }
+
+  Widget _splitSmallBtn(IconData icon, VoidCallback onTap) => MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.all(7),
+            decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.55), shape: BoxShape.circle, border: Border.all(color: Colors.white24)),
+            child: Icon(icon, color: Colors.white, size: 20),
+          ),
+        ),
+      );
+
+  Widget _splitStack() {
+    final mainCtrl = _splitMainIsPc ? pc.controller! : sc.controller!;
+    final smallCtrl = _splitMainIsPc ? sc.controller! : pc.controller!;
+    final smallPlayer = _splitMainIsPc ? sc.player! : pc.player!;
+    final mainTitle = _splitMainIsPc ? _item.title : (sc.item?.title ?? '');
+    final smallTitle = _splitMainIsPc ? (sc.item?.title ?? '') : _item.title;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        const ColoredBox(color: Colors.black),
+        Row(
+          children: [
+            // BIG (main) — carries the audio + controls
+            Expanded(
+              flex: 64,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _tap,
+                child: Video(controller: mainCtrl, controls: NoVideoControls, fit: BoxFit.contain),
+              ),
+            ),
+            // SMALL (secondary) — muted; tap to focus (swap audio + size)
+            Expanded(
+              flex: 36,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _tap,
+                child: DecoratedBox(
+                  decoration: const BoxDecoration(border: Border(left: BorderSide(color: Colors.white24, width: 2))),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Video(controller: smallCtrl, controls: NoVideoControls, fit: BoxFit.contain),
+                      Positioned(
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          decoration: const BoxDecoration(
+                            gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xCC000000), Colors.transparent]),
+                          ),
+                          child: Row(children: [
+                            Expanded(
+                              child: Text(smallTitle,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w700)),
+                            ),
+                            const Icon(Icons.volume_off_rounded, color: Colors.white54, size: 16),
+                          ]),
+                        ),
+                      ),
+                      // the small player's OWN controls (independent of the big one)
+                      Positioned(
+                        bottom: 8,
+                        left: 0,
+                        right: 0,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            StreamBuilder<bool>(
+                              stream: smallPlayer.stream.playing,
+                              initialData: smallPlayer.state.playing,
+                              builder: (_, s) => _splitSmallBtn(
+                                (s.data ?? false) ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                                () => smallPlayer.playOrPause(),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            _splitSmallBtn(Icons.swap_horiz_rounded, _swapSplit),
+                            const SizedBox(width: 10),
+                            _splitSmallBtn(Icons.close_rounded, _exitSplit),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        AnimatedOpacity(
+          opacity: _controls ? 1 : 0,
+          duration: const Duration(milliseconds: 220),
+          child: IgnorePointer(ignoring: !_controls, child: _splitOverlay(mainTitle)),
+        ),
+      ],
+    );
+  }
+
+  Widget _splitOverlay(String title) {
+    return DefaultTextStyle.merge(
+      style: const TextStyle(color: Colors.white),
+      child: IconTheme.merge(
+        data: const IconThemeData(color: Colors.white),
+        child: Column(
+      children: [
+        Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xCC000000), Colors.transparent]),
+          ),
+          child: SafeArea(
+            bottom: false,
+            minimum: const EdgeInsets.fromLTRB(8, 8, 12, 8),
+            child: Row(children: [
+              IconButton(onPressed: _minimize, icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.white, size: 30)),
+              Expanded(
+                child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700)),
+              ),
+              TextButton.icon(
+                onPressed: _exitSplit,
+                icon: Icon(Icons.close_fullscreen_rounded, color: accent, size: 18),
+                label: Text('Exit split', style: TextStyle(color: accent, fontWeight: FontWeight.w700)),
+              ),
+              IconButton(onPressed: _close, icon: const Icon(Icons.close_rounded, color: Colors.white)),
+            ]),
+          ),
+        ),
+        const Spacer(),
+        StreamBuilder<bool>(
+          stream: _mainPlayer.stream.playing,
+          initialData: _mainPlayer.state.playing,
+          builder: (_, s) {
+            final playing = s.data ?? false;
+            return MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: GestureDetector(
+                onTap: () {
+                  _mainPlayer.playOrPause();
+                  _scheduleHide();
+                },
+                child: Container(
+                  width: 72,
+                  height: 72,
+                  decoration: BoxDecoration(color: accent, shape: BoxShape.circle, boxShadow: glow(accent, a: 0.5)),
+                  child: Icon(playing ? Icons.pause_rounded : Icons.play_arrow_rounded, color: Colors.white, size: 40),
+                ),
+              ),
+            );
+          },
+        ),
+        const Spacer(),
+        Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(begin: Alignment.bottomCenter, end: Alignment.topCenter, colors: [Color(0xCC000000), Colors.transparent]),
+          ),
+          child: SafeArea(
+            top: false,
+            minimum: const EdgeInsets.fromLTRB(12, 30, 12, 12),
+            child: Row(children: [
+              IconButton(
+                onPressed: () {
+                  setState(() => _muted = !_muted);
+                  _applySplitAudio();
+                },
+                icon: Icon(_muted ? Icons.volume_off_rounded : Icons.volume_up_rounded, color: Colors.white),
+              ),
+              TextButton.icon(
+                onPressed: _swapSplit,
+                icon: const Icon(Icons.swap_horiz_rounded, color: Colors.white),
+                label: const Text('Swap audio', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+              ),
+              const Spacer(),
+              IconButton(
+                onPressed: _toggleFullscreen,
+                icon: Icon(_fullscreen ? Icons.fullscreen_exit_rounded : Icons.fullscreen_rounded, color: Colors.white),
+              ),
+            ]),
+          ),
+        ),
+      ],
+        ),
+      ),
+    );
   }
 
   void _onPc() {
@@ -116,6 +359,7 @@ class _PlayerHostState extends State<PlayerHost> {
       _scheduleHide();
     } else if (!has && _hadMedia) {
       _exitFullscreen();
+      if (sc.active) sc.close();
     }
     _hadMedia = has;
     if (mounted) setState(() {});
@@ -132,6 +376,7 @@ class _PlayerHostState extends State<PlayerHost> {
   }
 
   void _minimize() {
+    if (sc.active) _exitSplit();
     if (_isDesktop && _fullscreen) windowManager.setFullScreen(false);
     _fullscreen = false;
     _panelKind = null;
@@ -139,6 +384,7 @@ class _PlayerHostState extends State<PlayerHost> {
   }
 
   void _close() {
+    if (sc.active) sc.close();
     _exitFullscreen();
     pc.stop();
   }
@@ -190,7 +436,8 @@ class _PlayerHostState extends State<PlayerHost> {
 
   void _toggleMute() {
     _muted = !_muted;
-    pc.player!.setVolume(_muted ? 0 : 100);
+    if (!_muted && _curVol == 0) _curVol = 100;
+    pc.player!.setVolume(_muted ? 0 : _curVol);
     setState(() {});
   }
 
@@ -217,6 +464,9 @@ class _PlayerHostState extends State<PlayerHost> {
           _miniPos ??= Offset(w - mw - margin, h - mh - bottomGap);
           final mx = _miniPos!.dx.clamp(8.0, (w - mw - 8).clamp(8.0, w));
           final my = _miniPos!.dy.clamp(8.0, (h - mh - 8).clamp(8.0, h));
+
+          // Split-screen: two videos side by side (big = audio + controls).
+          if (sc.active && !mini && !pip) return _splitStack();
 
           return Stack(
             children: [
@@ -346,6 +596,7 @@ class _PlayerHostState extends State<PlayerHost> {
               alignment: Alignment.center,
               child: StreamBuilder<bool>(
                 stream: pc.player!.stream.playing,
+                initialData: pc.player!.state.playing,
                 builder: (_, s) => _miniBtn((s.data ?? false) ? Icons.pause_rounded : Icons.play_arrow_rounded,
                     () => pc.player!.playOrPause(), 28),
               ),
@@ -358,13 +609,16 @@ class _PlayerHostState extends State<PlayerHost> {
     );
   }
 
-  Widget _miniBtn(IconData icon, VoidCallback onTap, double size) => GestureDetector(
-        onTap: onTap,
-        child: Container(
-          margin: const EdgeInsets.all(5),
-          padding: const EdgeInsets.all(5),
-          decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.5), shape: BoxShape.circle),
-          child: Icon(icon, color: Colors.white, size: size),
+  Widget _miniBtn(IconData icon, VoidCallback onTap, double size) => MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          onTap: onTap,
+          child: Container(
+            margin: const EdgeInsets.all(5),
+            padding: const EdgeInsets.all(5),
+            decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.5), shape: BoxShape.circle),
+            child: Icon(icon, color: Colors.white, size: size),
+          ),
         ),
       );
 
@@ -603,7 +857,9 @@ class _PlayerHostState extends State<PlayerHost> {
     return Positioned(
       right: 24,
       bottom: 100,
-      child: GestureDetector(
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
         onTap: () {
           final pos = pc.player!.state.position.inSeconds;
           final target = pos < 80 ? 90 : pos + 80;
@@ -624,6 +880,7 @@ class _PlayerHostState extends State<PlayerHost> {
             Icon(Icons.fast_forward_rounded, color: Colors.white, size: 18),
           ]),
         ),
+      ),
       ),
     );
   }
@@ -679,7 +936,15 @@ class _PlayerHostState extends State<PlayerHost> {
 
   // ---- full controls ----
   Widget _overlay() {
-    return Column(children: [_topBar(), const Spacer(), _centerControls(), const Spacer(), _bottomBar()]);
+    // The overlay is always over (dark) video, so force white text/icons
+    // regardless of the app's light/dark theme; explicit colours still win.
+    return DefaultTextStyle.merge(
+      style: const TextStyle(color: Colors.white),
+      child: IconTheme.merge(
+        data: const IconThemeData(color: Colors.white),
+        child: Column(children: [_topBar(), const Spacer(), _centerControls(), const Spacer(), _bottomBar()]),
+      ),
+    );
   }
 
   Widget _topBar() {
@@ -776,9 +1041,12 @@ class _PlayerHostState extends State<PlayerHost> {
         const SizedBox(width: 22),
         StreamBuilder<bool>(
           stream: pc.player!.stream.playing,
+          initialData: pc.player!.state.playing,
           builder: (_, s) {
             final playing = s.data ?? false;
-            return GestureDetector(
+            return MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: GestureDetector(
               onTap: () {
                 pc.player!.playOrPause();
                 _scheduleHide();
@@ -789,6 +1057,7 @@ class _PlayerHostState extends State<PlayerHost> {
                 decoration: BoxDecoration(color: accent, shape: BoxShape.circle, boxShadow: glow(accent, a: 0.5)),
                 child: Icon(playing ? Icons.pause_rounded : Icons.play_arrow_rounded, color: Colors.white, size: 42),
               ),
+            ),
             );
           },
         ),
@@ -800,18 +1069,24 @@ class _PlayerHostState extends State<PlayerHost> {
     );
   }
 
-  Widget _roundBtn(IconData icon, VoidCallback onTap) => GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.all(11),
-          decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.13), shape: BoxShape.circle),
-          child: Icon(icon, color: Colors.white, size: 30),
+  Widget _roundBtn(IconData icon, VoidCallback onTap) => MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.all(11),
+            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.13), shape: BoxShape.circle),
+            child: Icon(icon, color: Colors.white, size: 30),
+          ),
         ),
       );
 
-  Widget _smallBtn(IconData icon, VoidCallback? onTap) => GestureDetector(
-        onTap: onTap,
-        child: Icon(icon, color: onTap == null ? Colors.white24 : Colors.white, size: 34),
+  Widget _smallBtn(IconData icon, VoidCallback? onTap) => MouseRegion(
+        cursor: onTap == null ? MouseCursor.defer : SystemMouseCursors.click,
+        child: GestureDetector(
+          onTap: onTap,
+          child: Icon(icon, color: onTap == null ? Colors.white24 : Colors.white, size: 34),
+        ),
       );
 
   Widget _bottomBar() {
@@ -829,6 +1104,12 @@ class _PlayerHostState extends State<PlayerHost> {
               children: [
                 IconButton(onPressed: _toggleMute, icon: Icon(_muted ? Icons.volume_off_rounded : Icons.volume_up_rounded, color: Colors.white)),
                 IconButton(onPressed: _pickSubtitles, icon: const Icon(Icons.closed_caption_rounded, color: Colors.white)),
+                if (activeClient != null)
+                  IconButton(
+                    onPressed: _openSplitPicker,
+                    tooltip: 'Split view',
+                    icon: const Icon(Icons.splitscreen_rounded, color: Colors.white),
+                  ),
                 IconButton(onPressed: _openSettings, icon: const Icon(Icons.tune_rounded, color: Colors.white)),
                 if (_isAndroid)
                   IconButton(
@@ -925,26 +1206,63 @@ class _PlayerHostState extends State<PlayerHost> {
   }
 
   Widget _panel() {
-    return Positioned.fill(
-      child: Stack(
-        children: [
-          GestureDetector(behavior: HitTestBehavior.opaque, onTap: _closePanel, child: const ColoredBox(color: Colors.black54)),
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: ConstrainedBox(
-              constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.7),
+    final w = MediaQuery.sizeOf(context).width;
+    final panelW = w < 640 ? w * 0.88 : 380.0;
+    // A dark, glassy side panel over the video (never the app's light surface),
+    // with a hidden scrollbar and white content.
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: _closePanel,
+            child: const ColoredBox(color: Colors.black54),
+          ),
+        ),
+        Positioned(
+          top: 0,
+          bottom: 0,
+          right: 0,
+          width: panelW,
+          child: ClipRRect(
+            borderRadius: const BorderRadius.horizontal(left: Radius.circular(22)),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
               child: Container(
-                width: double.infinity,
-                decoration: BoxDecoration(color: surface, borderRadius: const BorderRadius.vertical(top: Radius.circular(24))),
+                decoration: const BoxDecoration(
+                  color: Color(0xF00C1512),
+                  border: Border(left: BorderSide(color: Colors.white24)),
+                ),
                 child: SafeArea(
-                  top: false,
-                  child: SingleChildScrollView(child: _panelKind == 'subs' ? _subsContent() : _settingsContent()),
+                  child: DefaultTextStyle.merge(
+                    style: const TextStyle(color: Colors.white),
+                    child: IconTheme.merge(
+                      data: const IconThemeData(color: Colors.white),
+                      child: ListTileTheme(
+                        data: const ListTileThemeData(textColor: Colors.white, iconColor: Colors.white),
+                      child: _panelKind == 'split'
+                          ? (activeClient == null
+                              ? const Center(child: Text('Not available.', style: TextStyle(color: Colors.white54)))
+                              : SplitPicker(
+                                  client: activeClient!,
+                                  onPick: (it) {
+                                    _closePanel();
+                                    _openSplitWith(it);
+                                  },
+                                ))
+                          : ScrollConfiguration(
+                              behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+                              child: SingleChildScrollView(child: _panelKind == 'subs' ? _subsContent() : _settingsContent()),
+                            ),
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -955,9 +1273,8 @@ class _PlayerHostState extends State<PlayerHost> {
       mainAxisSize: MainAxisSize.min,
       children: [
         const SizedBox(height: 10),
-        Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: subtle, borderRadius: BorderRadius.circular(2)))),
         const Padding(
-          padding: EdgeInsets.fromLTRB(20, 12, 20, 4),
+          padding: EdgeInsets.fromLTRB(20, 8, 20, 4),
           child: Align(alignment: Alignment.centerLeft, child: Text('Subtitles', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800))),
         ),
         _subRow('Off', current.id == 'no', () {
@@ -972,7 +1289,7 @@ class _PlayerHostState extends State<PlayerHost> {
           });
         }),
         if (real.isEmpty)
-          Padding(padding: const EdgeInsets.all(20), child: Text('No subtitles available in this stream.', style: TextStyle(color: subtle))),
+          const Padding(padding: EdgeInsets.all(20), child: Text('No subtitles available in this stream.', style: TextStyle(color: Colors.white54))),
         const SizedBox(height: 12),
       ],
     );
@@ -980,9 +1297,16 @@ class _PlayerHostState extends State<PlayerHost> {
 
   Widget _subRow(String label, bool sel, VoidCallback onTap) => ListTile(
         onTap: onTap,
-        leading: Icon(sel ? Icons.check_circle_rounded : Icons.subtitles_outlined, color: sel ? accent : muted),
+        leading: Icon(sel ? Icons.check_circle_rounded : Icons.subtitles_outlined, color: sel ? accent : Colors.white54),
         title: Text(label, style: TextStyle(fontWeight: sel ? FontWeight.w700 : FontWeight.w500)),
       );
+
+  void _setVolume(double v) {
+    _curVol = v.clamp(0.0, 100.0);
+    _muted = _curVol == 0;
+    pc.player!.setVolume(_curVol);
+    setState(() {});
+  }
 
   Widget _settingsContent() {
     final audio = pc.player!.state.tracks.audio.where((t) => t.id != 'auto' && t.id != 'no').toList();
@@ -992,14 +1316,43 @@ class _PlayerHostState extends State<PlayerHost> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SizedBox(height: 10),
-        Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: subtle, borderRadius: BorderRadius.circular(2)))),
+        const SizedBox(height: 12),
         Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+          padding: const EdgeInsets.fromLTRB(20, 4, 12, 4),
           child: Row(children: [
             const Text('Playback', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
             const Spacer(),
-            GestureDetector(onTap: _closePanel, child: Icon(Icons.close_rounded, color: muted)),
+            IconButton(onPressed: _closePanel, icon: const Icon(Icons.close_rounded, color: Colors.white70)),
+          ]),
+        ),
+        _settingLabel('Volume'),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Row(children: [
+            MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: GestureDetector(
+                onTap: _toggleMute,
+                child: Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Icon(_muted || _curVol == 0 ? Icons.volume_off_rounded : Icons.volume_up_rounded, color: Colors.white70),
+                ),
+              ),
+            ),
+            Expanded(
+              child: SliderTheme(
+                data: SliderThemeData(
+                  trackHeight: 3,
+                  thumbColor: accent,
+                  activeTrackColor: accent,
+                  inactiveTrackColor: Colors.white24,
+                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+                ),
+                child: Slider(value: _muted ? 0 : _curVol, max: 100, onChanged: _setVolume),
+              ),
+            ),
+            SizedBox(width: 40, child: Text('${(_muted ? 0 : _curVol).round()}', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white54, fontSize: 12))),
           ]),
         ),
         _settingLabel('Video fit'),
@@ -1024,7 +1377,7 @@ class _PlayerHostState extends State<PlayerHost> {
         ]),
         _settingLabel('Audio'),
         if (audio.isEmpty)
-          Padding(padding: const EdgeInsets.fromLTRB(20, 2, 20, 4), child: Text('Only one audio track.', style: TextStyle(color: subtle)))
+          const Padding(padding: EdgeInsets.fromLTRB(20, 2, 20, 4), child: Text('Only one audio track.', style: TextStyle(color: Colors.white54)))
         else
           ...audio.map((t) {
             final label = [t.title, t.language].whereType<String>().where((e) => e.isNotEmpty).join(' · ');
@@ -1077,7 +1430,7 @@ class _PlayerHostState extends State<PlayerHost> {
 
   Widget _settingLabel(String s) => Padding(
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-        child: Text(s, style: TextStyle(color: muted, fontWeight: FontWeight.w700, fontSize: 13)),
+        child: Text(s, style: const TextStyle(color: Colors.white54, fontWeight: FontWeight.w700, fontSize: 13)),
       );
 
   Widget _chipRow(List<(String, bool, VoidCallback)> chips) => Padding(
@@ -1087,34 +1440,40 @@ class _PlayerHostState extends State<PlayerHost> {
           runSpacing: 8,
           children: [
             for (final (label, sel, onTap) in chips)
-              GestureDetector(
-                onTap: onTap,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-                  decoration: BoxDecoration(
-                    color: sel ? accent : surfaceHi.withValues(alpha: 0.6),
-                    borderRadius: BorderRadius.circular(12),
+              MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: GestureDetector(
+                  onTap: onTap,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+                    decoration: BoxDecoration(
+                      color: sel ? accent : Colors.white.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(label, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: sel ? Colors.white : Colors.white70)),
                   ),
-                  child: Text(label, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: sel ? Colors.white : muted)),
                 ),
               ),
           ],
         ),
       );
 
-  Widget _stepBtn(IconData icon, VoidCallback onTap) => GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(color: surfaceHi.withValues(alpha: 0.7), shape: BoxShape.circle),
-          child: Icon(icon, color: accent, size: 22),
+  Widget _stepBtn(IconData icon, VoidCallback onTap) => MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.14), shape: BoxShape.circle),
+            child: Icon(icon, color: accent, size: 22),
+          ),
         ),
       );
 
   Widget _trackRow(String label, bool sel, VoidCallback onTap) => ListTile(
         onTap: onTap,
         dense: true,
-        leading: Icon(sel ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded, color: sel ? accent : muted),
+        leading: Icon(sel ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded, color: sel ? accent : Colors.white54),
         title: Text(label, style: TextStyle(fontWeight: sel ? FontWeight.w700 : FontWeight.w500)),
       );
 }

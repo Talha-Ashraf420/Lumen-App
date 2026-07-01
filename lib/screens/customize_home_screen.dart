@@ -55,7 +55,7 @@ class _CustomizeHomeScreenState extends State<CustomizeHomeScreen> {
       backgroundColor: bg,
       body: Stack(
         children: [
-          const Aurora(),
+          Aurora(),
           SafeArea(
             child: Column(
               children: [
@@ -101,7 +101,7 @@ class _CustomizeHomeScreenState extends State<CustomizeHomeScreen> {
                 ),
                 Expanded(
                   child: !_ready
-                      ? const BrandedLoading()
+                      ? BrandedLoading()
                       : AnimatedBuilder(
                           animation: HomeConfig.instance,
                           builder: (context, _) => ListView(

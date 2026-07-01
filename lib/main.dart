@@ -9,6 +9,7 @@ import 'epg_cache.dart';
 import 'home_config.dart';
 import 'models.dart';
 import 'playback.dart';
+import 'session.dart';
 import 'stats.dart';
 import 'store.dart';
 import 'library.dart';
@@ -158,6 +159,7 @@ class _GateState extends State<_Gate> {
         }
         if (_creds == null) return LoginScreen(onLogin: _onLogin);
         _client ??= XtreamClient(_creds!);
+        activeClient = _client; // expose to the app-level player (split picker)
         // Key by the active profile so switching fully remounts all tabs with
         // the new client (fresh catalogs), not stale data from the old account.
         return HomeShell(

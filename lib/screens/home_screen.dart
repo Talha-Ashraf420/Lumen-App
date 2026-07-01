@@ -190,7 +190,7 @@ class _HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMi
       future: _future,
       builder: (context, snap) {
         if (snap.connectionState != ConnectionState.done) {
-          return const BrandedLoading();
+          return BrandedLoading();
         }
         if (snap.hasError || snap.data == null) {
           return Center(
@@ -778,14 +778,16 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
             ),
           ),
         ),
-        // left + bottom scrims for legibility, fading into the page bg
-        DecoratedBox(
+        // Dark scrims behind the white hero text so it stays readable over ANY
+        // backdrop in BOTH themes (a light bg-tinted scrim hid the text in light
+        // mode). A subtle bg fade at the very bottom edge blends into the page.
+        const DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.centerLeft,
               end: Alignment.centerRight,
-              colors: [bg, bg.withValues(alpha: 0.45), Colors.transparent],
-              stops: const [0.0, 0.35, 0.7],
+              colors: [Color(0xE6000000), Color(0x40000000), Colors.transparent],
+              stops: [0.0, 0.4, 0.75],
             ),
           ),
         ),
@@ -794,8 +796,8 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
             gradient: LinearGradient(
               begin: Alignment.bottomCenter,
               end: Alignment.topCenter,
-              colors: [bg, bg.withValues(alpha: 0.85), bg.withValues(alpha: 0)],
-              stops: const [0.0, 0.22, 0.6],
+              colors: [bg, const Color(0xCC000000), const Color(0x66000000), Colors.transparent],
+              stops: const [0.0, 0.12, 0.32, 0.62],
             ),
           ),
         ),
