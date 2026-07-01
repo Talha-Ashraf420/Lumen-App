@@ -136,13 +136,13 @@ class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin
       backgroundColor: bg,
       body: Stack(
         children: [
-          const Aurora(),
+          Aurora(),
           SafeArea(
             child: Column(
               children: [
                 _header(),
                 _genreBar(),
-                Expanded(child: _loading ? const BrandedLoading() : _globe()),
+                Expanded(child: _loading ? BrandedLoading() : _globe()),
                 _footer(),
                 const SizedBox(height: 12),
               ],

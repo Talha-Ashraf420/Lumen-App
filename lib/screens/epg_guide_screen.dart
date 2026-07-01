@@ -156,7 +156,7 @@ class _EpgGuideScreenState extends State<EpgGuideScreen> with AutomaticKeepAlive
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    if (!_ready) return const BrandedLoading();
+    if (!_ready) return BrandedLoading();
     final colW = MediaQuery.sizeOf(context).width >= 900 ? 156.0 : 110.0;
 
     return Column(

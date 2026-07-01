@@ -463,7 +463,7 @@ class SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClien
       final mr = (movies ?? []).where((x) => m(x.name)).take(18).map(_movie).toList();
       final sr = (series ?? []).where((x) => m(x.name)).take(18).map(_ser).toList();
       final lr = (live ?? []).where((x) => m(x.name)).take(18).map(_liv).toList();
-      if (loading && mr.isEmpty && sr.isEmpty && lr.isEmpty) return const BrandedLoading();
+      if (loading && mr.isEmpty && sr.isEmpty && lr.isEmpty) return BrandedLoading();
       if (mr.isEmpty && sr.isEmpty && lr.isEmpty) return _empty('No results for “$_q”.');
       return ListView(
         padding: const EdgeInsets.only(top: 8, bottom: 120),
@@ -496,7 +496,7 @@ class SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClien
           .toList();
     }
 
-    if (!loaded) return const BrandedLoading();
+    if (!loaded) return BrandedLoading();
     if (items.isEmpty) return _empty(q.isEmpty ? 'Nothing here.' : 'No results for “$_q”.');
 
     return GridView.builder(

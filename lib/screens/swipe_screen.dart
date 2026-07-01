@@ -84,7 +84,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
       backgroundColor: bg,
       body: Stack(
         children: [
-          const Aurora(),
+          Aurora(),
           SafeArea(
             child: Column(
               children: [
@@ -119,7 +119,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
       );
 
   Widget _body() {
-    if (_loading) return const BrandedLoading();
+    if (_loading) return BrandedLoading();
     if (_done) {
       return Center(
         child: Column(

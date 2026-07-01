@@ -54,7 +54,7 @@ class _StatsScreenState extends State<StatsScreen> {
       backgroundColor: bg,
       body: Stack(
         children: [
-          const Aurora(),
+          Aurora(),
           SafeArea(
             child: AnimatedBuilder(
               animation: WatchStats.instance,

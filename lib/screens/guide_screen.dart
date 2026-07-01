@@ -80,7 +80,7 @@ class _GuideScreenState extends State<GuideScreen> with AutomaticKeepAliveClient
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    if (!_ready) return const BrandedLoading();
+    if (!_ready) return BrandedLoading();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
