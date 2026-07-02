@@ -8,7 +8,6 @@ import '../theme.dart';
 import '../widgets.dart';
 import '../xtream.dart';
 import '../playback.dart';
-import 'category_sheet.dart';
 import 'movie_detail_screen.dart';
 import 'series_detail_screen.dart';
 
@@ -207,15 +206,28 @@ class SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClien
     // or pushed as a route (e.g. Home's "See all") — otherwise text loses its
     // theme (red/yellow unstyled rendering) with no Material ancestor.
     final canBack = Navigator.of(context).canPop();
+    final wide = isWide(context);
     final body = _browse
         ? Column(
             children: [
               const SizedBox(height: 10),
               _browseHeader(canBack),
-              const SizedBox(height: 14),
-              _categoryRow(),
-              const SizedBox(height: 8),
-              Expanded(child: _body()),
+              const SizedBox(height: 12),
+              if (wide)
+                Expanded(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _catSidebar(),
+                      Expanded(child: _body()),
+                    ],
+                  ),
+                )
+              else ...[
+                Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: _catButton()),
+                const SizedBox(height: 8),
+                Expanded(child: _body()),
+              ],
             ],
           )
         : Column(
@@ -239,32 +251,40 @@ class SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClien
     return Padding(
       padding: EdgeInsets.fromLTRB(canBack ? 4 : 18, 8, 16, 0),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           if (canBack)
             Padding(
-              padding: const EdgeInsets.only(right: 2, bottom: 2),
+              padding: const EdgeInsets.only(right: 2),
               child: IconButton(
                 onPressed: () => Navigator.of(context).pop(),
                 icon: Icon(Icons.arrow_back_rounded, color: textHi),
               ),
             ),
-          Flexible(
-            child: Text(widget.initialCategoryName ?? _sectionTitle,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800, letterSpacing: -0.6)),
+          Expanded(
+            child: Row(
+              children: [
+                Flexible(
+                  child: Text(widget.initialCategoryName ?? _sectionTitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800, letterSpacing: -0.6)),
+                ),
+                const SizedBox(width: 12),
+                Icon(
+                  _section == 'movie'
+                      ? Icons.movie_rounded
+                      : _section == 'series'
+                          ? Icons.video_library_rounded
+                          : Icons.live_tv_rounded,
+                  color: accent,
+                  size: 24,
+                ),
+              ],
+            ),
           ),
           const SizedBox(width: 12),
-          Icon(
-            _section == 'movie'
-                ? Icons.movie_rounded
-                : _section == 'series'
-                    ? Icons.video_library_rounded
-                    : Icons.live_tv_rounded,
-            color: accent,
-            size: 24,
-          ),
+          _sortButton(),
         ],
       ),
     );
@@ -333,74 +353,132 @@ class SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClien
     'year': 'Newest',
   };
 
-  Future<void> _pickSort() async {
-    final r = await showModalBottomSheet<String>(
-      context: context,
-      backgroundColor: surface,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (_) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(20, 18, 20, 8),
-              child: Align(alignment: Alignment.centerLeft, child: Text('Sort by', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800))),
-            ),
-            for (final e in _sortLabels.entries)
-              if (!(_section == 'live' && (e.key == 'rating' || e.key == 'recent' || e.key == 'year')))
-                ListTile(
-                  onTap: () => Navigator.pop(context, e.key),
-                  leading: Icon(_sort == e.key ? Icons.check_circle_rounded : Icons.sort_rounded, color: _sort == e.key ? accent : muted),
-                  title: Text(e.value, style: TextStyle(fontWeight: _sort == e.key ? FontWeight.w700 : FontWeight.w500)),
-                ),
-            const SizedBox(height: 12),
-          ],
-        ),
+  // Sort → an anchored dropdown menu (not a bottom sheet).
+  Widget _sortButton() {
+    final entries = _sortLabels.entries
+        .where((e) => !(_section == 'live' && (e.key == 'rating' || e.key == 'recent' || e.key == 'year')))
+        .toList();
+    return PopupMenuButton<String>(
+      tooltip: 'Sort',
+      color: surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: line)),
+      onSelected: (v) => setState(() => _sort = v),
+      itemBuilder: (_) => [
+        for (final e in entries)
+          PopupMenuItem(
+            value: e.key,
+            child: Row(children: [
+              Icon(_sort == e.key ? Icons.check_rounded : Icons.sort_rounded, color: _sort == e.key ? accent : muted, size: 18),
+              const SizedBox(width: 10),
+              Text(e.value, style: TextStyle(fontWeight: _sort == e.key ? FontWeight.w800 : FontWeight.w600, color: textHi)),
+            ]),
+          ),
+      ],
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        decoration: BoxDecoration(color: surfaceHi.withValues(alpha: 0.6), borderRadius: BorderRadius.circular(13), border: Border.all(color: line)),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.swap_vert_rounded, size: 18, color: _sort == 'default' ? muted : accent),
+          const SizedBox(width: 6),
+          Text(_sort == 'default' ? 'Sort' : _sortLabels[_sort]!,
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: _sort == 'default' ? textHi : accent)),
+        ]),
       ),
     );
-    if (r != null && mounted) setState(() => _sort = r);
+  }
+
+  // Category → anchored dropdown (used on mobile / search mode). No bottom sheet.
+  Widget _catButton() {
+    return PopupMenuButton<String>(
+      tooltip: 'Category',
+      color: surface,
+      constraints: const BoxConstraints(minWidth: 260, maxHeight: 460),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: line)),
+      onSelected: (v) => setState(() => _cat = v),
+      itemBuilder: (_) => [
+        _catItem('all', 'All categories'),
+        for (final c in _curCats) _catItem(c.id, c.name),
+      ],
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(color: surfaceHi.withValues(alpha: 0.6), borderRadius: BorderRadius.circular(13), border: Border.all(color: line)),
+        child: Row(children: [
+          Icon(Icons.category_rounded, size: 18, color: accent),
+          const SizedBox(width: 8),
+          Expanded(child: Text(_catLabel, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
+          Icon(Icons.expand_more_rounded, color: muted, size: 20),
+        ]),
+      ),
+    );
+  }
+
+  PopupMenuItem<String> _catItem(String id, String name) {
+    final sel = _cat == id;
+    return PopupMenuItem(
+      value: id,
+      child: Row(children: [
+        if (sel) Icon(Icons.check_rounded, color: accent, size: 18) else const SizedBox(width: 18),
+        const SizedBox(width: 10),
+        Expanded(child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: sel ? FontWeight.w800 : FontWeight.w600, color: sel ? textHi : muted))),
+      ]),
+    );
+  }
+
+  // Desktop browse: a persistent category list beside the grid (no sheet).
+  Widget _catSidebar() {
+    final cats = <(String, String)>[('all', 'All categories'), for (final c in _curCats) (c.id, c.name)];
+    return Container(
+      width: 240,
+      decoration: BoxDecoration(border: Border(right: BorderSide(color: line))),
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(12, 2, 12, 24),
+        children: [
+          Padding(padding: const EdgeInsets.fromLTRB(12, 6, 12, 10), child: Text('CATEGORIES', style: kSection())),
+          for (final (id, name) in cats) _catTile(id, name),
+        ],
+      ),
+    );
+  }
+
+  Widget _catTile(String id, String name) {
+    final sel = _cat == id;
+    return FocusableTap(
+      onTap: () => setState(() => _cat = id),
+      builder: (context, active) => AnimatedContainer(
+        duration: const Duration(milliseconds: 140),
+        margin: const EdgeInsets.symmetric(vertical: 2),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        decoration: BoxDecoration(
+          color: sel ? accent.withValues(alpha: 0.16) : (active ? surfaceHi.withValues(alpha: 0.7) : Colors.transparent),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(children: [
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 140),
+            width: 3,
+            height: sel ? 16 : 0,
+            decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(2)),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontWeight: sel ? FontWeight.w800 : FontWeight.w600, fontSize: 14, color: sel ? textHi : muted)),
+          ),
+        ]),
+      ),
+    );
   }
 
   Widget _categoryRow() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        children: [
-          Expanded(
-            child: GestureDetector(
-              onTap: () async {
-                final r = await showCategorySheet(context, categories: _curCats, selected: _cat);
-                if (r != null && mounted) setState(() => _cat = r);
-              },
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-                decoration: BoxDecoration(color: surfaceHi.withValues(alpha: 0.6), borderRadius: BorderRadius.circular(13), border: Border.all(color: line)),
-                child: Row(children: [
-                  Icon(Icons.category_rounded, size: 18, color: accent),
-                  const SizedBox(width: 8),
-                  Expanded(child: Text(_catLabel, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
-                  Icon(Icons.expand_more_rounded, color: muted, size: 20),
-                ]),
-              ),
-            ),
-          ),
-          const SizedBox(width: 10),
-          GestureDetector(
-            onTap: _pickSort,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-              decoration: BoxDecoration(color: surfaceHi.withValues(alpha: 0.6), borderRadius: BorderRadius.circular(13), border: Border.all(color: line)),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(Icons.swap_vert_rounded, size: 18, color: _sort == 'default' ? muted : accent),
-                if (_sort != 'default') ...[
-                  const SizedBox(width: 6),
-                  Text(_sortLabels[_sort]!, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: accent)),
-                ],
-              ]),
-            ),
-          ),
-        ],
-      ),
+      child: Row(children: [
+        Expanded(child: _catButton()),
+        const SizedBox(width: 10),
+        _sortButton(),
+      ]),
     );
   }
 
@@ -463,7 +541,7 @@ class SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClien
       final mr = (movies ?? []).where((x) => m(x.name)).take(18).map(_movie).toList();
       final sr = (series ?? []).where((x) => m(x.name)).take(18).map(_ser).toList();
       final lr = (live ?? []).where((x) => m(x.name)).take(18).map(_liv).toList();
-      if (loading && mr.isEmpty && sr.isEmpty && lr.isEmpty) return BrandedLoading();
+      if (loading && mr.isEmpty && sr.isEmpty && lr.isEmpty) return const GridLoading();
       if (mr.isEmpty && sr.isEmpty && lr.isEmpty) return _empty('No results for “$_q”.');
       return ListView(
         padding: const EdgeInsets.only(top: 8, bottom: 120),
@@ -496,28 +574,30 @@ class SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClien
           .toList();
     }
 
-    if (!loaded) return BrandedLoading();
+    if (!loaded) return GridLoading(channel: live);
     if (items.isEmpty) return _empty(q.isEmpty ? 'Nothing here.' : 'No results for “$_q”.');
 
-    return GridView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: gridColumns(MediaQuery.sizeOf(context).width, tile: live ? 150 : 136),
-        childAspectRatio: live ? 0.82 : 0.66,
-        crossAxisSpacing: 13,
-        mainAxisSpacing: 20,
+    return LayoutBuilder(
+      builder: (context, constraints) => GridView.builder(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: gridColumns(constraints.maxWidth, tile: live ? 150 : 136),
+          childAspectRatio: live ? 0.82 : 0.66,
+          crossAxisSpacing: 13,
+          mainAxisSpacing: 20,
+        ),
+        itemCount: items.length,
+        itemBuilder: (_, i) => live
+            ? ChannelCard(name: items[i].name, logo: items[i].image, index: i, onTap: items[i].onTap)
+            : PosterCard(
+                name: items[i].name,
+                image: items[i].image,
+                rating: items[i].rating,
+                subtitle: items[i].subtitle,
+                index: i,
+                onTap: items[i].onTap,
+              ),
       ),
-      itemCount: items.length,
-      itemBuilder: (_, i) => live
-          ? ChannelCard(name: items[i].name, logo: items[i].image, index: i, onTap: items[i].onTap)
-          : PosterCard(
-              name: items[i].name,
-              image: items[i].image,
-              rating: items[i].rating,
-              subtitle: items[i].subtitle,
-              index: i,
-              onTap: items[i].onTap,
-            ),
     );
   }
 

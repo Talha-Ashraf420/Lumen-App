@@ -100,6 +100,8 @@ class _PlayerHostState extends State<PlayerHost> {
   void dispose() {
     pc.removeListener(_onPc);
     sc.removeListener(_onSplit);
+    _pcPlaySub?.cancel();
+    _scPlaySub?.cancel();
     Pip.instance.active.removeListener(_onPip);
     _hideTimer?.cancel();
     _hudTimer?.cancel();
@@ -118,12 +120,32 @@ class _PlayerHostState extends State<PlayerHost> {
 
   // ---- split screen ----
   Player get _mainPlayer => _splitMainIsPc ? pc.player! : sc.player!;
+  StreamSubscription<bool>? _pcPlaySub, _scPlaySub;
 
   /// Route audio to the big (main) slot, mute the other.
   void _applySplitAudio() {
     if (!sc.active) return;
-    (_splitMainIsPc ? pc.player! : sc.player!).setVolume(_muted ? 0 : 100);
+    (_splitMainIsPc ? pc.player! : sc.player!).setVolume(_muted ? 0 : _curVol);
     (_splitMainIsPc ? sc.player! : pc.player!).setVolume(0);
+  }
+
+  /// Whichever stream is actually playing becomes the primary (big + audio):
+  /// if the current main stalls/fails/pauses while the other is playing, swap.
+  void _watchSplitPlay() {
+    _pcPlaySub?.cancel();
+    _scPlaySub?.cancel();
+    _pcPlaySub = pc.player?.stream.playing.listen((_) => _autoPromote());
+    _scPlaySub = sc.player?.stream.playing.listen((_) => _autoPromote());
+  }
+
+  void _autoPromote() {
+    if (!sc.active || !mounted) return;
+    final mainPlaying = (_splitMainIsPc ? pc.player! : sc.player!).state.playing;
+    final otherPlaying = (_splitMainIsPc ? sc.player! : pc.player!).state.playing;
+    if (!mainPlaying && otherPlaying) {
+      setState(() => _splitMainIsPc = !_splitMainIsPc);
+      _applySplitAudio();
+    }
   }
 
   void _swapSplit() {
@@ -132,17 +154,30 @@ class _PlayerHostState extends State<PlayerHost> {
     _scheduleHide();
   }
 
+  /// Tap the small screen → it becomes the primary (big + audio) and plays.
+  void _focusSmall() {
+    final small = _splitMainIsPc ? sc.player! : pc.player!;
+    setState(() => _splitMainIsPc = !_splitMainIsPc);
+    _applySplitAudio();
+    if (!small.state.playing) small.play();
+    _scheduleHide();
+  }
+
   Future<void> _openSplitWith(PlayerItem it) async {
     _splitMainIsPc = true; // pc keeps audio; the new pick is the small one
     await sc.open(it);
     _applySplitAudio();
+    _watchSplitPlay();
     setState(() {});
   }
 
   Future<void> _exitSplit() async {
+    _pcPlaySub?.cancel();
+    _scPlaySub?.cancel();
+    _pcPlaySub = _scPlaySub = null;
     await sc.close();
     _splitMainIsPc = true;
-    pc.player?.setVolume(_muted ? 0 : 100);
+    pc.player?.setVolume(_muted ? 0 : _curVol);
     if (mounted) setState(() {});
   }
 
@@ -166,97 +201,125 @@ class _PlayerHostState extends State<PlayerHost> {
         ),
       );
 
-  Widget _splitStack() {
-    final mainCtrl = _splitMainIsPc ? pc.controller! : sc.controller!;
-    final smallCtrl = _splitMainIsPc ? sc.controller! : pc.controller!;
-    final smallPlayer = _splitMainIsPc ? sc.player! : pc.player!;
+  // Each libmpv surface is a persistent Video (never recreated) — only its rect
+  // animates, so swapping the two is a smooth slide + resize.
+  Widget _splitVideo(VideoController ctrl, Player p) => Stack(
+        fit: StackFit.expand,
+        children: [
+          Video(
+            controller: ctrl,
+            controls: NoVideoControls,
+            fit: BoxFit.contain,
+            subtitleViewConfiguration: const SubtitleViewConfiguration(visible: false),
+          ),
+          _bufferingDot(p),
+        ],
+      );
+
+  Widget _splitStack(double w, double h) {
+    final bigW = w * 0.64;
+    final smallW = w - bigW;
+    const dur = Duration(milliseconds: 340);
+    const curve = Curves.easeOutCubic;
+    // Rects each PLAYER occupies (animate when the primary is swapped).
+    final pcBig = _splitMainIsPc;
     final mainTitle = _splitMainIsPc ? _item.title : (sc.item?.title ?? '');
     final smallTitle = _splitMainIsPc ? (sc.item?.title ?? '') : _item.title;
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        const ColoredBox(color: Colors.black),
-        Row(
+    return MouseRegion(
+      cursor: (_isDesktop && !_controls) ? SystemMouseCursors.none : MouseCursor.defer,
+      onHover: _onHover,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          const ColoredBox(color: Colors.black),
+          AnimatedPositioned(
+            duration: dur,
+            curve: curve,
+            left: pcBig ? 0 : bigW,
+            top: 0,
+            width: pcBig ? bigW : smallW,
+            height: h,
+            child: _splitVideo(pc.controller!, pc.player!),
+          ),
+          AnimatedPositioned(
+            duration: dur,
+            curve: curve,
+            left: pcBig ? bigW : 0,
+            top: 0,
+            width: pcBig ? smallW : bigW,
+            height: h,
+            child: _splitVideo(sc.controller!, sc.player!),
+          ),
+          Positioned(left: bigW - 1, top: 0, bottom: 0, width: 2, child: const ColoredBox(color: Colors.white24)),
+          // BIG (left) — tap toggles controls
+          Positioned(
+            left: 0,
+            top: 0,
+            width: bigW,
+            height: h,
+            child: GestureDetector(behavior: HitTestBehavior.opaque, onTap: _tap, child: const SizedBox.expand()),
+          ),
+          // SMALL (right) — tap to enlarge + play; title + muted + close
+          Positioned(left: bigW, top: 0, width: smallW, height: h, child: _smallChrome(smallTitle)),
+          // MAIN controls, over the big-left region only
+          Positioned(
+            left: 0,
+            top: 0,
+            width: bigW,
+            height: h,
+            child: AnimatedOpacity(
+              opacity: _controls ? 1 : 0,
+              duration: const Duration(milliseconds: 220),
+              child: IgnorePointer(ignoring: !_controls, child: _splitOverlay(mainTitle)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _smallChrome(String title) => GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: _focusSmall, // tap the small screen → enlarge + play
+        child: Stack(
+          fit: StackFit.expand,
           children: [
-            // BIG (main) — carries the audio + controls
-            Expanded(
-              flex: 64,
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: _tap,
-                child: Video(controller: mainCtrl, controls: NoVideoControls, fit: BoxFit.contain),
+            const Center(
+              child: DecoratedBox(
+                decoration: BoxDecoration(color: Colors.black45, shape: BoxShape.circle),
+                child: Padding(padding: EdgeInsets.all(11), child: Icon(Icons.open_in_full_rounded, color: Colors.white, size: 22)),
               ),
             ),
-            // SMALL (secondary) — muted; tap to focus (swap audio + size)
-            Expanded(
-              flex: 36,
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: _tap,
-                child: DecoratedBox(
-                  decoration: const BoxDecoration(border: Border(left: BorderSide(color: Colors.white24, width: 2))),
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      Video(controller: smallCtrl, controls: NoVideoControls, fit: BoxFit.contain),
-                      Positioned(
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                          decoration: const BoxDecoration(
-                            gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xCC000000), Colors.transparent]),
-                          ),
-                          child: Row(children: [
-                            Expanded(
-                              child: Text(smallTitle,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w700)),
-                            ),
-                            const Icon(Icons.volume_off_rounded, color: Colors.white54, size: 16),
-                          ]),
-                        ),
-                      ),
-                      // the small player's OWN controls (independent of the big one)
-                      Positioned(
-                        bottom: 8,
-                        left: 0,
-                        right: 0,
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            StreamBuilder<bool>(
-                              stream: smallPlayer.stream.playing,
-                              initialData: smallPlayer.state.playing,
-                              builder: (_, s) => _splitSmallBtn(
-                                (s.data ?? false) ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                                () => smallPlayer.playOrPause(),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            _splitSmallBtn(Icons.swap_horiz_rounded, _swapSplit),
-                            const SizedBox(width: 10),
-                            _splitSmallBtn(Icons.close_rounded, _exitSplit),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(10, 6, 4, 8),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xCC000000), Colors.transparent]),
                 ),
+                child: Row(children: [
+                  Expanded(
+                    child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w700)),
+                  ),
+                  const Icon(Icons.volume_off_rounded, color: Colors.white54, size: 16),
+                  const SizedBox(width: 4),
+                  _splitSmallBtn(Icons.close_rounded, _exitSplit),
+                ]),
               ),
             ),
           ],
         ),
-        AnimatedOpacity(
-          opacity: _controls ? 1 : 0,
-          duration: const Duration(milliseconds: 220),
-          child: IgnorePointer(ignoring: !_controls, child: _splitOverlay(mainTitle)),
-        ),
-      ],
-    );
-  }
+      );
+
+  Widget _bufferingDot(Player p) => StreamBuilder<bool>(
+        stream: p.stream.buffering,
+        initialData: p.state.buffering,
+        builder: (_, s) => (s.data ?? false)
+            ? Center(child: CircularProgressIndicator(color: accent, strokeWidth: 2.4))
+            : const SizedBox.shrink(),
+      );
 
   Widget _splitOverlay(String title) {
     return DefaultTextStyle.merge(
@@ -276,11 +339,6 @@ class _PlayerHostState extends State<PlayerHost> {
               IconButton(onPressed: _minimize, icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.white, size: 30)),
               Expanded(
                 child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700)),
-              ),
-              TextButton.icon(
-                onPressed: _exitSplit,
-                icon: Icon(Icons.close_fullscreen_rounded, color: accent, size: 18),
-                label: Text('Exit split', style: TextStyle(color: accent, fontWeight: FontWeight.w700)),
               ),
               IconButton(onPressed: _close, icon: const Icon(Icons.close_rounded, color: Colors.white)),
             ]),
@@ -329,6 +387,12 @@ class _PlayerHostState extends State<PlayerHost> {
                 onPressed: _swapSplit,
                 icon: const Icon(Icons.swap_horiz_rounded, color: Colors.white),
                 label: const Text('Swap audio', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+              ),
+              const SizedBox(width: 4),
+              TextButton.icon(
+                onPressed: _exitSplit,
+                icon: Icon(Icons.close_fullscreen_rounded, color: accent, size: 18),
+                label: Text('Exit split', style: TextStyle(color: accent, fontWeight: FontWeight.w700)),
               ),
               const Spacer(),
               IconButton(
@@ -466,7 +530,7 @@ class _PlayerHostState extends State<PlayerHost> {
           final my = _miniPos!.dy.clamp(8.0, (h - mh - 8).clamp(8.0, h));
 
           // Split-screen: two videos side by side (big = audio + controls).
-          if (sc.active && !mini && !pip) return _splitStack();
+          if (sc.active && !mini && !pip) return _splitStack(w, h);
 
           return Stack(
             children: [

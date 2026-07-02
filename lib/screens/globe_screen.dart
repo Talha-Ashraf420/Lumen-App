@@ -9,13 +9,13 @@ import '../models.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import '../xtream.dart';
-import 'category_sheet.dart';
 import 'movie_detail_screen.dart';
 import 'swipe_screen.dart';
 
 /// "Discover" — a dense, rotatable 3D globe of movie posters. One finger spins
 /// it (with inertia); two fingers pinch to zoom in. Tap a poster to open it, or
-/// hit Surprise to fling to a random pick. The pool is taste-weighted.
+/// hit Surprise to fling to a random pick. The pool is taste-weighted. Genre is
+/// chosen from an inline chip row (no bottom sheet).
 class GlobeScreen extends StatefulWidget {
   final XtreamClient client;
   const GlobeScreen({super.key, required this.client});
@@ -65,14 +65,10 @@ class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin
     }
   }
 
-  String get _genreLabel =>
-      _cat == null ? 'For you' : _cats.firstWhere((c) => c.id == _cat, orElse: () => Category(_cat!, 'Genre')).name;
-
-  Future<void> _pickGenre() async {
-    final r = await showCategorySheet(context, categories: _cats, selected: _cat ?? 'all');
-    if (r == null || !mounted) return;
+  void _pickCat(String? id) {
+    if (id == _cat) return;
     setState(() {
-      _cat = (r == 'all') ? null : r;
+      _cat = id;
       _loading = true;
     });
     _load();
@@ -141,7 +137,7 @@ class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin
             child: Column(
               children: [
                 _header(),
-                _genreBar(),
+                _genreChips(),
                 Expanded(child: _loading ? BrandedLoading() : _globe()),
                 _footer(),
                 const SizedBox(height: 12),
@@ -179,29 +175,44 @@ class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin
         ),
       );
 
-  Widget _genreBar() => Padding(
+  // Inline genre chips (replaces the old bottom-sheet picker).
+  Widget _genreChips() {
+    final chips = <(String?, String)>[(null, 'For you'), for (final c in _cats) (c.id, c.name)];
+    return SizedBox(
+      height: 46,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-        child: GestureDetector(
-          onTap: _cats.isEmpty ? null : _pickGenre,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: surfaceHi.withValues(alpha: 0.7),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: line),
-            ),
-            child: Row(children: [
-              Icon(Icons.theaters_rounded, size: 18, color: accent),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(_genreLabel,
-                    maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700)),
+        itemCount: chips.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        itemBuilder: (_, i) {
+          final (id, label) = chips[i];
+          final sel = id == _cat;
+          return GestureDetector(
+            onTap: _cats.isEmpty && i > 0 ? null : () => _pickCat(id),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              alignment: Alignment.center,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(
+                color: sel ? accent : surfaceHi.withValues(alpha: 0.7),
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(color: sel ? accent : line),
+                boxShadow: sel ? glow(accent, blur: 16, y: 5) : null,
               ),
-              Icon(Icons.keyboard_arrow_down_rounded, color: muted),
-            ]),
-          ),
-        ),
-      );
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                if (i == 0) ...[
+                  Icon(Icons.auto_awesome_rounded, size: 15, color: sel ? Colors.white : accent),
+                  const SizedBox(width: 6),
+                ],
+                Text(label, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5, color: sel ? Colors.white : textHi)),
+              ]),
+            ),
+          );
+        },
+      ),
+    );
+  }
 
   Widget _globe() {
     if (_pool.isEmpty) {
@@ -368,7 +379,7 @@ class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
                     Icon(Icons.casino_rounded, color: accent, size: 19),
                     const SizedBox(width: 7),
-                    const Text('Surprise', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+                    Text('Surprise', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5, color: textHi)),
                   ]),
                 ),
               ),

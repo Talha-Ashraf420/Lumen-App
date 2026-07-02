@@ -52,7 +52,7 @@ class Tmdb {
 
       return TmdbInfo(
         overview: (j['overview'] ?? '') as String,
-        backdrop: _path(j['backdrop_path'], 'w780'),
+        backdrop: _path(j['backdrop_path'], 'w1280'),
         poster: _path(j['poster_path'], 'w500'),
         rating: (j['vote_average'] is num) ? (j['vote_average'] as num).toDouble() : 0,
         releaseDate: (j['release_date'] ?? j['first_air_date'] ?? '') as String,

@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:lottie/lottie.dart';
 import 'theme.dart';
 
 /// Wraps a tappable element so it responds to BOTH mouse hover AND TV
@@ -75,6 +74,14 @@ class Wordmark extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Just the beam mark (no wordmark) — used where space is tight (collapsed rail).
+class LumenMark extends StatelessWidget {
+  final double size; // height of the mark
+  const LumenMark({super.key, this.size = 24});
+  @override
+  Widget build(BuildContext context) => CustomPaint(size: Size(size * 0.72, size), painter: _BeamMark(accent));
 }
 
 /// A right-pointing play triangle with an accent underline (matches the icon).
@@ -258,33 +265,124 @@ class Aurora extends StatelessWidget {
 }
 
 /// Branded loading splash.
+/// Wraps a skeleton layout in a single "light" band that sweeps across it —
+/// the shared engine behind [BrandedLoading] and [GridLoading].
+class _ShimmerSweep extends StatefulWidget {
+  final Widget child;
+  const _ShimmerSweep({required this.child});
+  @override
+  State<_ShimmerSweep> createState() => _ShimmerSweepState();
+}
+
+class _ShimmerSweepState extends State<_ShimmerSweep> with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1350))..repeat();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final base = surfaceHi;
+    final hi = Color.alphaBlend(Colors.white.withValues(alpha: isDark ? 0.10 : 0.65), surfaceHi);
+    return AnimatedBuilder(
+      animation: _c,
+      child: widget.child,
+      builder: (context, child) {
+        final x = -1.4 + 2.8 * _c.value; // band travels left → right, off-screen both ends
+        return ShaderMask(
+          blendMode: BlendMode.srcATop,
+          shaderCallback: (rect) => LinearGradient(
+            begin: Alignment(x - 0.6, 0),
+            end: Alignment(x + 0.6, 0),
+            colors: [base, hi, base],
+            stops: const [0.3, 0.5, 0.7],
+          ).createShader(rect),
+          child: child,
+        );
+      },
+    );
+  }
+}
+
+Widget _skelBox(double w, double h, {double r = 12}) =>
+    Container(width: w, height: h, decoration: BoxDecoration(color: surfaceHi, borderRadius: BorderRadius.circular(r)));
+
+/// A shimmer skeleton loader — a hero block + poster rows with a light sweep
+/// gliding across. No spinner, no logo, no text; it reads as the page
+/// materialising. Used for full pages (Home, Discover, detail).
 class BrandedLoading extends StatelessWidget {
   final bool background;
   const BrandedLoading({super.key, this.background = false});
+
+  Widget _posterRow() => SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        physics: const NeverScrollableScrollPhysics(),
+        child: Row(children: [
+          for (var i = 0; i < 8; i++) Padding(padding: const EdgeInsets.only(right: 14), child: _skelBox(120, 180, r: 16)),
+        ]),
+      );
+
   @override
   Widget build(BuildContext context) {
-    final content = Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Lottie.asset(
-            'assets/lumen_loader.json',
-            width: 132,
-            height: 132,
-            repeat: true,
-            // Recolour the whole animation to the current theme accent.
-            delegates: LottieDelegates(values: [
-              ValueDelegate.color(const ['**'], value: accent),
-              ValueDelegate.strokeColor(const ['**'], value: accent),
-            ]),
-          ),
-          const SizedBox(height: 10),
-          Wordmark(size: 30),
-        ],
+    final skeleton = Padding(
+      padding: const EdgeInsets.fromLTRB(24, 22, 24, 22),
+      child: SingleChildScrollView(
+        physics: const NeverScrollableScrollPhysics(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _skelBox(double.infinity, 260, r: 26),
+            const SizedBox(height: 30),
+            _skelBox(170, 18, r: 6),
+            const SizedBox(height: 16),
+            _posterRow(),
+            const SizedBox(height: 30),
+            _skelBox(220, 18, r: 6),
+            const SizedBox(height: 16),
+            _posterRow(),
+          ],
+        ),
       ),
     );
-    if (!background) return content;
-    return Stack(children: [Aurora(), content]);
+    final shimmer = _ShimmerSweep(child: skeleton);
+    if (!background) return shimmer;
+    return Stack(children: [Aurora(), shimmer]);
+  }
+}
+
+/// A shimmer skeleton shaped like a poster/channel grid — matches what's about
+/// to load on Search / Movies / Series / Live, so there's no misleading hero
+/// block. Fills its parent.
+class GridLoading extends StatelessWidget {
+  final bool channel;
+  const GridLoading({super.key, this.channel = false});
+  @override
+  Widget build(BuildContext context) {
+    return _ShimmerSweep(
+      child: LayoutBuilder(
+        builder: (context, c) {
+          final tile = channel ? 150.0 : 136.0;
+          final cols = (c.maxWidth / tile).floor().clamp(2, 8);
+          return GridView.builder(
+            physics: const NeverScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: cols,
+              childAspectRatio: channel ? 0.82 : 0.66,
+              crossAxisSpacing: 13,
+              mainAxisSpacing: 20,
+            ),
+            itemCount: cols * 3,
+            itemBuilder: (_, i) => DecoratedBox(
+              decoration: BoxDecoration(color: surfaceHi, borderRadius: BorderRadius.circular(14)),
+            ),
+          );
+        },
+      ),
+    );
   }
 }
 
