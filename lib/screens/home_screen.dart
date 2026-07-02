@@ -228,20 +228,44 @@ class _HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMi
   // ── Bento quick-access row (desktop) ──────────────────────────────────────
   // Big "Continue / Start watching" tile + a Live-now tile + a Surprise-me tile.
   Widget _bentoRow(XtreamClient c, _HomeData d, Future<List<VodStream>> pool) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 26, 20, 0),
-      child: SizedBox(
-        height: 194,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(flex: 5, child: AnimatedBuilder(animation: Library.instance, builder: (_, __) => _continueTile())),
-            const SizedBox(width: 16),
-            Expanded(flex: 3, child: _liveTile(c, d)),
-            const SizedBox(width: 16),
-            Expanded(flex: 3, child: _surpriseTile(pool)),
-          ],
+    final pad = isWide(context) ? 20.0 : 16.0;
+    if (isWide(context)) {
+      return Padding(
+        padding: EdgeInsets.fromLTRB(pad, 26, pad, 0),
+        child: SizedBox(
+          height: 194,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(flex: 5, child: AnimatedBuilder(animation: Library.instance, builder: (_, __) => _continueTile())),
+              const SizedBox(width: 16),
+              Expanded(flex: 3, child: _liveTile(c, d)),
+              const SizedBox(width: 16),
+              Expanded(flex: 3, child: _surpriseTile(pool)),
+            ],
+          ),
         ),
+      );
+    }
+    // Phone: a big Continue tile, then Live + Surprise side by side.
+    return Padding(
+      padding: EdgeInsets.fromLTRB(pad, 24, pad, 0),
+      child: Column(
+        children: [
+          SizedBox(height: 150, child: AnimatedBuilder(animation: Library.instance, builder: (_, __) => _continueTile())),
+          const SizedBox(height: 14),
+          SizedBox(
+            height: 120,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(child: _liveTile(c, d)),
+                const SizedBox(width: 14),
+                Expanded(child: _surpriseTile(pool)),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -473,67 +497,59 @@ class _HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMi
               }
             }
 
-            final below = <Widget>[
-              AnimatedBuilder(animation: Library.instance, builder: (_, __) => _libraryRows()),
+            // Distinct pools so nothing repeats: newest → hero + New releases,
+            // top-rated → Top 10. Fall back to categories if the catalog fetch
+            // came back empty (e.g. M3U playlists). Shared by phone + desktop.
+            final newest = d.newest;
+            final topRated = d.topRated;
+            final heroFuture = newest.isNotEmpty
+                ? Future.value(newest.take(8).toList())
+                : (custom && heroCat != null
+                    ? c.vodStreams(heroCat!).then((l) => l.where((m) => m.icon.isNotEmpty).take(8).toList()).catchError((_) => <VodStream>[])
+                    : _heroPool(c, d.vodCats));
+            final trendFuture = topRated.isNotEmpty
+                ? Future.value(topRated.take(10).toList())
+                : (d.vodCats.isNotEmpty
+                    ? c.vodStreams(d.vodCats.first.id).then((l) => l.where((m) => m.icon.isNotEmpty).take(10).toList()).catchError((_) => <VodStream>[])
+                    : Future.value(const <VodStream>[]));
+
+            // Continue watching is the big bento tile, so the shelf below only
+            // shows "Jump back in" (recent) to avoid duplication.
+            final content = <Widget>[
+              AnimatedBuilder(animation: Library.instance, builder: (_, __) => _libraryRows(continueRow: false)),
+              _bentoRow(c, d, trendFuture),
+              if (newest.length > 8)
+                _Shelf(
+                  title: 'New releases',
+                  future: Future.value(newest.skip(8).take(20).map(_movie).toList()),
+                  onMore: d.vodCats.isNotEmpty ? () => _openCategory(c, 'movie', d.vodCats.first.id, d.vodCats.first.name) : null,
+                ),
+              _TopTenShelf(future: trendFuture, onTap: (m) => _push(MovieDetailScreen(client: c, movie: m))),
               AnimatedBuilder(animation: Library.instance, builder: (_, __) => _recommendationRows(c, d.vodCats)),
               ...shelves,
             ];
 
+            final hero = _SpotlightHero(
+              client: c,
+              future: heroFuture,
+              onOpen: (m) => _push(MovieDetailScreen(client: c, movie: m)),
+            );
+
             if (isWide(context)) {
-              // Distinct pools so nothing repeats: newest → hero + New releases,
-              // top-rated → Top 10. Fall back to categories if the catalog fetch
-              // came back empty (e.g. M3U playlists).
-              final newest = d.newest;
-              final topRated = d.topRated;
-              final heroFuture = newest.isNotEmpty
-                  ? Future.value(newest.take(8).toList())
-                  : (custom && heroCat != null
-                      ? c.vodStreams(heroCat!).then((l) => l.where((m) => m.icon.isNotEmpty).take(8).toList()).catchError((_) => <VodStream>[])
-                      : _heroPool(c, d.vodCats));
-              final trendFuture = topRated.isNotEmpty
-                  ? Future.value(topRated.take(10).toList())
-                  : (d.vodCats.isNotEmpty
-                      ? c.vodStreams(d.vodCats.first.id).then((l) => l.where((m) => m.icon.isNotEmpty).take(10).toList()).catchError((_) => <VodStream>[])
-                      : Future.value(const <VodStream>[]));
-
-              final wideBelow = <Widget>[
-                // Continue watching is already the big bento tile — only show the
-                // "Jump back in" (recent) row here to avoid duplication.
-                AnimatedBuilder(animation: Library.instance, builder: (_, __) => _libraryRows(continueRow: false)),
-                _bentoRow(c, d, trendFuture),
-                if (newest.length > 8)
-                  _Shelf(
-                    title: 'New releases',
-                    future: Future.value(newest.skip(8).take(20).map(_movie).toList()),
-                    onMore: d.vodCats.isNotEmpty ? () => _openCategory(c, 'movie', d.vodCats.first.id, d.vodCats.first.name) : null,
-                  ),
-                _TopTenShelf(
-                  future: trendFuture,
-                  onTap: (m) => _push(MovieDetailScreen(client: c, movie: m)),
-                ),
-                AnimatedBuilder(animation: Library.instance, builder: (_, __) => _recommendationRows(c, d.vodCats)),
-                ...shelves,
-              ];
-
               return RefreshIndicator(
                 onRefresh: _pullRefresh,
                 color: accent,
                 child: CustomScrollView(
-                slivers: [
-                  SliverToBoxAdapter(
-                    child: _SpotlightHero(
-                      client: c,
-                      future: heroFuture,
-                      onOpen: (m) => _push(MovieDetailScreen(client: c, movie: m)),
-                    ),
-                  ),
-                  SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.only(top: 4), child: Column(children: wideBelow))),
-                  const SliverToBoxAdapter(child: SizedBox(height: 80)),
-                ],
+                  slivers: [
+                    SliverToBoxAdapter(child: hero),
+                    SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.only(top: 4), child: Column(children: content))),
+                    const SliverToBoxAdapter(child: SizedBox(height: 80)),
+                  ],
                 ),
               );
             }
 
+            // Phone: same content, hero laid out compactly (poster on top).
             return RefreshIndicator(
               onRefresh: _pullRefresh,
               color: accent,
@@ -541,15 +557,9 @@ class _HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMi
                 padding: const EdgeInsets.only(bottom: 120),
                 children: [
                   _searchBar(),
-                  const SizedBox(height: 14),
-                  if (heroCat != null)
-                    _HeroCarousel(
-                      future: c
-                          .vodStreams(heroCat)
-                          .then((l) => l.where((m) => m.icon.isNotEmpty).take(6).map(_movie).toList())
-                          .catchError((_) => <HItem>[]),
-                    ),
-                  ...below,
+                  const SizedBox(height: 10),
+                  hero,
+                  ...content,
                 ],
               ),
             );
@@ -1017,6 +1027,106 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
         child: child,
       );
 
+  // Phone hero: poster on top, centred title / meta / actions, rail below.
+  Widget _narrowHero(VodStream m, String poster, double rating, String year, String genre, String overview) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 6, 20, 4),
+      child: Column(
+        children: [
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 450),
+            transitionBuilder: (c, a) => FadeTransition(opacity: a, child: ScaleTransition(scale: Tween(begin: 0.97, end: 1.0).animate(a), child: c)),
+            child: Container(
+              key: ValueKey('ncard$poster'),
+              width: 152,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(18),
+                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.5), blurRadius: 34, offset: const Offset(0, 16))],
+              ),
+              child: AspectRatio(
+                aspectRatio: 2 / 3,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(18),
+                  child: Stack(fit: StackFit.expand, children: [
+                    ColoredBox(color: surfaceHi),
+                    if (poster.isNotEmpty)
+                      CachedNetworkImage(imageUrl: poster, fit: BoxFit.cover, filterQuality: FilterQuality.high, errorWidget: (_, _, _) => const SizedBox.shrink()),
+                    DecoratedBox(decoration: BoxDecoration(borderRadius: BorderRadius.circular(18), border: Border.all(color: Colors.white.withValues(alpha: 0.12)))),
+                  ]),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text('FEATURED', style: TextStyle(color: accent, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 2.5)),
+          const SizedBox(height: 8),
+          Text(_clean(m.name), textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: kTitle()),
+          const SizedBox(height: 12),
+          Wrap(alignment: WrapAlignment.center, spacing: 8, runSpacing: 8, children: [
+            if (rating > 0)
+              _chip(Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.star_rounded, color: gold, size: 14),
+                const SizedBox(width: 4),
+                Text(rating.toStringAsFixed(1), style: TextStyle(color: gold, fontWeight: FontWeight.w800, fontSize: 12.5)),
+              ])),
+            if (year.isNotEmpty) _chip(Text(year, style: TextStyle(color: textHi, fontWeight: FontWeight.w700, fontSize: 12.5))),
+            if (genre.isNotEmpty) _chip(Text(genre, style: TextStyle(color: muted, fontSize: 12.5))),
+          ]),
+          if (overview.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(overview, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: kBody()),
+          ],
+          const SizedBox(height: 16),
+          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            PillButton(icon: Icons.play_arrow_rounded, label: 'Play', onTap: () => _play(m)),
+            const SizedBox(width: 10),
+            HoverScale(
+              child: GestureDetector(
+                onTap: () => widget.onOpen(m),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                  decoration: BoxDecoration(color: surfaceHi, borderRadius: BorderRadius.circular(30), border: Border.all(color: line)),
+                  child: Icon(Icons.info_outline_rounded, color: textHi, size: 22),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            AnimatedBuilder(
+              animation: Library.instance,
+              builder: (_, __) {
+                final fav = Library.instance.isFav(_ref(m).key);
+                return GestureDetector(
+                  onTap: () => Library.instance.toggleFav(_ref(m)),
+                  child: Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(shape: BoxShape.circle, color: surfaceHi, border: Border.all(color: line)),
+                    child: Icon(fav ? Icons.favorite_rounded : Icons.favorite_border_rounded, color: fav ? accent : textHi, size: 22),
+                  ),
+                );
+              },
+            ),
+          ]),
+          const SizedBox(height: 18),
+          SizedBox(
+            height: 96,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              clipBehavior: Clip.none,
+              itemCount: _items.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 12),
+              itemBuilder: (_, i) {
+                final it = _items[i];
+                final p = _meta[it.streamId]?.poster;
+                final img = (p != null && p.isNotEmpty) ? p : it.icon;
+                return _RailThumb(image: img, selected: i == _index, onTap: () => _select(i));
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // Loaded but nothing to feature → collapse so the shelves show at the top.
@@ -1035,9 +1145,11 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
     final year = _year(m.name);
     final genre = t?.genres ?? '';
     final overview = t?.overview ?? '';
+
+    if (!isWide(context)) return _narrowHero(m, poster, rating, year, genre, overview);
+
     // Size the hero to its content so there's no big empty blurred void below.
     final h = (MediaQuery.sizeOf(context).height * 0.62).clamp(540.0, 660.0);
-
     return SizedBox(
       height: h,
       child: Stack(
