@@ -7,6 +7,29 @@ import 'library.dart';
 import 'models.dart';
 import 'stats.dart';
 
+/// Reconnect configuration — tweak via [PlaybackController.reconnectConfig].
+class ReconnectConfig {
+  /// Maximum number of automatic retry attempts before giving up.
+  final int maxAttempts;
+
+  /// Base delay before the first retry. Each subsequent attempt doubles this
+  /// (exponential back-off), capped at [maxDelay].
+  final Duration baseDelay;
+
+  /// Upper bound for the back-off delay.
+  final Duration maxDelay;
+
+  /// Only auto-reconnect live streams (VOD errors are usually fatal).
+  final bool liveOnly;
+
+  const ReconnectConfig({
+    this.maxAttempts = 3,
+    this.baseDelay = const Duration(seconds: 2),
+    this.maxDelay = const Duration(seconds: 16),
+    this.liveOnly = true,
+  });
+}
+
 /// Root navigator key so the floating mini-player overlay (which lives above the
 /// Navigator) can push the full player route.
 final GlobalKey<NavigatorState> rootNavKey = GlobalKey<NavigatorState>();
@@ -47,7 +70,21 @@ class PlaybackController extends ChangeNotifier {
   int _lastSave = 0;
   StreamSubscription<Duration>? _posSub;
   StreamSubscription<bool>? _completedSub;
+  StreamSubscription<String>? _errorSub;
   Timer? _statsTimer;
+
+  // ---- auto-reconnect state ----
+  /// Active reconnect configuration (can be overridden by the user).
+  ReconnectConfig reconnectConfig = const ReconnectConfig();
+
+  /// Current reconnect attempt number (0 = not reconnecting).
+  int reconnectAttempt = 0;
+
+  /// Human-readable reconnect status shown in the UI, e.g. "Reconnecting (2/3)…".
+  /// Null when idle.
+  String? reconnectStatus;
+
+  Timer? _reconnectTimer;
 
   bool get hasMedia => player != null && items.isNotEmpty;
   PlayerItem get item => items[index];
@@ -64,6 +101,7 @@ class PlaybackController extends ChangeNotifier {
       _completedSub = player!.stream.completed.listen((done) {
         if (done && !isLive && hasNext && autoAdvance) go(index + 1);
       });
+      _errorSub = player!.stream.error.listen(_onError);
       _statsTimer = Timer.periodic(const Duration(seconds: 15), (_) => _tickStats());
     }
     items = newItems;
@@ -75,6 +113,7 @@ class PlaybackController extends ChangeNotifier {
 
   void go(int i) {
     if (i < 0 || i >= items.length) return;
+    _cancelReconnect();
     index = i;
     _openCurrent();
     notifyListeners();
@@ -89,9 +128,52 @@ class PlaybackController extends ChangeNotifier {
     _resumed = false;
     autoAdvance = true;
     epg = const [];
+    _cancelReconnect();
     player!.open(Media(item.url, httpHeaders: const {'User-Agent': 'VLC/3.0.20 LibVLC/3.0.20'}));
     if (item.favRef != null) Library.instance.addRecent(item.favRef!);
     _loadEpg();
+  }
+
+  // ---- reconnect logic ----
+
+  void _onError(String error) {
+    // Only reconnect if the feature is enabled for this stream type.
+    if (reconnectConfig.liveOnly && !isLive) return;
+    if (reconnectAttempt >= reconnectConfig.maxAttempts) {
+      // All retries exhausted — surface the error to the UI.
+      reconnectStatus = null;
+      notifyListeners();
+      return;
+    }
+    reconnectAttempt++;
+    // Exponential back-off: 2s, 4s, 8s … capped at maxDelay.
+    final rawMs = reconnectConfig.baseDelay.inMilliseconds * (1 << (reconnectAttempt - 1));
+    final delay = Duration(milliseconds: rawMs.clamp(0, reconnectConfig.maxDelay.inMilliseconds));
+    reconnectStatus = 'Reconnecting (${reconnectAttempt}/${reconnectConfig.maxAttempts})…';
+    notifyListeners();
+    _reconnectTimer = Timer(delay, _doReconnect);
+  }
+
+  void _doReconnect() {
+    if (player == null || items.isEmpty) return;
+    // Re-open the same URL without resetting reconnectAttempt so the counter
+    // keeps incrementing on repeated failures.
+    player!.open(Media(item.url, httpHeaders: const {'User-Agent': 'VLC/3.0.20 LibVLC/3.0.20'}));
+  }
+
+  void _cancelReconnect() {
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    reconnectAttempt = 0;
+    reconnectStatus = null;
+  }
+
+  /// Call this from the UI when the user taps "Retry" after all attempts fail.
+  void retryNow() {
+    _cancelReconnect();
+    if (player == null || items.isEmpty) return;
+    player!.open(Media(item.url, httpHeaders: const {'User-Agent': 'VLC/3.0.20 LibVLC/3.0.20'}));
+    notifyListeners();
   }
 
   void _loadEpg() {
@@ -183,10 +265,13 @@ class PlaybackController extends ChangeNotifier {
 
   void stop() {
     persistProgress();
+    _cancelReconnect();
     _posSub?.cancel();
     _posSub = null;
     _completedSub?.cancel();
     _completedSub = null;
+    _errorSub?.cancel();
+    _errorSub = null;
     _statsTimer?.cancel();
     _statsTimer = null;
     player?.dispose();
