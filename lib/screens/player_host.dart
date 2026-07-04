@@ -617,6 +617,8 @@ class _PlayerHostState extends State<PlayerHost> {
                   ? Center(child: CircularProgressIndicator(color: accent, strokeWidth: 2.6))
                   : const SizedBox.shrink(),
             ),
+            // Reconnect overlay — shown while auto-retry is in progress.
+            _reconnectOverlay(),
             AnimatedOpacity(
               opacity: _controls ? 1 : 0,
               duration: const Duration(milliseconds: 220),
@@ -847,6 +849,61 @@ class _PlayerHostState extends State<PlayerHost> {
   void _hideHud() {
     _hudTimer?.cancel();
     _hudTimer = Timer(const Duration(milliseconds: 450), () => mounted ? setState(() => _hud = null) : null);
+  }
+
+  /// Reconnect banner — shown while the player is auto-retrying a dropped stream.
+  /// Displays a spinner + "Reconnecting (n/max)…" message and a manual Retry
+  /// button once all automatic attempts have been exhausted.
+  Widget _reconnectOverlay() {
+    final status = pc.reconnectStatus;
+    final exhausted = pc.reconnectAttempt >= pc.reconnectConfig.maxAttempts && status == null;
+
+    // Nothing to show while connected and not retrying.
+    if (status == null && !exhausted) return const SizedBox.shrink();
+
+    return Center(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.72),
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (status != null) ...[
+              SizedBox(
+                width: 28,
+                height: 28,
+                child: CircularProgressIndicator(color: accent, strokeWidth: 2.5),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                status,
+                style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
+              ),
+            ] else ...[
+              Icon(Icons.wifi_off_rounded, color: Colors.white54, size: 36),
+              const SizedBox(height: 10),
+              const Text(
+                'Stream unavailable',
+                style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 14),
+              FilledButton.icon(
+                style: FilledButton.styleFrom(backgroundColor: accent, foregroundColor: Colors.white),
+                onPressed: () {
+                  pc.retryNow();
+                  setState(() {});
+                },
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                label: const Text('Retry'),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _hudOverlay() {
