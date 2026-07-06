@@ -71,6 +71,7 @@ class PlaybackController extends ChangeNotifier {
   StreamSubscription<Duration>? _posSub;
   StreamSubscription<bool>? _completedSub;
   StreamSubscription<String>? _errorSub;
+  StreamSubscription<bool>? _playingSub;
   Timer? _statsTimer;
 
   // ---- auto-reconnect state ----
@@ -102,6 +103,15 @@ class PlaybackController extends ChangeNotifier {
         if (done && !isLive && hasNext && autoAdvance) go(index + 1);
       });
       _errorSub = player!.stream.error.listen(_onError);
+      // Recovery path: the moment the stream is actually playing again, clear any
+      // reconnect state. Without this the overlay stuck on "Reconnecting (n/max)"
+      // forever, because errors set it but nothing ever reset it on success.
+      _playingSub = player!.stream.playing.listen((playing) {
+        if (playing && (reconnectAttempt != 0 || reconnectStatus != null)) {
+          _cancelReconnect();
+          notifyListeners();
+        }
+      });
       _statsTimer = Timer.periodic(const Duration(seconds: 15), (_) => _tickStats());
     }
     items = newItems;
@@ -139,6 +149,11 @@ class PlaybackController extends ChangeNotifier {
   void _onError(String error) {
     // Only reconnect if the feature is enabled for this stream type.
     if (reconnectConfig.liveOnly && !isLive) return;
+    // libmpv emits non-fatal errors during normal playback/startup (transient
+    // network blips, recoverable HLS segment errors). If the stream is still
+    // actually playing, it's NOT a drop — ignore, or we'd flash a bogus
+    // "Reconnecting (n/max)" over a perfectly fine video.
+    if (player?.state.playing ?? false) return;
     if (reconnectAttempt >= reconnectConfig.maxAttempts) {
       // All retries exhausted — surface the error to the UI.
       reconnectStatus = null;
@@ -272,6 +287,8 @@ class PlaybackController extends ChangeNotifier {
     _completedSub = null;
     _errorSub?.cancel();
     _errorSub = null;
+    _playingSub?.cancel();
+    _playingSub = null;
     _statsTimer?.cancel();
     _statsTimer = null;
     player?.dispose();
