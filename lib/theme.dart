@@ -3,9 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-// "Lumen" — a flat, single-accent system (no gradients). One refined violet
-// accent reads cleanly on both a near-black dark canvas and a soft-white light
-// canvas. Surfaces are solid; depth comes from a single neutral shadow.
+// Lumen's "night cinema" system. The canvas stays neutral so artwork remains
+// the loudest thing on screen; the user-selected accent behaves like a small
+// signal light instead of tinting every surface.
 
 /// Semantic colour set for one brightness.
 class Palette {
@@ -35,10 +35,11 @@ class Palette {
   });
 }
 
-const defaultAccent = Color(0xFF22CBA8); // teal
+const defaultAccent = Color(0xFFC7F36B); // signal lime
 
 /// A few curated accent presets shown in the picker (plus a custom option).
 const accentPresets = <Color>[
+  Color(0xFFC7F36B), // signal lime
   Color(0xFF22CBA8), // teal
   Color(0xFF06B6D4), // cyan
   Color(0xFF3B82F6), // blue
@@ -56,19 +57,16 @@ Color _shade(Color c, double dl) {
   return h.withLightness((h.lightness + dl).clamp(0.0, 1.0)).toColor();
 }
 
-/// Build a dark palette graded toward the chosen accent's hue — surfaces pick up
-/// a subtle tint so the whole UI feels coherent, not just the accent button.
+/// Neutral cinema blacks keep wildly different provider artwork coherent.
 Palette darkPaletteFor(Color a) {
-  final h = HSLColor.fromColor(a).hue;
-  Color t(double l, double s) => HSLColor.fromAHSL(1, h, s, l).toColor();
   return Palette(
-    bg: t(0.055, 0.34),
-    surface: t(0.085, 0.26),
-    surfaceHi: t(0.135, 0.20),
-    line: const Color(0x14FFFFFF),
-    textHi: t(0.95, 0.10),
-    muted: t(0.66, 0.12),
-    subtle: t(0.48, 0.10),
+    bg: const Color(0xFF080A0B),
+    surface: const Color(0xFF101315),
+    surfaceHi: const Color(0xFF181C1F),
+    line: const Color(0x18FFFFFF),
+    textHi: const Color(0xFFF4F1E8),
+    muted: const Color(0xFFA2A6A3),
+    subtle: const Color(0xFF686E6A),
     accent: a,
     accentDark: _shade(a, -0.12),
     gold: const Color(0xFFFFC15E),
@@ -77,16 +75,14 @@ Palette darkPaletteFor(Color a) {
 }
 
 Palette lightPaletteFor(Color a) {
-  final h = HSLColor.fromColor(a).hue;
-  Color t(double l, double s) => HSLColor.fromAHSL(1, h, s, l).toColor();
   return Palette(
-    bg: t(0.965, 0.30),
-    surface: const Color(0xFFFFFFFF),
-    surfaceHi: t(0.93, 0.22),
+    bg: const Color(0xFFF1F0EA),
+    surface: const Color(0xFFFAF9F4),
+    surfaceHi: const Color(0xFFE7E6DF),
     line: const Color(0x14000000),
-    textHi: t(0.10, 0.30),
-    muted: t(0.40, 0.16),
-    subtle: t(0.60, 0.10),
+    textHi: const Color(0xFF111310),
+    muted: const Color(0xFF555A55),
+    subtle: const Color(0xFF858A84),
     accent: _shade(a, -0.08),
     accentDark: _shade(a, -0.20),
     gold: const Color(0xFFD9982E),
@@ -117,6 +113,9 @@ Color get accent => activePalette.accent;
 Color get accentDark => activePalette.accentDark;
 Color get accent2 => activePalette.accent; // legacy alias → single accent
 Color get gold => activePalette.gold;
+Color get onAccent => ThemeData.estimateBrightnessForColor(accent) == Brightness.light
+    ? const Color(0xFF11130F)
+    : Colors.white;
 
 /// One soft, neutral shadow for floating surfaces (no coloured glow).
 List<BoxShadow> glow(Color c, {double blur = 24, double y = 10, double a = 0.0}) => [
@@ -127,21 +126,22 @@ List<BoxShadow> glow(Color c, {double blur = 24, double y = 10, double a = 0.0})
       ),
     ];
 
-// ---- Type scale (elegant, airy) — large light display, refined labels. ----
+// Space Grotesk gives the interface a compact editorial rhythm without making
+// long metadata or settings text feel ornamental.
 TextStyle kHero({Color? color}) =>
-    GoogleFonts.manrope(fontSize: 56, fontWeight: FontWeight.w300, letterSpacing: -1.0, height: 1.05, color: color ?? textHi);
+    GoogleFonts.spaceGrotesk(fontSize: 62, fontWeight: FontWeight.w500, letterSpacing: -2.4, height: 0.98, color: color ?? textHi);
 TextStyle kDisplay({Color? color}) =>
-    GoogleFonts.manrope(fontSize: 34, fontWeight: FontWeight.w700, letterSpacing: -0.4, height: 1.08, color: color ?? textHi);
+    GoogleFonts.spaceGrotesk(fontSize: 38, fontWeight: FontWeight.w600, letterSpacing: -1.2, height: 1.02, color: color ?? textHi);
 TextStyle kTitle({Color? color}) =>
-    GoogleFonts.manrope(fontSize: 22, fontWeight: FontWeight.w700, letterSpacing: -0.2, color: color ?? textHi);
+    GoogleFonts.spaceGrotesk(fontSize: 23, fontWeight: FontWeight.w600, letterSpacing: -0.6, color: color ?? textHi);
 TextStyle kSection({Color? color}) =>
-    GoogleFonts.manrope(fontSize: 12.5, fontWeight: FontWeight.w700, letterSpacing: 1.6, color: color ?? muted);
+    GoogleFonts.spaceGrotesk(fontSize: 11.5, fontWeight: FontWeight.w600, letterSpacing: 1.8, color: color ?? muted);
 TextStyle kBody({Color? color}) =>
-    GoogleFonts.manrope(fontSize: 15, fontWeight: FontWeight.w400, height: 1.6, color: color ?? muted);
+    GoogleFonts.spaceGrotesk(fontSize: 15, fontWeight: FontWeight.w400, height: 1.55, color: color ?? muted);
 
 ThemeData buildTheme(Palette p) {
   final base = ThemeData(brightness: p.brightness, useMaterial3: true);
-  final text = GoogleFonts.manropeTextTheme(base.textTheme).apply(bodyColor: p.textHi, displayColor: p.textHi);
+  final text = GoogleFonts.spaceGroteskTextTheme(base.textTheme).apply(bodyColor: p.textHi, displayColor: p.textHi);
   return base.copyWith(
     scaffoldBackgroundColor: p.bg,
     colorScheme: base.colorScheme.copyWith(
@@ -156,7 +156,7 @@ ThemeData buildTheme(Palette p) {
       backgroundColor: Colors.transparent,
       elevation: 0,
       scrolledUnderElevation: 0,
-      titleTextStyle: GoogleFonts.manrope(fontSize: 22, fontWeight: FontWeight.w800, color: p.textHi),
+      titleTextStyle: GoogleFonts.spaceGrotesk(fontSize: 22, fontWeight: FontWeight.w600, color: p.textHi, letterSpacing: -0.5),
     ),
     iconTheme: IconThemeData(color: p.textHi),
     inputDecorationTheme: InputDecorationTheme(
@@ -168,6 +168,9 @@ ThemeData buildTheme(Palette p) {
       enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: p.line)),
       focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: p.accent)),
     ),
+    dividerTheme: DividerThemeData(color: p.line, thickness: 1),
+    splashColor: p.accent.withValues(alpha: 0.08),
+    highlightColor: p.accent.withValues(alpha: 0.05),
   );
 }
 

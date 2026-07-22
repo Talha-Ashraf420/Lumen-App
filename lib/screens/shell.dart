@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -25,7 +24,12 @@ class HomeShell extends StatefulWidget {
   final XtreamClient client;
   final VoidCallback onLogout;
   final void Function(XtreamCredentials) onSwitch;
-  const HomeShell({super.key, required this.client, required this.onLogout, required this.onSwitch});
+  const HomeShell({
+    super.key,
+    required this.client,
+    required this.onLogout,
+    required this.onSwitch,
+  });
   @override
   State<HomeShell> createState() => _HomeShellState();
 }
@@ -97,17 +101,21 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   }
 
   Widget _pageFor(int i) => switch (i) {
-        0 => HomeScreen(client: widget.client, onBrowse: () => _select(2)),
-        1 => GlobeScreen(client: widget.client),
-        2 => SearchScreen(client: widget.client),
-        3 => MyListScreen(client: widget.client),
-        4 => ProfileScreen(client: widget.client, onLogout: widget.onLogout, onSwitch: widget.onSwitch),
-        5 => SearchScreen(client: widget.client, initialSection: 'movie'),
-        6 => SearchScreen(client: widget.client, initialSection: 'series'),
-        7 => SearchScreen(client: widget.client, initialSection: 'live'),
-        8 => EpgGuideScreen(client: widget.client),
-        _ => DownloadsScreen(client: widget.client),
-      };
+    0 => HomeScreen(client: widget.client, onBrowse: () => _select(2)),
+    1 => GlobeScreen(client: widget.client),
+    2 => SearchScreen(client: widget.client),
+    3 => MyListScreen(client: widget.client),
+    4 => ProfileScreen(
+      client: widget.client,
+      onLogout: widget.onLogout,
+      onSwitch: widget.onSwitch,
+    ),
+    5 => SearchScreen(client: widget.client, initialSection: 'movie'),
+    6 => SearchScreen(client: widget.client, initialSection: 'series'),
+    7 => SearchScreen(client: widget.client, initialSection: 'live'),
+    8 => EpgGuideScreen(client: widget.client),
+    _ => DownloadsScreen(client: widget.client),
+  };
 
   void _select(int i) {
     if (i != _index) HapticFeedback.selectionClick();
@@ -122,23 +130,62 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         _visited.contains(i) ? _pageFor(i) : const SizedBox.shrink(),
     ];
     final wide = isWide(context);
-    return Scaffold(
-      body: Stack(
-        children: [
-          Aurora(),
-          if (wide) _wideLayout(pages) else _mobileLayout(pages),
-        ],
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.keyK, meta: true): () =>
+            _select(2),
+        const SingleActivator(LogicalKeyboardKey.keyK, control: true): () =>
+            _select(2),
+      },
+      child: Focus(
+        autofocus: true,
+        child: Scaffold(
+          body: Stack(
+            children: [
+              Aurora(),
+              if (wide) _wideLayout(pages) else _mobileLayout(pages),
+            ],
+          ),
+        ),
       ),
     );
   }
 
-  // ---- desktop: floating glass sidebar + full-bleed content ----
+  // Desktop: a fixed signal dock and a calm content stage. Navigation never
+  // expands over the artwork, so the spatial map stays stable for mouse + TV.
   Widget _wideLayout(List<Widget> pages) {
-    return Row(
-      children: [
-        _Sidebar(index: _index, onSelect: _select),
-        Expanded(child: IndexedStack(index: _index, children: pages)),
-      ],
+    return SafeArea(
+      child: Row(
+        children: [
+          _SignalDock(index: _index, onSelect: _select),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(0, 10, 10, 10),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(26),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: bg.withValues(alpha: isDark ? 0.88 : 0.92),
+                    border: Border.all(color: line),
+                  ),
+                  child: Column(
+                    children: [
+                      _CommandBar(
+                        index: _index,
+                        onSearch: () => _select(2),
+                        onProfile: () => _select(4),
+                      ),
+                      Expanded(
+                        child: IndexedStack(index: _index, children: pages),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -146,21 +193,37 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   Widget _mobileLayout(List<Widget> pages) {
     return Stack(
       children: [
-        SafeArea(bottom: false, child: IndexedStack(index: _index, children: pages)),
+        SafeArea(
+          bottom: false,
+          child: IndexedStack(index: _index, children: pages),
+        ),
         Align(
           alignment: Alignment.bottomCenter,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 22),
-            child: Glass(
-              radius: 30,
-              blur: 26,
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [for (var i = 0; i < _nav.length; i++) _item(i)],
-              ),
-            ),
-          ).animate().fadeIn(delay: 150.ms).slideY(begin: 0.6, end: 0, curve: Curves.easeOutBack),
+          child:
+              Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 22),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 7,
+                      ),
+                      decoration: BoxDecoration(
+                        color: surface.withValues(alpha: 0.96),
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(color: line),
+                        boxShadow: glow(Colors.black, blur: 26, y: 12),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          for (var i = 0; i < _nav.length; i++) _item(i),
+                        ],
+                      ),
+                    ),
+                  )
+                  .animate()
+                  .fadeIn(delay: 150.ms)
+                  .slideY(begin: 0.6, end: 0, curve: Curves.easeOutBack),
         ),
       ],
     );
@@ -175,18 +238,27 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         duration: const Duration(milliseconds: 280),
         curve: Curves.easeOut,
         margin: const EdgeInsets.symmetric(horizontal: 2),
-        padding: EdgeInsets.symmetric(horizontal: sel ? 14 : 11, vertical: 11),
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
         decoration: BoxDecoration(
-          color: sel ? accent : null,
-          borderRadius: BorderRadius.circular(18),
+          color: sel ? accent.withValues(alpha: 0.12) : null,
+          borderRadius: BorderRadius.circular(17),
+          border: sel
+              ? Border.all(color: accent.withValues(alpha: 0.28))
+              : null,
         ),
-        child: Row(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(_nav[i].icon, size: 21, color: sel ? Colors.white : muted),
-            if (sel) ...[
-              const SizedBox(width: 7),
-              Text(_nav[i].label, style: const TextStyle(fontWeight: FontWeight.w700, color: Colors.white, fontSize: 13)),
-            ],
+            Icon(_nav[i].icon, size: 20, color: sel ? accent : muted),
+            const SizedBox(height: 3),
+            Text(
+              _nav[i].label,
+              style: TextStyle(
+                fontWeight: sel ? FontWeight.w700 : FontWeight.w500,
+                color: sel ? textHi : subtle,
+                fontSize: 9.5,
+              ),
+            ),
           ],
         ),
       ),
@@ -194,263 +266,272 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   }
 }
 
-// ── Collapsing icon rail ─────────────────────────────────────────────────────
-// A thin icon-only rail that expands on hover to reveal labels, with a glowing
-// accent pill that physically slides to the active destination. All rows share
-// one coordinate space (a Stack) so the pill can animate between them.
-
-const double _railCollapsed = 76;
-const double _railExpanded = 250;
-const double _railItemH = 52; // height of one nav row
-const double _railGroupGap = 14; // gap a divider/group break occupies
-
-/// One entry in the rail: either a nav destination or a group separator.
+// ── Signal dock ──────────────────────────────────────────────────────────────
 class _Nav {
   final IconData icon;
   final String label;
   final int page;
   final bool trailingIsDownloads;
-  const _Nav(this.icon, this.label, this.page, {this.trailingIsDownloads = false});
+  const _Nav(
+    this.icon,
+    this.label,
+    this.page, {
+    this.trailingIsDownloads = false,
+  });
 }
 
-// Flat, ordered list of destinations. `null` marks a group separator (gap).
-// Page indices match _HomeShellState._pageFor.
-const List<_Nav?> _railRows = [
+const List<_Nav> _mainDock = [
   _Nav(Icons.home_rounded, 'Home', 0),
-  _Nav(Icons.auto_awesome_rounded, 'Discover', 1),
-  _Nav(Icons.movie_rounded, 'Movies', 5),
-  _Nav(Icons.video_library_rounded, 'Series', 6),
-  _Nav(Icons.live_tv_rounded, 'Live TV', 7),
-  _Nav(Icons.grid_view_rounded, 'TV Guide', 8),
+  _Nav(Icons.blur_circular_rounded, 'Discover', 1),
+  _Nav(Icons.movie_filter_rounded, 'Movies', 5),
+  _Nav(Icons.amp_stories_rounded, 'Series', 6),
+  _Nav(Icons.sensors_rounded, 'Live', 7),
+  _Nav(Icons.calendar_view_week_rounded, 'Guide', 8),
   _Nav(Icons.search_rounded, 'Search', 2),
-  null, // ── Library
+];
+
+const List<_Nav> _utilityDock = [
   _Nav(Icons.favorite_rounded, 'My List', 3),
   _Nav(Icons.download_rounded, 'Downloads', 9, trailingIsDownloads: true),
-  null, // ── Account
   _Nav(Icons.person_rounded, 'Profile', 4),
 ];
 
-class _Sidebar extends StatefulWidget {
+class _SignalDock extends StatelessWidget {
   final int index;
   final ValueChanged<int> onSelect;
-  const _Sidebar({required this.index, required this.onSelect});
-  @override
-  State<_Sidebar> createState() => _SidebarState();
-}
-
-class _SidebarState extends State<_Sidebar> {
-  bool _open = false;
-
-  /// Vertical offset of the row that owns [page], and whether it exists.
-  double? _pillTop(int page) {
-    double y = 0;
-    for (final r in _railRows) {
-      if (r == null) {
-        y += _railGroupGap;
-        continue;
-      }
-      if (r.page == page) return y;
-      y += _railItemH;
-    }
-    return null;
-  }
-
-  double get _contentHeight {
-    double y = 0;
-    for (final r in _railRows) {
-      y += r == null ? _railGroupGap : _railItemH;
-    }
-    return y;
-  }
+  const _SignalDock({required this.index, required this.onSelect});
 
   @override
   Widget build(BuildContext context) {
-    final w = _open ? _railExpanded : _railCollapsed;
-    final pillTop = _pillTop(widget.index);
-
-    return MouseRegion(
-      onEnter: (_) => setState(() => _open = true),
-      onExit: (_) => setState(() => _open = false),
-      child: ClipRect(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 26, sigmaY: 26),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOutCubic,
-            width: w,
-            decoration: BoxDecoration(
-              color: surface.withValues(alpha: isDark ? 0.44 : 0.74),
-              border: Border(right: BorderSide(color: line)),
+    return SizedBox(
+      width: 86,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        child: Column(
+          children: [
+            const SizedBox(height: 6),
+            Tooltip(message: 'Lumen', child: LumenMark(size: 27)),
+            const SizedBox(height: 26),
+            for (final nav in _mainDock)
+              _DockItem(
+                nav: nav,
+                selected: nav.page == index,
+                onTap: () => onSelect(nav.page),
+              ),
+            const Spacer(),
+            Container(
+              height: 1,
+              margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+              color: line,
             ),
-            child: SafeArea(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _header(context),
-                  Expanded(
-                    child: SingleChildScrollView(
-                      child: SizedBox(
-                        height: _contentHeight,
-                        child: Stack(
-                          children: [
-                            // the sliding glow pill (behind the rows)
-                            if (pillTop != null)
-                              AnimatedPositioned(
-                                duration: const Duration(milliseconds: 340),
-                                curve: Curves.easeOutCubic,
-                                top: pillTop + 4,
-                                left: 10,
-                                right: 10,
-                                height: _railItemH - 8,
-                                child: _pill(),
-                              ),
-                            // the rows
-                            Column(children: [for (final r in _railRows) _row(r)]),
-                          ],
-                        ),
-                      ),
+            for (final nav in _utilityDock)
+              _DockItem(
+                nav: nav,
+                selected: nav.page == index,
+                onTap: () => onSelect(nav.page),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DockItem extends StatelessWidget {
+  final _Nav nav;
+  final bool selected;
+  final VoidCallback onTap;
+  const _DockItem({
+    required this.nav,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: nav.label,
+      waitDuration: const Duration(milliseconds: 450),
+      child: FocusableTap(
+        onTap: onTap,
+        builder: (context, active) => AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          width: 52,
+          height: 44,
+          margin: const EdgeInsets.only(bottom: 3),
+          decoration: BoxDecoration(
+            color: selected
+                ? accent.withValues(alpha: 0.14)
+                : (active ? surfaceHi : Colors.transparent),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: selected
+                  ? accent.withValues(alpha: 0.32)
+                  : Colors.transparent,
+            ),
+          ),
+          child: Stack(
+            children: [
+              Center(
+                child: Icon(
+                  nav.icon,
+                  size: 21,
+                  color: selected ? accent : (active ? textHi : muted),
+                ),
+              ),
+              if (selected)
+                Positioned(
+                  left: 3,
+                  top: 15,
+                  bottom: 15,
+                  child: Container(
+                    width: 2,
+                    decoration: BoxDecoration(
+                      color: accent,
+                      borderRadius: BorderRadius.circular(2),
                     ),
                   ),
-                ],
-              ),
-            ),
+                ),
+              if (nav.trailingIsDownloads)
+                AnimatedBuilder(
+                  animation: Downloads.instance,
+                  builder: (_, __) {
+                    final hasActive = Downloads.instance.items.any(
+                      (d) =>
+                          d.status == DlStatus.downloading ||
+                          d.status == DlStatus.queued,
+                    );
+                    return hasActive
+                        ? Positioned(
+                            right: 8,
+                            top: 7,
+                            child: Container(
+                              width: 6,
+                              height: 6,
+                              decoration: BoxDecoration(
+                                color: accent,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          )
+                        : const SizedBox.shrink();
+                  },
+                ),
+            ],
           ),
         ),
       ),
     );
   }
+}
 
-  Widget _pill() => DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(colors: [accent, accentDark], begin: Alignment.topLeft, end: Alignment.bottomRight),
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [BoxShadow(color: accent.withValues(alpha: 0.45), blurRadius: 20, spreadRadius: -2, offset: const Offset(0, 4))],
-        ),
-      );
+class _CommandBar extends StatelessWidget {
+  final int index;
+  final VoidCallback onSearch;
+  final VoidCallback onProfile;
+  const _CommandBar({
+    required this.index,
+    required this.onSearch,
+    required this.onProfile,
+  });
 
-  Widget _header(BuildContext context) => SizedBox(
-        height: 74,
+  static const _titles = <int, String>{
+    0: 'Tonight',
+    1: 'Discover',
+    2: 'Search',
+    3: 'My list',
+    4: 'Profile',
+    5: 'Movies',
+    6: 'Series',
+    7: 'Live signal',
+    8: 'TV guide',
+    9: 'Downloads',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 66,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 22),
         child: Row(
           children: [
-            // brand mark stays fixed in the collapsed column; wordmark fades in
-            SizedBox(width: _railCollapsed, child: Center(child: LumenMark(size: 22))),
-            Expanded(
-              child: ClipRect(
+            Text(_titles[index] ?? 'Lumen', style: kTitle()),
+            const SizedBox(width: 12),
+            Container(
+              width: 5,
+              height: 5,
+              decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
+            ),
+            const Spacer(),
+            FocusableTap(
+              onTap: onSearch,
+              builder: (_, active) => AnimatedContainer(
+                duration: const Duration(milliseconds: 160),
+                width: 236,
+                height: 40,
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                decoration: BoxDecoration(
+                  color: active ? surfaceHi : surface,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: active ? accent : line),
+                ),
                 child: Row(
                   children: [
-                    Text('Lumen',
-                        style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800, color: textHi, letterSpacing: -0.5)),
-                    const Spacer(),
-                    IconButton(
-                      tooltip: 'Refresh',
-                      onPressed: () {
-                        refreshContent();
-                        ScaffoldMessenger.of(context)
-                          ..hideCurrentSnackBar()
-                          ..showSnackBar(const SnackBar(content: Text('Refreshing content…'), duration: Duration(seconds: 2)));
-                      },
-                      icon: Icon(Icons.refresh_rounded, color: muted, size: 20),
+                    Icon(Icons.search_rounded, size: 18, color: muted),
+                    const SizedBox(width: 9),
+                    Expanded(
+                      child: Text(
+                        'Find anything',
+                        style: TextStyle(color: subtle, fontSize: 13),
+                      ),
+                    ),
+                    Text(
+                      '⌘ K',
+                      style: TextStyle(
+                        color: subtle,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ],
                 ),
               ),
             ),
-          ],
-        ),
-      );
-
-  Widget _row(_Nav? r) {
-    if (r == null) {
-      // group separator — a hairline that only shows when expanded
-      return SizedBox(
-        height: _railGroupGap,
-        child: Center(
-          child: AnimatedOpacity(
-            opacity: _open ? 1 : 0,
-            duration: const Duration(milliseconds: 200),
-            child: Padding(padding: const EdgeInsets.symmetric(horizontal: 22), child: Divider(height: 1, color: line)),
-          ),
-        ),
-      );
-    }
-    final sel = r.page == widget.index;
-    return _RailItem(
-      nav: r,
-      selected: sel,
-      open: _open,
-      onTap: () => widget.onSelect(r.page),
-    );
-  }
-}
-
-class _RailItem extends StatelessWidget {
-  final _Nav nav;
-  final bool selected;
-  final bool open;
-  final VoidCallback onTap;
-  const _RailItem({required this.nav, required this.selected, required this.open, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    Widget? trailing;
-    if (nav.trailingIsDownloads) {
-      trailing = AnimatedBuilder(
-        animation: Downloads.instance,
-        builder: (_, __) {
-          final active = Downloads.instance.items
-              .where((d) => d.status == DlStatus.downloading || d.status == DlStatus.queued)
-              .toList();
-          if (active.isEmpty) return const SizedBox.shrink();
-          final withSize = active.where((d) => d.total > 0).toList();
-          final avg = withSize.isEmpty ? null : withSize.fold<double>(0, (s, d) => s + d.progress) / withSize.length;
-          final onPill = selected;
-          final c = onPill ? Colors.white : accent;
-          return Row(mainAxisSize: MainAxisSize.min, children: [
-            SizedBox(width: 14, height: 14, child: CircularProgressIndicator(value: avg, strokeWidth: 2, color: c)),
-            const SizedBox(width: 6),
-            Text('${active.length}', style: TextStyle(color: c, fontWeight: FontWeight.w800, fontSize: 12)),
-          ]);
-        },
-      );
-    }
-
-    final fg = selected ? Colors.white : muted;
-    return FocusableTap(
-      onTap: onTap,
-      builder: (context, active) => SizedBox(
-        height: _railItemH,
-        child: Stack(
-          children: [
-            // hover wash (only when not the selected/pill row)
-            if (active && !selected)
-              Positioned.fill(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(10, 4, 10, 4),
-                  child: DecoratedBox(decoration: BoxDecoration(color: surfaceHi.withValues(alpha: 0.7), borderRadius: BorderRadius.circular(16))),
+            const SizedBox(width: 10),
+            IconButton(
+              tooltip: 'Refresh library',
+              onPressed: () {
+                refreshContent();
+                ScaffoldMessenger.of(context)
+                  ..hideCurrentSnackBar()
+                  ..showSnackBar(
+                    const SnackBar(
+                      content: Text('Refreshing library…'),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+              },
+              icon: Icon(Icons.sync_rounded, color: muted, size: 20),
+            ),
+            const SizedBox(width: 2),
+            FocusableTap(
+              onTap: onProfile,
+              builder: (_, active) => AnimatedContainer(
+                duration: const Duration(milliseconds: 160),
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: active ? accent : surfaceHi,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: active ? accent : line),
+                ),
+                child: Icon(
+                  Icons.person_outline_rounded,
+                  size: 19,
+                  color: active ? onAccent : textHi,
                 ),
               ),
-            Row(
-              children: [
-                // fixed icon column — keeps icons pinned as the rail widens
-                SizedBox(width: _railCollapsed, child: Center(child: Icon(nav.icon, size: 22, color: selected ? Colors.white : (active ? textHi : muted)))),
-                Expanded(
-                  child: ClipRect(
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(nav.label,
-                              maxLines: 1,
-                              overflow: TextOverflow.clip,
-                              softWrap: false,
-                              style: TextStyle(fontWeight: selected ? FontWeight.w800 : FontWeight.w600, fontSize: 14.5, color: fg)),
-                        ),
-                        if (trailing != null) trailing,
-                        const SizedBox(width: 16),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
             ),
           ],
         ),

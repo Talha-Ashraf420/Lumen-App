@@ -16,7 +16,12 @@ class FocusableTap extends StatefulWidget {
   final Widget Function(BuildContext context, bool active) builder;
   final VoidCallback onTap;
   final bool autofocus;
-  const FocusableTap({super.key, required this.builder, required this.onTap, this.autofocus = false});
+  const FocusableTap({
+    super.key,
+    required this.builder,
+    required this.onTap,
+    this.autofocus = false,
+  });
   @override
   State<FocusableTap> createState() => _FocusableTapState();
 }
@@ -40,10 +45,12 @@ class _FocusableTapState extends State<FocusableTap> {
       mouseCursor: SystemMouseCursors.click,
       shortcuts: _activators,
       actions: {
-        ActivateIntent: CallbackAction<ActivateIntent>(onInvoke: (_) {
-          widget.onTap();
-          return null;
-        }),
+        ActivateIntent: CallbackAction<ActivateIntent>(
+          onInvoke: (_) {
+            widget.onTap();
+            return null;
+          },
+        ),
       },
       onShowHoverHighlight: (v) => setState(() => _hover = v),
       onShowFocusHighlight: (v) => setState(() => _focus = v),
@@ -55,8 +62,9 @@ class _FocusableTapState extends State<FocusableTap> {
   }
 }
 
-/// The Lumen wordmark: a violet play-beam mark + "Lumen" in Manrope. Rendered
-/// natively (not from SVG) so the font renders reliably and it adapts to theme.
+/// Lumen's broadcast lockup. The viewport says television, the triangle says
+/// playback, and its three outgoing bars read as both live signal and light.
+/// It is rendered natively so it stays crisp and follows the selected accent.
 class Wordmark extends StatelessWidget {
   final double size; // text font size
   const Wordmark({super.key, this.size = 34});
@@ -66,50 +74,129 @@ class Wordmark extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        CustomPaint(size: Size(size * 0.66, size * 0.92), painter: _BeamMark(accent)),
-        SizedBox(width: size * 0.26),
-        Text('Lumen',
-            style: GoogleFonts.manrope(
-                fontSize: size, fontWeight: FontWeight.w800, color: textHi, letterSpacing: -0.5, height: 1)),
+        LumenMark(size: size * 1.08),
+        SizedBox(width: size * 0.24),
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Text(
+                  'LUMEN',
+                  style: GoogleFonts.spaceGrotesk(
+                    fontSize: size,
+                    fontWeight: FontWeight.w600,
+                    color: textHi,
+                    letterSpacing: -1.8,
+                    height: 0.92,
+                  ),
+                ),
+                SizedBox(width: size * 0.16),
+                Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: size * 0.13,
+                    vertical: size * 0.075,
+                  ),
+                  decoration: BoxDecoration(
+                    color: accent,
+                    borderRadius: BorderRadius.circular(size * 0.16),
+                  ),
+                  child: Text(
+                    'TV',
+                    style: GoogleFonts.spaceGrotesk(
+                      fontSize: size * 0.28,
+                      fontWeight: FontWeight.w800,
+                      color: onAccent,
+                      height: 1,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: size * 0.13),
+            Text(
+              'LIVE  •  FILMS  •  SERIES',
+              style: GoogleFonts.spaceGrotesk(
+                fontSize: size * 0.18,
+                fontWeight: FontWeight.w600,
+                color: muted,
+                letterSpacing: size * 0.055,
+                height: 1,
+              ),
+            ),
+          ],
+        ),
       ],
     );
   }
 }
 
-/// Just the beam mark (no wordmark) — used where space is tight (collapsed rail).
+/// Standalone mark used in the compact navigation dock.
 class LumenMark extends StatelessWidget {
   final double size; // height of the mark
   const LumenMark({super.key, this.size = 24});
   @override
-  Widget build(BuildContext context) => CustomPaint(size: Size(size * 0.72, size), painter: _BeamMark(accent));
+  Widget build(BuildContext context) => CustomPaint(
+    size: Size.square(size),
+    painter: _LumenMarkPainter(signal: accent, frame: textHi),
+  );
 }
 
-/// A right-pointing play triangle with an accent underline (matches the icon).
-class _BeamMark extends CustomPainter {
-  final Color color;
-  _BeamMark(this.color);
+class _LumenMarkPainter extends CustomPainter {
+  final Color signal;
+  final Color frame;
+  _LumenMarkPainter({required this.signal, required this.frame});
+
   @override
   void paint(Canvas canvas, Size size) {
-    final p = Paint()
-      ..color = color
+    final framePaint = Paint()
+      ..color = frame
       ..isAntiAlias = true;
-    final w = size.width, h = size.height;
-    final triH = h * 0.74;
-    final tri = Path()
-      ..moveTo(0, 0)
-      ..lineTo(0, triH)
-      ..lineTo(w, triH / 2)
-      ..close();
-    canvas.drawPath(tri, p);
-    final barTop = h * 0.85;
+    final signalPaint = Paint()
+      ..color = signal
+      ..isAntiAlias = true;
+    final w = size.width;
+    final h = size.height;
+    final r = Radius.circular(w * 0.055);
+
     canvas.drawRRect(
-      RRect.fromLTRBR(0, barTop, w * 0.86, h, Radius.circular(h * 0.06)),
-      p,
+      RRect.fromLTRBR(w * .20, h * .215, w * .31, h * .79, r),
+      framePaint,
+    );
+    canvas.drawRRect(
+      RRect.fromLTRBR(w * .20, h * .215, w * .58, h * .315, r),
+      framePaint,
+    );
+    canvas.drawRRect(
+      RRect.fromLTRBR(w * .20, h * .69, w * .58, h * .79, r),
+      framePaint,
+    );
+
+    final tri = Path()
+      ..moveTo(w * .36, h * .37)
+      ..lineTo(w * .36, h * .64)
+      ..lineTo(w * .63, h * .505)
+      ..close();
+    canvas.drawPath(tri, signalPaint);
+    canvas.drawRRect(
+      RRect.fromLTRBR(w * .62, h * .325, w * .785, h * .397, r),
+      signalPaint,
+    );
+    canvas.drawRRect(
+      RRect.fromLTRBR(w * .63, h * .47, w * .865, h * .542, r),
+      signalPaint,
+    );
+    canvas.drawRRect(
+      RRect.fromLTRBR(w * .62, h * .615, w * .785, h * .687, r),
+      signalPaint,
     );
   }
 
   @override
-  bool shouldRepaint(_BeamMark old) => old.color != color;
+  bool shouldRepaint(_LumenMarkPainter old) =>
+      old.signal != signal || old.frame != frame;
 }
 
 /// Subtle scale-up on mouse hover (desktop affordance; no-op on touch).
@@ -146,7 +233,14 @@ class Glass extends StatelessWidget {
   final double radius;
   final EdgeInsets? padding;
   final Color? tint;
-  const Glass({super.key, required this.child, this.blur = 18, this.radius = 22, this.padding, this.tint});
+  const Glass({
+    super.key,
+    required this.child,
+    this.blur = 18,
+    this.radius = 22,
+    this.padding,
+    this.tint,
+  });
   @override
   Widget build(BuildContext context) {
     final tintColor = tint ?? surfaceHi;
@@ -189,20 +283,26 @@ class SearchField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final field = Container(
-      height: 54,
-      padding: const EdgeInsets.fromLTRB(16, 0, 8, 0),
+      height: 50,
+      padding: const EdgeInsets.fromLTRB(17, 0, 7, 0),
       decoration: BoxDecoration(
-        color: surfaceHi.withValues(alpha: 0.6),
-        borderRadius: BorderRadius.circular(16),
+        color: surface.withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(25),
         border: Border.all(color: line),
       ),
       child: Row(
         children: [
-          Icon(Icons.search_rounded, color: accent, size: 22),
+          Icon(Icons.search_rounded, color: muted, size: 20),
           const SizedBox(width: 10),
           Expanded(
             child: readOnly
-                ? Align(alignment: Alignment.centerLeft, child: Text(hint, style: TextStyle(color: subtle, fontSize: 15)))
+                ? Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      hint,
+                      style: TextStyle(color: subtle, fontSize: 15),
+                    ),
+                  )
                 : TextField(
                     controller: controller,
                     onChanged: onChanged,
@@ -230,7 +330,10 @@ class SearchField extends StatelessWidget {
           duration: const Duration(milliseconds: 140),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: active ? accent : Colors.transparent, width: 1.5),
+            border: Border.all(
+              color: active ? accent : Colors.transparent,
+              width: 1.5,
+            ),
           ),
           child: field,
         ),
@@ -249,19 +352,42 @@ class Aurora extends StatelessWidget {
       child: Stack(
         children: [
           Positioned.fill(child: ColoredBox(color: bg)),
-          Positioned(top: -160, left: -120, child: _blob(accent.withValues(alpha: 0.22), 380)),
-          Positioned(top: 80, right: -140, child: _blob(accent2.withValues(alpha: 0.14), 340)),
-          Positioned(bottom: -160, left: 20, child: _blob(const Color(0xFF11433A).withValues(alpha: 0.4), 320)),
+          Positioned(
+            top: -160,
+            left: -120,
+            child: _blob(accent.withValues(alpha: 0.22), 380),
+          ),
+          Positioned(
+            top: 80,
+            right: -140,
+            child: _blob(accent2.withValues(alpha: 0.14), 340),
+          ),
+          Positioned(
+            bottom: -160,
+            left: 20,
+            child: _blob(const Color(0xFF11433A).withValues(alpha: 0.4), 320),
+          ),
         ],
       ),
     );
   }
 
-  Widget _blob(Color c, double s) => Container(
-        width: s,
-        height: s,
-        decoration: BoxDecoration(shape: BoxShape.circle, gradient: RadialGradient(colors: [c, c.withValues(alpha: 0)])),
-      ).animate(onPlay: (c) => c.repeat(reverse: true)).moveY(begin: -18, end: 18, duration: 7.seconds, curve: Curves.easeInOut);
+  Widget _blob(Color c, double s) =>
+      Container(
+            width: s,
+            height: s,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: RadialGradient(colors: [c, c.withValues(alpha: 0)]),
+            ),
+          )
+          .animate(onPlay: (c) => c.repeat(reverse: true))
+          .moveY(
+            begin: -18,
+            end: 18,
+            duration: 7.seconds,
+            curve: Curves.easeInOut,
+          );
 }
 
 /// Branded loading splash.
@@ -274,8 +400,12 @@ class _ShimmerSweep extends StatefulWidget {
   State<_ShimmerSweep> createState() => _ShimmerSweepState();
 }
 
-class _ShimmerSweepState extends State<_ShimmerSweep> with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1350))..repeat();
+class _ShimmerSweepState extends State<_ShimmerSweep>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1350),
+  )..repeat();
 
   @override
   void dispose() {
@@ -286,12 +416,17 @@ class _ShimmerSweepState extends State<_ShimmerSweep> with SingleTickerProviderS
   @override
   Widget build(BuildContext context) {
     final base = surfaceHi;
-    final hi = Color.alphaBlend(Colors.white.withValues(alpha: isDark ? 0.10 : 0.65), surfaceHi);
+    final hi = Color.alphaBlend(
+      Colors.white.withValues(alpha: isDark ? 0.10 : 0.65),
+      surfaceHi,
+    );
     return AnimatedBuilder(
       animation: _c,
       child: widget.child,
       builder: (context, child) {
-        final x = -1.4 + 2.8 * _c.value; // band travels left → right, off-screen both ends
+        final x =
+            -1.4 +
+            2.8 * _c.value; // band travels left → right, off-screen both ends
         return ShaderMask(
           blendMode: BlendMode.srcATop,
           shaderCallback: (rect) => LinearGradient(
@@ -307,8 +442,14 @@ class _ShimmerSweepState extends State<_ShimmerSweep> with SingleTickerProviderS
   }
 }
 
-Widget _skelBox(double w, double h, {double r = 12}) =>
-    Container(width: w, height: h, decoration: BoxDecoration(color: surfaceHi, borderRadius: BorderRadius.circular(r)));
+Widget _skelBox(double w, double h, {double r = 12}) => Container(
+  width: w,
+  height: h,
+  decoration: BoxDecoration(
+    color: surfaceHi,
+    borderRadius: BorderRadius.circular(r),
+  ),
+);
 
 /// A shimmer skeleton loader — a hero block + poster rows with a light sweep
 /// gliding across. No spinner, no logo, no text; it reads as the page
@@ -318,12 +459,18 @@ class BrandedLoading extends StatelessWidget {
   const BrandedLoading({super.key, this.background = false});
 
   Widget _posterRow() => SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        physics: const NeverScrollableScrollPhysics(),
-        child: Row(children: [
-          for (var i = 0; i < 8; i++) Padding(padding: const EdgeInsets.only(right: 14), child: _skelBox(120, 180, r: 16)),
-        ]),
-      );
+    scrollDirection: Axis.horizontal,
+    physics: const NeverScrollableScrollPhysics(),
+    child: Row(
+      children: [
+        for (var i = 0; i < 8; i++)
+          Padding(
+            padding: const EdgeInsets.only(right: 14),
+            child: _skelBox(120, 180, r: 16),
+          ),
+      ],
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -377,7 +524,10 @@ class GridLoading extends StatelessWidget {
             ),
             itemCount: cols * 3,
             itemBuilder: (_, i) => DecoratedBox(
-              decoration: BoxDecoration(color: surfaceHi, borderRadius: BorderRadius.circular(14)),
+              decoration: BoxDecoration(
+                color: surfaceHi,
+                borderRadius: BorderRadius.circular(14),
+              ),
             ),
           );
         },
@@ -386,16 +536,22 @@ class GridLoading extends StatelessWidget {
   }
 }
 
-/// Pill action button (filled accent or glass) used by hero / detail.
+/// Compact editorial action used by hero and detail surfaces.
 class PillButton extends StatelessWidget {
   final IconData? icon;
   final String label;
   final VoidCallback onTap;
   final bool filled;
-  const PillButton({super.key, required this.label, required this.onTap, this.icon, this.filled = true});
+  const PillButton({
+    super.key,
+    required this.label,
+    required this.onTap,
+    this.icon,
+    this.filled = true,
+  });
   @override
   Widget build(BuildContext context) {
-    const fg = Colors.white;
+    final fg = filled ? onAccent : textHi;
     return FocusableTap(
       onTap: onTap,
       builder: (context, active) => AnimatedScale(
@@ -403,30 +559,47 @@ class PillButton extends StatelessWidget {
         duration: const Duration(milliseconds: 140),
         curve: Curves.easeOut,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 13),
           decoration: BoxDecoration(
             color: filled
                 ? accent
-                : Colors.white.withValues(alpha: active ? 0.26 : 0.14),
-            borderRadius: BorderRadius.circular(30),
+                : surfaceHi.withValues(alpha: active ? 1 : 0.82),
+            borderRadius: BorderRadius.circular(14),
             border: filled
                 ? null
-                : Border.all(color: Colors.white.withValues(alpha: active ? 0.7 : 0.28), width: active ? 1.5 : 1),
+                : Border.all(
+                    color: active ? accent : line,
+                    width: active ? 1.5 : 1,
+                  ),
             boxShadow: filled
                 ? glow(accent, blur: active ? 34 : 26, y: 10)
                 : (active ? glow(Colors.white, blur: 18, y: 6, a: 0.18) : null),
           ),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            if (icon != null) ...[Icon(icon, color: fg, size: 20), const SizedBox(width: 8)],
-            Text(label, style: const TextStyle(color: fg, fontWeight: FontWeight.w800, fontSize: 15)),
-          ]),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (icon != null) ...[
+                Icon(icon, color: fg, size: 20),
+                const SizedBox(width: 8),
+              ],
+              Text(
+                label,
+                style: TextStyle(
+                  color: fg,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14.5,
+                  letterSpacing: -0.2,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-/// Section header with a tidy "See all" pill.
+/// Editorial section marker: a signal bar, a generous title and a quiet link.
 class SectionHeader extends StatelessWidget {
   final String title;
   final VoidCallback? onSeeAll;
@@ -434,27 +607,49 @@ class SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 14, 12),
+      padding: const EdgeInsets.fromLTRB(20, 0, 18, 14),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
+          Container(
+            width: 3,
+            height: 29,
+            margin: const EdgeInsets.only(right: 12, bottom: 1),
+            decoration: BoxDecoration(
+              color: accent,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
           Expanded(
-            child: Text(title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, letterSpacing: -0.3)),
+            child: Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: kTitle(),
+            ),
           ),
           const SizedBox(width: 12),
           if (onSeeAll != null)
             GestureDetector(
               onTap: onSeeAll,
               behavior: HitTestBehavior.opaque,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(color: accent.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(20)),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Text('See all', style: TextStyle(color: accent, fontWeight: FontWeight.w700, fontSize: 12.5)),
-                  Icon(Icons.chevron_right_rounded, color: accent, size: 17),
-                ]),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Open collection',
+                      style: TextStyle(
+                        color: muted,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12.5,
+                      ),
+                    ),
+                    const SizedBox(width: 5),
+                    Icon(Icons.arrow_outward_rounded, color: accent, size: 15),
+                  ],
+                ),
               ),
             ),
         ],
@@ -465,8 +660,9 @@ class SectionHeader extends StatelessWidget {
 
 /// Standard width for a poster card in a shelf (keeps everything consistent).
 const double kPosterW = 134;
-double posterShelfHeight({bool live = false}) =>
-    live ? kPosterW + 44 : kPosterW * 1.5 + 4; // poster (info overlaid) / channel logo + name
+double posterShelfHeight({bool live = false}) => live
+    ? kPosterW + 44
+    : kPosterW * 1.5 + 4; // poster (info overlaid) / channel logo + name
 
 /// Premium movie/series poster tile: art fills the card, title + year + rating
 /// overlaid on a gradient; hover reveals a play affordance + accent glow.
@@ -492,10 +688,10 @@ class PosterCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return FocusableTap(
-      autofocus: autofocus,
-      onTap: onTap,
-      builder: (context, active) => _visual(context, active),
-    )
+          autofocus: autofocus,
+          onTap: onTap,
+          builder: (context, active) => _visual(context, active),
+        )
         .animate()
         .fadeIn(duration: 320.ms, delay: (index.clamp(0, 12) * 30).ms)
         .slideY(begin: 0.1, end: 0, curve: Curves.easeOutCubic);
@@ -506,7 +702,7 @@ class PosterCard extends StatelessWidget {
     final card = AspectRatio(
       aspectRatio: 2 / 3,
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(11),
         child: Stack(
           fit: StackFit.expand,
           children: [
@@ -538,14 +734,29 @@ class PosterCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(w.name,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700, height: 1.15)),
+                  Text(
+                    w.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      height: 1.15,
+                    ),
+                  ),
                   if (w.subtitle != null && w.subtitle!.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(top: 2),
-                      child: Text(w.subtitle!, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: Colors.white60)),
+                      child: Text(
+                        w.subtitle!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Colors.white60,
+                        ),
+                      ),
                     ),
                 ],
               ),
@@ -555,14 +766,27 @@ class PosterCard extends StatelessWidget {
                 left: 8,
                 top: 8,
                 child: Glass(
-                  radius: 9,
+                  radius: 7,
                   blur: 6,
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(Icons.star_rounded, color: gold, size: 12),
-                    const SizedBox(width: 3),
-                    Text(w.rating.toStringAsFixed(1), style: TextStyle(color: gold, fontSize: 10.5, fontWeight: FontWeight.w800)),
-                  ]),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 3,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.star_rounded, color: gold, size: 12),
+                      const SizedBox(width: 3),
+                      Text(
+                        w.rating.toStringAsFixed(1),
+                        style: TextStyle(
+                          color: gold,
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             // hover / focus veil + play
@@ -573,9 +797,17 @@ class PosterCard extends StatelessWidget {
                 color: Colors.black.withValues(alpha: 0.32),
                 child: Center(
                   child: Container(
-                    padding: const EdgeInsets.all(11),
-                    decoration: BoxDecoration(color: accent, shape: BoxShape.circle, boxShadow: glow(accent)),
-                    child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 26),
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: accent,
+                      borderRadius: BorderRadius.circular(11),
+                      boxShadow: glow(accent),
+                    ),
+                    child: Icon(
+                      Icons.play_arrow_rounded,
+                      color: onAccent,
+                      size: 25,
+                    ),
                   ),
                 ),
               ),
@@ -599,10 +831,22 @@ class PosterCard extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 170),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(11),
           boxShadow: active
-              ? [BoxShadow(color: accent.withValues(alpha: 0.34), blurRadius: 26, offset: const Offset(0, 12))]
-              : [BoxShadow(color: Colors.black.withValues(alpha: isDark ? 0.45 : 0.18), blurRadius: 14, offset: const Offset(0, 7))],
+              ? [
+                  BoxShadow(
+                    color: accent.withValues(alpha: 0.34),
+                    blurRadius: 26,
+                    offset: const Offset(0, 12),
+                  ),
+                ]
+              : [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: isDark ? 0.45 : 0.18),
+                    blurRadius: 14,
+                    offset: const Offset(0, 7),
+                  ),
+                ],
         ),
         child: card,
       ),
@@ -614,9 +858,11 @@ class _Fallback extends StatelessWidget {
   const _Fallback();
   @override
   Widget build(BuildContext context) => DecoratedBox(
-        decoration: BoxDecoration(color: surfaceHi),
-        child: Center(child: Icon(Icons.movie_creation_outlined, color: subtle, size: 28)),
-      );
+    decoration: BoxDecoration(color: surfaceHi),
+    child: Center(
+      child: Icon(Icons.movie_creation_outlined, color: subtle, size: 28),
+    ),
+  );
 }
 
 /// A polished live-TV tile: the channel logo centred on an elevated surface
@@ -627,7 +873,13 @@ class ChannelCard extends StatelessWidget {
   final String logo;
   final VoidCallback onTap;
   final int index;
-  const ChannelCard({super.key, required this.name, required this.logo, required this.onTap, this.index = 0});
+  const ChannelCard({
+    super.key,
+    required this.name,
+    required this.logo,
+    required this.onTap,
+    this.index = 0,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -658,7 +910,11 @@ class ChannelCard extends StatelessWidget {
                           imageUrl: logo,
                           fit: BoxFit.contain,
                           fadeInDuration: const Duration(milliseconds: 200),
-                          errorWidget: (_, _, _) => Icon(Icons.live_tv_rounded, color: subtle, size: 30),
+                          errorWidget: (_, _, _) => Icon(
+                            Icons.live_tv_rounded,
+                            color: subtle,
+                            size: 30,
+                          ),
                         )
                       : Icon(Icons.live_tv_rounded, color: subtle, size: 30),
                 ),
@@ -666,14 +922,30 @@ class ChannelCard extends StatelessWidget {
                   left: 8,
                   top: 8,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                    decoration: BoxDecoration(color: const Color(0xFFFF3B5C), borderRadius: BorderRadius.circular(8)),
-                    child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                      Icon(Icons.circle, color: Colors.white, size: 5),
-                      SizedBox(width: 4),
-                      Text('LIVE',
-                          style: TextStyle(fontSize: 8.5, fontWeight: FontWeight.w800, letterSpacing: 0.4, color: Colors.white)),
-                    ]),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 7,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFF3B5C),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.circle, color: Colors.white, size: 5),
+                        SizedBox(width: 4),
+                        Text(
+                          'LIVE',
+                          style: TextStyle(
+                            fontSize: 8.5,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.4,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
@@ -681,31 +953,39 @@ class ChannelCard extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 8),
-        Text(name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+        Text(
+          name,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
+        ),
       ],
     );
     return FocusableTap(
-      onTap: onTap,
-      builder: (context, active) => AnimatedScale(
-        scale: active ? 1.05 : 1.0,
-        duration: const Duration(milliseconds: 150),
-        curve: Curves.easeOut,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: active
-                ? [BoxShadow(color: accent.withValues(alpha: 0.4), blurRadius: 22, offset: const Offset(0, 10))]
-                : null,
+          onTap: onTap,
+          builder: (context, active) => AnimatedScale(
+            scale: active ? 1.05 : 1.0,
+            duration: const Duration(milliseconds: 150),
+            curve: Curves.easeOut,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: active
+                    ? [
+                        BoxShadow(
+                          color: accent.withValues(alpha: 0.4),
+                          blurRadius: 22,
+                          offset: const Offset(0, 10),
+                        ),
+                      ]
+                    : null,
+              ),
+              child: tile,
+            ),
           ),
-          child: tile,
-        ),
-      ),
-    )
+        )
         .animate()
         .fadeIn(duration: 300.ms, delay: (index.clamp(0, 12) * 28).ms)
         .slideY(begin: 0.08, end: 0, curve: Curves.easeOutCubic);
