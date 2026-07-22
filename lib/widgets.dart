@@ -6,6 +6,32 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'theme.dart';
 
+/// Turns provider-style filenames into human-facing titles without stripping a
+/// meaningful year that is actually part of a title (for example "1984").
+String cleanMediaTitle(String raw) {
+  var title = raw.trim();
+  title = title.replaceFirst(RegExp(r'^\s*[A-Z]{2,3}\s*[|:\-]\s*'), '');
+  title = title.replaceAll(RegExp(r'\(\s*(?:19|20)\d{2}\s*\)'), ' ');
+  title = title.replaceAll(
+    RegExp(
+      r'[\(\[]\s*(?:4K|UHD|FHD|HD|SD|HDR|DV|HEVC|H\s?26[45]|X26[45]|1080P|720P|2160P|MULTI|DUAL|SUB|DUB)\s*[\)\]]',
+      caseSensitive: false,
+    ),
+    ' ',
+  );
+  title = title.replaceAll(
+    RegExp(
+      r'\b(?:4K|UHD|FHD|HD|SD|HDR|HEVC|1080P|720P|2160P)\b',
+      caseSensitive: false,
+    ),
+    ' ',
+  );
+  title = title.replaceAll(RegExp(r'[._]+'), ' ');
+  title = title.replaceAll(RegExp(r'\s+'), ' ').trim();
+  title = title.replaceAll(RegExp(r'\s*[-|·•:]\s*$'), '').trim();
+  return title.isEmpty ? raw : title;
+}
+
 /// Wraps a tappable element so it responds to BOTH mouse hover AND TV
 /// remote / D-pad focus. [builder] is given an `active` flag (hovered or
 /// focused) so callers can reuse their existing hover styling as the focus
@@ -106,6 +132,42 @@ class RemoteTap extends StatefulWidget {
 
   @override
   State<RemoteTap> createState() => _RemoteTapState();
+}
+
+/// A compact back control with deterministic bounds on desktop and TV.
+/// Unlike IconButton's InkResponse it cannot inherit a page-sized focus oval.
+class LumenBackButton extends StatelessWidget {
+  const LumenBackButton({
+    super.key,
+    required this.onTap,
+    this.autofocus = true,
+  });
+
+  final VoidCallback onTap;
+  final bool autofocus;
+
+  @override
+  Widget build(BuildContext context) => RemoteTap(
+    autofocus: autofocus,
+    semanticLabel: 'Back',
+    focusRadius: 14,
+    onTap: onTap,
+    child: Container(
+      width: 46,
+      height: 46,
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: .46),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white24),
+      ),
+      alignment: Alignment.center,
+      child: const Icon(
+        Icons.arrow_back_rounded,
+        color: Colors.white,
+        size: 23,
+      ),
+    ),
+  );
 }
 
 class _RemoteTapState extends State<RemoteTap> {
@@ -372,6 +434,257 @@ class Glass extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Editorial header used by Lumen's secondary destinations. It gives utility
+/// pages the same hierarchy as the content-led Home screen without forcing
+/// every route into a conventional platform AppBar.
+class EditorialPageHeader extends StatelessWidget {
+  final String eyebrow;
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final VoidCallback? onBack;
+  final Widget? trailing;
+  final EdgeInsetsGeometry padding;
+
+  const EditorialPageHeader({
+    super.key,
+    required this.eyebrow,
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    this.onBack,
+    this.trailing,
+    this.padding = const EdgeInsets.fromLTRB(20, 14, 20, 18),
+  });
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: padding,
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        if (onBack != null) ...[
+          RemoteTap(
+            autofocus: true,
+            semanticLabel: 'Go back',
+            focusRadius: 14,
+            onTap: onBack,
+            child: Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: surfaceHi.withValues(alpha: 0.72),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: line),
+              ),
+              child: Icon(Icons.arrow_back_rounded, color: textHi, size: 20),
+            ),
+          ),
+          const SizedBox(width: 12),
+        ],
+        Container(
+          width: 46,
+          height: 46,
+          decoration: BoxDecoration(
+            color: accent.withValues(alpha: 0.13),
+            borderRadius: BorderRadius.circular(15),
+            border: Border.all(color: accent.withValues(alpha: 0.24)),
+          ),
+          child: Icon(icon, color: accent, size: 22),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(eyebrow.toUpperCase(), style: kSection(color: accent)),
+              const SizedBox(height: 3),
+              Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: kTitle(),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: subtle, fontSize: 12.5, height: 1.3),
+              ),
+            ],
+          ),
+        ),
+        if (trailing != null) ...[const SizedBox(width: 14), trailing!],
+      ],
+    ),
+  );
+}
+
+/// A focused empty state with a quiet brand motif and optional next action.
+class LumenEmptyState extends StatelessWidget {
+  final IconData icon;
+  final String eyebrow;
+  final String title;
+  final String message;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+
+  const LumenEmptyState({
+    super.key,
+    required this.icon,
+    required this.eyebrow,
+    required this.title,
+    required this.message,
+    this.actionLabel,
+    this.onAction,
+  });
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Padding(
+      padding: const EdgeInsets.all(24),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 460),
+        child: Glass(
+          radius: 28,
+          padding: const EdgeInsets.fromLTRB(28, 26, 28, 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Stack(
+                alignment: Alignment.center,
+                children: [
+                  Container(
+                    width: 82,
+                    height: 82,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: accent.withValues(alpha: 0.25)),
+                    ),
+                  ),
+                  Container(
+                    width: 60,
+                    height: 60,
+                    decoration: BoxDecoration(
+                      color: accent.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Icon(icon, color: accent, size: 29),
+                  ),
+                  Positioned(
+                    right: 3,
+                    top: 7,
+                    child: Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: accent,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              Text(eyebrow.toUpperCase(), style: kSection(color: accent)),
+              const SizedBox(height: 7),
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.35,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: muted, height: 1.5, fontSize: 13.5),
+              ),
+              if (actionLabel != null && onAction != null) ...[
+                const SizedBox(height: 20),
+                RemoteTap(
+                  onTap: onAction,
+                  focusRadius: 14,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: accent,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Text(
+                      actionLabel!,
+                      style: TextStyle(
+                        color: onAccent,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+/// Compact filter control with a consistent remote-focus treatment.
+class LumenFilterPill extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  final IconData? icon;
+
+  const LumenFilterPill({
+    super.key,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) => RemoteTap(
+    onTap: onTap,
+    focusRadius: 13,
+    child: AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+      decoration: BoxDecoration(
+        color: selected ? accent : surfaceHi.withValues(alpha: 0.65),
+        borderRadius: BorderRadius.circular(13),
+        border: Border.all(color: selected ? accent : line),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 16, color: selected ? onAccent : muted),
+            const SizedBox(width: 6),
+          ],
+          Text(
+            label,
+            style: TextStyle(
+              color: selected ? onAccent : textHi,
+              fontSize: 12.5,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 /// The single, consistent search field used across the whole app.

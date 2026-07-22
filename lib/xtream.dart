@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'package:http/http.dart' as http;
 import 'package:xml/xml.dart';
 import 'models.dart';
@@ -35,7 +36,8 @@ String normalizeBaseUrl(String raw) {
 XtreamCredentials? credentialsFromUrl(String raw) {
   var s = raw.trim();
   if (s.isEmpty) return null;
-  if (!RegExp(r'^https?://', caseSensitive: false).hasMatch(s)) s = 'https://$s';
+  if (!RegExp(r'^https?://', caseSensitive: false).hasMatch(s))
+    s = 'https://$s';
   Uri u;
   try {
     u = Uri.parse(s);
@@ -332,7 +334,17 @@ DateTime? parseXmltvTime(String value) {
 
 class XtreamClient {
   final XtreamCredentials creds;
-  XtreamClient(this.creds);
+  final http.Client _http;
+  final bool _ownsHttpClient;
+
+  XtreamClient(this.creds, {http.Client? httpClient})
+    : _http = httpClient ?? http.Client(),
+      _ownsHttpClient = httpClient == null;
+
+  /// Release pooled network connections when a profile is replaced.
+  void close() {
+    if (_ownsHttpClient) _http.close();
+  }
 
   static const _ua = 'Lumen/1.0 (Flutter)';
   static const _timeout = Duration(seconds: 25);
@@ -361,7 +373,7 @@ class XtreamClient {
   }
 
   Future<void> _loadM3u() async {
-    final res = await http
+    final res = await _http
         .get(Uri.parse(creds.m3uUrl!), headers: {'User-Agent': _ua})
         .timeout(
           _timeout,
@@ -392,7 +404,7 @@ class XtreamClient {
       throw XtreamException('No channels found in this playlist.');
     if ((creds.epgUrl ?? '').isNotEmpty) {
       try {
-        final epg = await http
+        final epg = await _http
             .get(Uri.parse(creds.epgUrl!), headers: {'User-Agent': _ua})
             .timeout(_timeout);
         if (epg.statusCode == 200) {
@@ -430,7 +442,7 @@ class XtreamClient {
   }
 
   Future<dynamic> _get(Map<String, String> params) async {
-    final res = await http
+    final res = await _http
         .get(
           _playerApi(params),
           headers: {'User-Agent': _ua, 'Accept': 'application/json'},
@@ -443,7 +455,13 @@ class XtreamClient {
       throw XtreamException('Provider returned ${res.statusCode}');
     if (res.body.isEmpty) return [];
     try {
-      return jsonDecode(res.body);
+      final body = res.body;
+      // Whole-provider catalogs can be several megabytes. Decoding those on
+      // Flutter's UI isolate makes navigation and remote input appear frozen.
+      if (body.length >= 180000) {
+        return await Isolate.run<dynamic>(() => jsonDecode(body));
+      }
+      return jsonDecode(body);
     } catch (_) {
       throw XtreamException(
         'Provider returned a non-JSON response (check URL/credentials).',

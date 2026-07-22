@@ -38,7 +38,10 @@ class _GuideScreenState extends State<GuideScreen>
 
   Future<void> _init() async {
     try {
-      final cats = await CatalogCache.instance.live(widget.client);
+      final cats = await CatalogCache.instance.live(
+        widget.client,
+        priority: true,
+      );
       if (!mounted) return;
       setState(() {
         _cats = cats;
@@ -51,8 +54,9 @@ class _GuideScreenState extends State<GuideScreen>
     }
   }
 
-  Future<List<LiveStream>> _load() =>
-      widget.client.liveStreams(_cat).catchError((_) => <LiveStream>[]);
+  Future<List<LiveStream>> _load() => CatalogCache.instance
+      .liveStreams(widget.client, _cat, priority: true)
+      .catchError((_) => <LiveStream>[]);
 
   String get _catName => _cats
       .firstWhere(

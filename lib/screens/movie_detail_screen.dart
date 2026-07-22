@@ -2,20 +2,28 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+import '../catalog_cache.dart';
 import '../downloads.dart';
 import '../library.dart';
 import '../models.dart';
+import '../playback.dart';
 import '../responsive.dart';
 import '../theme.dart';
-import '../playback.dart';
 import '../tmdb.dart';
 import '../widgets.dart';
 import '../xtream.dart';
 
 class MovieDetailScreen extends StatefulWidget {
+  const MovieDetailScreen({
+    super.key,
+    required this.client,
+    required this.movie,
+  });
+
   final XtreamClient client;
   final VodStream movie;
-  const MovieDetailScreen({super.key, required this.client, required this.movie});
+
   @override
   State<MovieDetailScreen> createState() => _MovieDetailScreenState();
 }
@@ -23,367 +31,224 @@ class MovieDetailScreen extends StatefulWidget {
 class _MovieDetailScreenState extends State<MovieDetailScreen> {
   VodInfo? _info;
   TmdbInfo? _tmdb;
+  bool _providerLoading = true;
 
   @override
   void initState() {
     super.initState();
-    widget.client.vodInfo(widget.movie.streamId).then((v) {
-      if (mounted) setState(() => _info = v);
-    }).catchError((_) {});
-    Tmdb.movie(widget.movie.name).then((t) {
-      if (mounted && t != null) setState(() => _tmdb = t);
+    _loadDetails();
+  }
+
+  void _loadDetails() {
+    CatalogCache.instance
+        .vodInfo(widget.client, widget.movie.streamId)
+        .then((value) {
+          if (mounted) {
+            setState(() {
+              _info = value;
+              _providerLoading = false;
+            });
+          }
+        })
+        .catchError((_) {
+          if (mounted) setState(() => _providerLoading = false);
+        });
+    Tmdb.movie(widget.movie.name).then((value) {
+      if (mounted && value != null) setState(() => _tmdb = value);
     });
   }
 
-  Future<void> _trailer() async {
-    final url = _tmdb?.trailerUrl;
-    if (url == null) return;
-    await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+  String get _title => cleanMediaTitle(widget.movie.name);
+
+  MediaRef _ref() => MediaRef(
+    kind: 'movie',
+    id: widget.movie.streamId,
+    name: _title,
+    image: widget.movie.icon,
+    cat: widget.movie.categoryId,
+  );
+
+  String get _progressKey => 'movie:${widget.movie.streamId}';
+  String get _downloadId => _progressKey;
+
+  String get _extension {
+    final provider = _info?.containerExtension ?? '';
+    if (provider.isNotEmpty) return provider;
+    return widget.movie.containerExtension.isEmpty
+        ? 'mp4'
+        : widget.movie.containerExtension;
   }
 
   void _play() {
-    final ext = _info?.containerExtension.isNotEmpty == true
-        ? _info!.containerExtension
-        : widget.movie.containerExtension;
-    final url = widget.client.streamUrl('movie', widget.movie.streamId, ext: ext);
+    final ext = _extension;
     PlaybackController.instance.open([
       PlayerItem(
-        url,
-        widget.movie.name,
-        progressKey: 'movie:${widget.movie.streamId}',
+        widget.client.streamUrl('movie', widget.movie.streamId, ext: ext),
+        _title,
+        progressKey: _progressKey,
         poster: widget.movie.icon,
         ext: ext,
         favRef: _ref(),
-      )
+      ),
     ], 0);
   }
 
-  MediaRef _ref() => MediaRef(
-      kind: 'movie',
-      id: widget.movie.streamId,
-      name: widget.movie.name,
-      image: widget.movie.icon,
-      cat: widget.movie.categoryId);
-
-  String get _dlId => 'movie:${widget.movie.streamId}';
+  Future<void> _trailer() async {
+    final trailer = _tmdb?.trailerUrl;
+    if (trailer == null) return;
+    await launchUrl(Uri.parse(trailer), mode: LaunchMode.externalApplication);
+  }
 
   void _download() {
-    final ext = _info?.containerExtension.isNotEmpty == true ? _info!.containerExtension : widget.movie.containerExtension;
-    final url = widget.client.streamUrl('movie', widget.movie.streamId, ext: ext);
+    final ext = _extension;
     Downloads.instance.start(
-      id: _dlId,
-      title: widget.movie.name,
+      id: _downloadId,
+      title: _title,
       poster: widget.movie.icon,
       kind: 'movie',
-      remoteUrl: url,
+      remoteUrl: widget.client.streamUrl(
+        'movie',
+        widget.movie.streamId,
+        ext: ext,
+      ),
       ext: ext,
-      progressKey: _dlId,
+      progressKey: _progressKey,
     );
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(const SnackBar(content: Text('Downloading…'), duration: Duration(seconds: 2)));
+      ..showSnackBar(
+        const SnackBar(
+          content: Text('Added to offline downloads'),
+          duration: Duration(seconds: 2),
+        ),
+      );
   }
 
-  Future<void> _removeDownload(DownloadItem d) async {
-    final ok = await showDialog<bool>(
+  Future<void> _removeDownload(DownloadItem item) async {
+    final remove = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         backgroundColor: surface,
-        title: const Text('Remove download?'),
-        content: const Text('This deletes the offline copy from this device.'),
+        title: const Text('Remove offline copy?'),
+        content: const Text(
+          'The film remains in your library, but its downloaded file will be deleted.',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Cancel', style: TextStyle(color: muted))),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text('Keep it', style: TextStyle(color: muted)),
+          ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: accent, foregroundColor: bg),
-            onPressed: () => Navigator.pop(ctx, true),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: accent,
+              foregroundColor: Colors.white,
+            ),
             child: const Text('Remove'),
           ),
         ],
       ),
     );
-    if (ok == true) Downloads.instance.delete(d);
+    if (remove == true) Downloads.instance.delete(item);
   }
 
   @override
   Widget build(BuildContext context) {
-    final m = widget.movie;
+    final movie = widget.movie;
     final info = _info;
-    final t = _tmdb;
-    // Prefer richer TMDB metadata, fall back to provider data.
-    final backdrop = (t?.backdrop.isNotEmpty == true)
-        ? t!.backdrop
-        : (info?.backdrop.isNotEmpty == true ? info!.backdrop : m.icon);
-    final posterUrl = (t?.poster.isNotEmpty == true) ? t!.poster : m.icon;
-    final rating = (t?.rating ?? 0) > 0
-        ? t!.rating
-        : (info?.rating != null && info!.rating > 0 ? info.rating : m.rating);
-    final rawDate = t?.releaseDate.isNotEmpty == true ? t!.releaseDate : (info?.releaseDate ?? '');
-    final year = rawDate.length >= 4 ? rawDate.substring(0, 4) : rawDate;
-    final genre = t?.genres.isNotEmpty == true ? t!.genres : (info?.genre ?? '');
-    final plot = t?.overview.isNotEmpty == true ? t!.overview : (info?.plot ?? '');
-    final cast = t?.cast.isNotEmpty == true ? t!.cast : (info?.cast ?? '');
+    final tmdb = _tmdb;
     final wide = isWide(context);
-    final h = MediaQuery.sizeOf(context).height;
 
-    // ---- shared building blocks ----
-    Widget posterCard(double w) => Container(
-          width: w,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: glow(Colors.black, blur: 30, y: 14, a: 0.55),
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: AspectRatio(
-              aspectRatio: 2 / 3,
-              child: posterUrl.isNotEmpty
-                  ? CachedNetworkImage(imageUrl: posterUrl, fit: BoxFit.cover, errorWidget: (_, _, _) => ColoredBox(color: surfaceHi))
-                  : ColoredBox(color: surfaceHi),
-            ),
-          ),
-        );
-
-    Widget chip(Widget child) => Container(
-          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
-          decoration: BoxDecoration(
-            color: surfaceHi.withValues(alpha: 0.7),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: line),
-          ),
-          child: child,
-        );
-
-    Widget metaChips(WrapAlignment align) => Wrap(
-          alignment: align,
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            if (rating > 0)
-              chip(Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(Icons.star_rounded, color: gold, size: 15),
-                const SizedBox(width: 4),
-                Text(rating.toStringAsFixed(1), style: TextStyle(color: gold, fontWeight: FontWeight.w800, fontSize: 13)),
-              ])),
-            if (year.isNotEmpty) chip(Text(year, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
-            if (info?.duration.isNotEmpty == true) chip(Text(info!.duration, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
-            if (genre.isNotEmpty) chip(Text(genre, style: TextStyle(color: muted, fontSize: 13))),
-          ],
-        );
-
-    Widget favBtn() => AnimatedBuilder(
-          animation: Library.instance,
-          builder: (_, __) {
-            final fav = Library.instance.isFav(_ref().key);
-            return RemoteTap(
-              onTap: () => Library.instance.toggleFav(_ref()),
-              child: Container(
-                padding: const EdgeInsets.all(15),
-                decoration: BoxDecoration(
-                  color: surfaceHi.withValues(alpha: 0.8),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: line),
-                ),
-                child: Icon(fav ? Icons.favorite_rounded : Icons.favorite_border_rounded, color: fav ? accent2 : textHi, size: 22),
-              ),
-            );
-          },
-        );
-
-    Widget dlBtn() => AnimatedBuilder(
-      animation: Downloads.instance,
-      builder: (_, __) {
-        final d = Downloads.instance.find(_dlId);
-        Widget inner;
-        VoidCallback? onTap;
-        if (d?.status == DlStatus.completed) {
-          inner = Icon(Icons.download_done_rounded, color: accent, size: 22);
-          onTap = () => _removeDownload(d!);
-        } else if (d?.status == DlStatus.queued) {
-          onTap = () => Downloads.instance.cancel(_dlId);
-          inner = Icon(Icons.schedule_rounded, color: muted, size: 22);
-        } else if (d?.status == DlStatus.downloading) {
-          onTap = () => Downloads.instance.pause(_dlId);
-          inner = SizedBox(
-            width: 22,
-            height: 22,
-            child: Stack(alignment: Alignment.center, children: [
-              CircularProgressIndicator(value: d!.total > 0 ? d.progress : null, strokeWidth: 2.4, color: accent),
-              Icon(Icons.pause_rounded, size: 12, color: textHi),
-            ]),
-          );
-        } else if (d?.status == DlStatus.paused) {
-          onTap = () => Downloads.instance.resume(_dlId);
-          inner = SizedBox(
-            width: 22,
-            height: 22,
-            child: Stack(alignment: Alignment.center, children: [
-              CircularProgressIndicator(value: d!.total > 0 ? d.progress : null, strokeWidth: 2.4, color: accent.withValues(alpha: 0.5)),
-              Icon(Icons.play_arrow_rounded, size: 13, color: textHi),
-            ]),
-          );
-        } else {
-          inner = Icon(Icons.download_rounded, color: textHi, size: 22);
-          onTap = _download;
-        }
-        return RemoteTap(
-          onTap: onTap,
-          child: Container(
-            padding: const EdgeInsets.all(15),
-            decoration: BoxDecoration(
-              color: surfaceHi.withValues(alpha: 0.8),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: line),
-            ),
-            child: inner,
-          ),
-        );
-      },
-    );
-
-    Widget actions(bool expandPlay) {
-      final play = RemoteTap(
-        onTap: _play,
-        child: Container(
-          padding: EdgeInsets.symmetric(horizontal: expandPlay ? 0 : 34, vertical: 15),
-          decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(16), boxShadow: glow(accent, blur: 22, y: 8, a: 0.5)),
-          child: const Row(mainAxisAlignment: MainAxisAlignment.center, mainAxisSize: MainAxisSize.min, children: [
-            Icon(Icons.play_arrow_rounded, size: 24, color: Colors.white),
-            SizedBox(width: 6),
-            Text('Play', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Colors.white)),
-          ]),
-        ),
-      );
-      return Row(
-        children: [
-          expandPlay ? Expanded(child: play) : play,
-          if (t?.trailerUrl != null) ...[
-            const SizedBox(width: 12),
-            RemoteTap(
-              onTap: _trailer,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 15),
-                decoration: BoxDecoration(color: surfaceHi.withValues(alpha: 0.8), borderRadius: BorderRadius.circular(16), border: Border.all(color: line)),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.smart_display_rounded, color: accent, size: 22),
-                  const SizedBox(width: 6),
-                  const Text('Trailer', style: TextStyle(fontWeight: FontWeight.w800)),
-                ]),
-              ),
-            ),
-          ],
-          const SizedBox(width: 12),
-          dlBtn(),
-          const SizedBox(width: 12),
-          favBtn(),
-        ],
-      );
-    }
-
-    Widget infoBlock(CrossAxisAlignment align, TextAlign ta, double titleSize) => Column(
-          crossAxisAlignment: align,
-          children: [
-            Text(m.name, textAlign: ta, style: TextStyle(fontSize: titleSize, fontWeight: FontWeight.w800, height: 1.05))
-                .animate()
-                .fadeIn()
-                .slideY(begin: 0.15, end: 0),
-            const SizedBox(height: 14),
-            metaChips(align == CrossAxisAlignment.center ? WrapAlignment.center : WrapAlignment.start),
-            const SizedBox(height: 22),
-            actions(align != CrossAxisAlignment.center ? false : true),
-            if (plot.isNotEmpty) ...[
-              const SizedBox(height: 24),
-              Text(plot, textAlign: align == CrossAxisAlignment.center ? TextAlign.center : TextAlign.start, style: TextStyle(color: muted, height: 1.6, fontSize: 15)),
-            ],
-            if (cast.isNotEmpty) ...[
-              const SizedBox(height: 18),
-              _meta('Cast', cast, ta),
-            ],
-            if (info?.director.isNotEmpty == true) _meta('Director', info!.director, ta),
-          ],
-        );
-
-    final body = wide
-        ? SingleChildScrollView(
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 1080),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(36, 0, 36, 56),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SizedBox(height: 280),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          posterCard(232),
-                          const SizedBox(width: 40),
-                          Expanded(child: Padding(padding: const EdgeInsets.only(top: 28), child: infoBlock(CrossAxisAlignment.start, TextAlign.start, 40))),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          )
-        : SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(22, 0, 22, 44),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                SizedBox(height: h * 0.20),
-                posterCard(150),
-                const SizedBox(height: 22),
-                infoBlock(CrossAxisAlignment.center, TextAlign.center, 26),
-              ],
-            ),
-          );
+    final backdrop = tmdb?.backdrop.isNotEmpty == true
+        ? tmdb!.backdrop
+        : info?.backdrop.isNotEmpty == true
+        ? info!.backdrop
+        : movie.icon;
+    final poster = tmdb?.poster.isNotEmpty == true
+        ? tmdb!.poster
+        : info?.image.isNotEmpty == true
+        ? info!.image
+        : movie.icon;
+    final plot = tmdb?.overview.isNotEmpty == true
+        ? tmdb!.overview
+        : info?.plot ?? '';
+    final genre = tmdb?.genres.isNotEmpty == true
+        ? tmdb!.genres
+        : info?.genre ?? '';
+    final cast = tmdb?.cast.isNotEmpty == true ? tmdb!.cast : info?.cast ?? '';
+    final rating = (tmdb?.rating ?? 0) > 0
+        ? tmdb!.rating
+        : (info?.rating ?? 0) > 0
+        ? info!.rating
+        : movie.rating;
+    final rawDate = tmdb?.releaseDate.isNotEmpty == true
+        ? tmdb!.releaseDate
+        : info?.releaseDate ?? '';
+    final year = rawDate.length >= 4 ? rawDate.substring(0, 4) : rawDate;
 
     return Scaffold(
       backgroundColor: bg,
       body: Stack(
+        fit: StackFit.expand,
         children: [
-          // Full-bleed backdrop with a fade into the page.
+          Positioned.fill(
+            child: CustomScrollView(
+              slivers: [
+                SliverToBoxAdapter(
+                  child: _CinematicHero(
+                    movie: movie,
+                    title: _title,
+                    backdrop: backdrop,
+                    poster: poster,
+                    year: year,
+                    genre: genre,
+                    rating: rating,
+                    duration: info?.duration ?? '',
+                    plot: plot,
+                    loadingDetails: _providerLoading,
+                    hasTrailer: tmdb?.trailerUrl != null,
+                    onPlay: _play,
+                    onTrailer: _trailer,
+                    downloadAction: _downloadAction(),
+                    favoriteAction: _favoriteAction(),
+                  ),
+                ),
+                SliverToBoxAdapter(
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 1180),
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          wide ? 42 : 20,
+                          wide ? 34 : 24,
+                          wide ? 42 : 20,
+                          wide ? 80 : 54,
+                        ),
+                        child: _EditorialDetails(
+                          plot: plot,
+                          cast: cast,
+                          director: info?.director ?? '',
+                          genre: genre,
+                          format: _extension.toUpperCase(),
+                          loading: _providerLoading,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
           Positioned(
             top: 0,
             left: 0,
-            right: 0,
-            height: wide ? 540 : h * 0.5,
-            child: ShaderMask(
-              shaderCallback: (r) => const LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Colors.white, Colors.transparent],
-              ).createShader(r),
-              blendMode: BlendMode.dstIn,
-              child: backdrop.isNotEmpty
-                  ? CachedNetworkImage(imageUrl: backdrop, fit: BoxFit.cover)
-                  : ColoredBox(color: surfaceHi),
-            ),
-          ),
-          Positioned.fill(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Colors.transparent, bg.withValues(alpha: 0.6), bg, bg],
-                  stops: const [0.0, 0.45, 0.72, 1],
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(10),
+                child: LumenBackButton(
+                  key: const ValueKey('movie-detail-back'),
+                  onTap: () => Navigator.of(context).pop(),
                 ),
-              ),
-            ),
-          ),
-          SafeArea(child: body),
-          // pinned back button
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(8),
-              child: IconButton(
-                autofocus: true,
-                onPressed: () => Navigator.of(context).pop(),
-                icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
-                style: IconButton.styleFrom(backgroundColor: Colors.black38),
               ),
             ),
           ),
@@ -392,14 +257,647 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
     );
   }
 
-  Widget _meta(String label, String value, TextAlign align) => Padding(
-        padding: const EdgeInsets.only(top: 8),
-        child: RichText(
-          textAlign: align,
-          text: TextSpan(style: TextStyle(color: muted, height: 1.4), children: [
-            TextSpan(text: '$label:  ', style: TextStyle(color: subtle, fontWeight: FontWeight.w700)),
-            TextSpan(text: value),
-          ]),
-        ),
+  Widget _favoriteAction() => AnimatedBuilder(
+    animation: Library.instance,
+    builder: (_, _) {
+      final favorite = Library.instance.isFav(_ref().key);
+      return _DetailAction(
+        icon: favorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+        label: favorite ? 'Saved' : 'My list',
+        selected: favorite,
+        onTap: () => Library.instance.toggleFav(_ref()),
       );
+    },
+  );
+
+  Widget _downloadAction() => AnimatedBuilder(
+    animation: Downloads.instance,
+    builder: (_, _) {
+      final item = Downloads.instance.find(_downloadId);
+      final status = item?.status;
+      if (status == DlStatus.completed) {
+        return _DetailAction(
+          icon: Icons.offline_pin_rounded,
+          label: 'Offline',
+          selected: true,
+          onTap: () => _removeDownload(item!),
+        );
+      }
+      if (status == DlStatus.downloading) {
+        return _DetailAction(
+          icon: Icons.pause_rounded,
+          label: '${((item?.progress ?? 0) * 100).round()}%',
+          progress: item?.total == 0 ? null : item?.progress,
+          onTap: () => Downloads.instance.pause(_downloadId),
+        );
+      }
+      if (status == DlStatus.queued) {
+        return _DetailAction(
+          icon: Icons.schedule_rounded,
+          label: 'Queued',
+          onTap: () => Downloads.instance.cancel(_downloadId),
+        );
+      }
+      if (status == DlStatus.paused || status == DlStatus.failed) {
+        return _DetailAction(
+          icon: Icons.download_rounded,
+          label: 'Resume',
+          onTap: () => Downloads.instance.resume(_downloadId),
+        );
+      }
+      return _DetailAction(
+        icon: Icons.download_rounded,
+        label: 'Offline',
+        onTap: _download,
+      );
+    },
+  );
+}
+
+class _CinematicHero extends StatelessWidget {
+  const _CinematicHero({
+    required this.movie,
+    required this.title,
+    required this.backdrop,
+    required this.poster,
+    required this.year,
+    required this.genre,
+    required this.rating,
+    required this.duration,
+    required this.plot,
+    required this.loadingDetails,
+    required this.hasTrailer,
+    required this.onPlay,
+    required this.onTrailer,
+    required this.downloadAction,
+    required this.favoriteAction,
+  });
+
+  final VodStream movie;
+  final String title;
+  final String backdrop;
+  final String poster;
+  final String year;
+  final String genre;
+  final double rating;
+  final String duration;
+  final String plot;
+  final bool loadingDetails;
+  final bool hasTrailer;
+  final VoidCallback onPlay;
+  final VoidCallback onTrailer;
+  final Widget downloadAction;
+  final Widget favoriteAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final wide = isWide(context);
+    final height = wide ? 650.0 : 590.0;
+    final progress = Library.instance.progress['movie:${movie.streamId}'];
+
+    return SizedBox(
+      height: height,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          ColoredBox(color: surfaceHi),
+          if (backdrop.isNotEmpty)
+            CachedNetworkImage(
+              imageUrl: backdrop,
+              fit: BoxFit.cover,
+              memCacheWidth: wide ? 1800 : 900,
+              errorWidget: (_, _, _) => ColoredBox(color: surfaceHi),
+            ),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: wide ? Alignment.centerLeft : Alignment.topCenter,
+                end: wide ? Alignment.centerRight : Alignment.bottomCenter,
+                colors: wide
+                    ? [
+                        bg.withValues(alpha: .98),
+                        bg.withValues(alpha: .80),
+                        bg.withValues(alpha: .16),
+                      ]
+                    : [
+                        Colors.black.withValues(alpha: .12),
+                        bg.withValues(alpha: .48),
+                        bg,
+                      ],
+                stops: wide ? const [0, .48, 1] : const [0, .50, .82],
+              ),
+            ),
+          ),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Colors.transparent, bg],
+                stops: const [.70, 1],
+              ),
+            ),
+          ),
+          SafeArea(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 1180),
+                child: SizedBox(
+                  width: MediaQuery.sizeOf(context).width,
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      wide ? 42 : 20,
+                      wide ? 86 : 224,
+                      wide ? 42 : 20,
+                      wide ? 42 : 20,
+                    ),
+                    child: wide
+                        ? Row(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Expanded(
+                                flex: 7,
+                                child: _HeroCopy(
+                                  movie: movie,
+                                  title: title,
+                                  year: year,
+                                  genre: genre,
+                                  rating: rating,
+                                  duration: duration,
+                                  plot: plot,
+                                  loadingDetails: loadingDetails,
+                                  progress: progress,
+                                  hasTrailer: hasTrailer,
+                                  onPlay: onPlay,
+                                  onTrailer: onTrailer,
+                                  downloadAction: downloadAction,
+                                  favoriteAction: favoriteAction,
+                                ),
+                              ),
+                              const SizedBox(width: 60),
+                              if (poster.isNotEmpty)
+                                _PosterArtifact(url: poster, width: 238),
+                            ],
+                          )
+                        : _HeroCopy(
+                            movie: movie,
+                            title: title,
+                            year: year,
+                            genre: genre,
+                            rating: rating,
+                            duration: duration,
+                            plot: plot,
+                            loadingDetails: loadingDetails,
+                            progress: progress,
+                            hasTrailer: hasTrailer,
+                            onPlay: onPlay,
+                            onTrailer: onTrailer,
+                            downloadAction: downloadAction,
+                            favoriteAction: favoriteAction,
+                          ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeroCopy extends StatelessWidget {
+  const _HeroCopy({
+    required this.movie,
+    required this.title,
+    required this.year,
+    required this.genre,
+    required this.rating,
+    required this.duration,
+    required this.plot,
+    required this.loadingDetails,
+    required this.progress,
+    required this.hasTrailer,
+    required this.onPlay,
+    required this.onTrailer,
+    required this.downloadAction,
+    required this.favoriteAction,
+  });
+
+  final VodStream movie;
+  final String title;
+  final String year;
+  final String genre;
+  final double rating;
+  final String duration;
+  final String plot;
+  final bool loadingDetails;
+  final Progress? progress;
+  final bool hasTrailer;
+  final VoidCallback onPlay;
+  final VoidCallback onTrailer;
+  final Widget downloadAction;
+  final Widget favoriteAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final wide = isWide(context);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(width: 30, height: 2, color: accent),
+            const SizedBox(width: 10),
+            Text('FEATURE PRESENTATION', style: kSection()),
+            if (loadingDetails) ...[
+              const SizedBox(width: 10),
+              SizedBox(
+                width: 12,
+                height: 12,
+                child: CircularProgressIndicator(
+                  strokeWidth: 1.7,
+                  color: accent,
+                ),
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 16),
+        Text(
+          title,
+          maxLines: wide ? 3 : 2,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: wide ? 56 : 34,
+            height: .96,
+            letterSpacing: wide ? -2.5 : -1.2,
+            fontWeight: FontWeight.w800,
+          ),
+        ).animate().fadeIn(duration: 320.ms).slideY(begin: .06, end: 0),
+        const SizedBox(height: 16),
+        Wrap(
+          spacing: 9,
+          runSpacing: 9,
+          children: [
+            if (rating > 0)
+              _Fact(
+                icon: Icons.star_rounded,
+                label: rating.toStringAsFixed(1),
+                color: gold,
+              ),
+            if (year.isNotEmpty) _Fact(label: year),
+            if (duration.isNotEmpty) _Fact(label: duration),
+            if (genre.isNotEmpty) _Fact(label: genre, maxWidth: 230),
+          ],
+        ),
+        if (plot.isNotEmpty) ...[
+          const SizedBox(height: 17),
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: wide ? 680 : 540),
+            child: Text(
+              plot,
+              maxLines: wide ? 4 : 3,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: .76),
+                fontSize: wide ? 15.5 : 14,
+                height: 1.5,
+              ),
+            ),
+          ),
+        ],
+        const SizedBox(height: 22),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            _PrimaryPlay(
+              label: progress == null ? 'Play film' : 'Resume film',
+              progress: progress?.fraction,
+              onTap: onPlay,
+            ),
+            if (hasTrailer)
+              _DetailAction(
+                icon: Icons.smart_display_rounded,
+                label: 'Trailer',
+                onTap: onTrailer,
+              ),
+            downloadAction,
+            favoriteAction,
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _PosterArtifact extends StatelessWidget {
+  const _PosterArtifact({required this.url, required this.width});
+
+  final String url;
+  final double width;
+
+  @override
+  Widget build(BuildContext context) => Transform.rotate(
+    angle: .018,
+    child: Container(
+      width: width,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(7),
+        border: Border.all(color: Colors.white24, width: 1.5),
+        boxShadow: glow(Colors.black, blur: 44, y: 22, a: .65),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(6),
+        child: AspectRatio(
+          aspectRatio: 2 / 3,
+          child: CachedNetworkImage(
+            imageUrl: url,
+            fit: BoxFit.cover,
+            memCacheWidth: 520,
+            errorWidget: (_, _, _) => ColoredBox(color: surfaceHi),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+class _Fact extends StatelessWidget {
+  const _Fact({required this.label, this.icon, this.color, this.maxWidth});
+
+  final String label;
+  final IconData? icon;
+  final Color? color;
+  final double? maxWidth;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    constraints: maxWidth == null ? null : BoxConstraints(maxWidth: maxWidth!),
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+    decoration: BoxDecoration(
+      color: Colors.black.withValues(alpha: .28),
+      borderRadius: BorderRadius.circular(99),
+      border: Border.all(color: Colors.white.withValues(alpha: .16)),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (icon != null) ...[
+          Icon(icon, color: color ?? textHi, size: 15),
+          const SizedBox(width: 4),
+        ],
+        Flexible(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: color ?? Colors.white.withValues(alpha: .84),
+              fontSize: 12.5,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _PrimaryPlay extends StatelessWidget {
+  const _PrimaryPlay({required this.label, required this.onTap, this.progress});
+
+  final String label;
+  final VoidCallback onTap;
+  final double? progress;
+
+  @override
+  Widget build(BuildContext context) => RemoteTap(
+    onTap: onTap,
+    child: Container(
+      constraints: const BoxConstraints(minWidth: 156),
+      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 15),
+      decoration: BoxDecoration(
+        color: accent,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: glow(accent, blur: 24, y: 9, a: .42),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.play_arrow_rounded,
+                color: Colors.white,
+                size: 23,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 15,
+                ),
+              ),
+            ],
+          ),
+          if (progress != null) ...[
+            const SizedBox(height: 8),
+            SizedBox(
+              width: 112,
+              child: LinearProgressIndicator(
+                value: progress,
+                minHeight: 2,
+                backgroundColor: Colors.white30,
+                valueColor: const AlwaysStoppedAnimation(Colors.white),
+              ),
+            ),
+          ],
+        ],
+      ),
+    ),
+  );
+}
+
+class _DetailAction extends StatelessWidget {
+  const _DetailAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.selected = false,
+    this.progress,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool selected;
+  final double? progress;
+
+  @override
+  Widget build(BuildContext context) => RemoteTap(
+    onTap: onTap,
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 14),
+      decoration: BoxDecoration(
+        color: selected
+            ? accent.withValues(alpha: .17)
+            : Colors.black.withValues(alpha: .30),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: selected ? accent.withValues(alpha: .56) : Colors.white24,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (progress == null)
+            Icon(icon, color: selected ? accent : Colors.white, size: 20)
+          else
+            SizedBox(
+              width: 20,
+              height: 20,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  CircularProgressIndicator(
+                    value: progress,
+                    strokeWidth: 2,
+                    color: accent,
+                  ),
+                  Icon(icon, color: Colors.white, size: 12),
+                ],
+              ),
+            ),
+          const SizedBox(width: 7),
+          Text(
+            label,
+            style: TextStyle(
+              color: selected ? accent : Colors.white,
+              fontWeight: FontWeight.w700,
+              fontSize: 13.5,
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+class _EditorialDetails extends StatelessWidget {
+  const _EditorialDetails({
+    required this.plot,
+    required this.cast,
+    required this.director,
+    required this.genre,
+    required this.format,
+    required this.loading,
+  });
+
+  final String plot;
+  final String cast;
+  final String director;
+  final String genre;
+  final String format;
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) {
+    final wide = isWide(context);
+    final synopsis = plot.isEmpty
+        ? loading
+              ? 'The story and credits are arriving in the background. You can start watching now.'
+              : 'No synopsis was supplied for this film.'
+        : plot;
+    final facts = [
+      if (cast.isNotEmpty) ('CAST', cast),
+      if (director.isNotEmpty) ('DIRECTED BY', director),
+      if (genre.isNotEmpty) ('GENRE', genre),
+      if (format.isNotEmpty) ('SOURCE FORMAT', format),
+    ];
+
+    final synopsisCard = _DetailPanel(
+      eyebrow: 'THE STORY',
+      child: Text(
+        synopsis,
+        style: TextStyle(color: muted, fontSize: wide ? 17 : 15, height: 1.65),
+      ),
+    );
+    final factsCard = _DetailPanel(
+      eyebrow: 'THE CREDITS',
+      child: facts.isEmpty
+          ? Text(
+              loading ? 'Loading credits…' : 'Credits were not provided.',
+              style: TextStyle(color: muted),
+            )
+          : Column(
+              children: [
+                for (var i = 0; i < facts.length; i++) ...[
+                  if (i > 0) Divider(color: line, height: 28),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        width: wide ? 112 : 92,
+                        child: Text(facts[i].$1, style: kSection()),
+                      ),
+                      Expanded(
+                        child: Text(
+                          facts[i].$2,
+                          style: TextStyle(color: textHi, height: 1.45),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+    );
+
+    if (!wide) {
+      return Column(
+        children: [synopsisCard, const SizedBox(height: 14), factsCard],
+      );
+    }
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(flex: 6, child: synopsisCard),
+        const SizedBox(width: 18),
+        Expanded(flex: 5, child: factsCard),
+      ],
+    );
+  }
+}
+
+class _DetailPanel extends StatelessWidget {
+  const _DetailPanel({required this.eyebrow, required this.child});
+
+  final String eyebrow;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: double.infinity,
+    padding: const EdgeInsets.all(22),
+    decoration: BoxDecoration(
+      color: surface.withValues(alpha: .72),
+      borderRadius: BorderRadius.circular(22),
+      border: Border.all(color: line),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(eyebrow, style: kSection()),
+        const SizedBox(height: 16),
+        child,
+      ],
+    ),
+  );
 }

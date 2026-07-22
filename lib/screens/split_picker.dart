@@ -45,9 +45,9 @@ class _SplitPickerState extends State<SplitPicker> {
     try {
       final c = widget.client;
       final cats = switch (_section) {
-        'movie' => await CatalogCache.instance.vod(c),
-        'series' => await CatalogCache.instance.series(c),
-        _ => await CatalogCache.instance.live(c),
+        'movie' => await CatalogCache.instance.vod(c, priority: true),
+        'series' => await CatalogCache.instance.series(c, priority: true),
+        _ => await CatalogCache.instance.live(c, priority: true),
       };
       if (mounted) setState(() => _cats = cats);
     } catch (_) {}
@@ -64,9 +64,17 @@ class _SplitPickerState extends State<SplitPicker> {
     try {
       final c = widget.client;
       final items = switch (_section) {
-        'movie' => await c.vodStreams(cat.id),
-        'series' => await c.series(cat.id),
-        _ => await c.liveStreams(cat.id),
+        'movie' => await CatalogCache.instance.vodStreams(
+          c,
+          cat.id,
+          priority: true,
+        ),
+        'series' => await CatalogCache.instance.seriesItems(
+          c,
+          cat.id,
+          priority: true,
+        ),
+        _ => await CatalogCache.instance.liveStreams(c, cat.id, priority: true),
       };
       if (mounted) setState(() => _items = items);
     } catch (_) {}
@@ -80,7 +88,10 @@ class _SplitPickerState extends State<SplitPicker> {
       _info = null;
     });
     try {
-      final info = await widget.client.seriesInfo(s.seriesId);
+      final info = await CatalogCache.instance.seriesInfo(
+        widget.client,
+        s.seriesId,
+      );
       if (mounted) setState(() => _info = info);
     } catch (_) {}
     if (mounted) setState(() => _loading = false);
@@ -228,10 +239,11 @@ class _SplitPickerState extends State<SplitPicker> {
     }
     // series → episodes
     if (_series != null) {
-      if (_info == null)
+      if (_info == null) {
         return Center(
           child: CircularProgressIndicator(color: accent, strokeWidth: 2),
         );
+      }
       final seasons = _info!.episodes.keys.toList()..sort();
       final eps = [for (final s in seasons) ...(_info!.episodes[s] ?? [])];
       if (eps.isEmpty) return _empty('No episodes.');
@@ -240,11 +252,9 @@ class _SplitPickerState extends State<SplitPicker> {
         itemCount: eps.length,
         itemBuilder: (_, i) {
           final e = eps[i];
-          return ListTile(
-            leading: _thumb(
-              e.image.isNotEmpty ? e.image : _info!.cover,
-              Icons.play_circle_outline_rounded,
-            ),
+          return _pickerRow(
+            image: e.image.isNotEmpty ? e.image : _info!.cover,
+            fallback: Icons.play_circle_outline_rounded,
             title: Text(
               e.title.isEmpty ? 'Episode ${e.episodeNum}' : e.title,
               maxLines: 1,
@@ -263,14 +273,23 @@ class _SplitPickerState extends State<SplitPicker> {
     if (_catId == null) {
       if (_cats.isEmpty) return _empty('No categories.');
       return ListView.builder(
-        padding: const EdgeInsets.only(bottom: 20),
+        padding: const EdgeInsets.fromLTRB(12, 2, 12, 20),
         itemCount: _cats.length,
-        itemBuilder: (_, i) => ListTile(
-          leading: Icon(Icons.folder_rounded, color: accent),
+        itemBuilder: (_, i) => _pickerRow(
+          image: '',
+          fallback: Icons.folder_outlined,
           title: Text(
             _cats[i].name,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
+          ),
+          subtitle: Text(
+            _section == 'live'
+                ? 'Live collection'
+                : _section == 'series'
+                ? 'Series collection'
+                : 'Film collection',
+            style: TextStyle(color: Colors.white54, fontSize: 11.5),
           ),
           trailing: Icon(Icons.chevron_right_rounded, color: Colors.white54),
           onTap: () => _openCat(_cats[i]),
@@ -278,10 +297,11 @@ class _SplitPickerState extends State<SplitPicker> {
       );
     }
     // items in a category
-    if (_loading && _items.isEmpty)
+    if (_loading && _items.isEmpty) {
       return Center(
         child: CircularProgressIndicator(color: accent, strokeWidth: 2),
       );
+    }
     if (_items.isEmpty) return _empty('Nothing here.');
     return ListView.builder(
       padding: const EdgeInsets.only(bottom: 20),
@@ -289,21 +309,36 @@ class _SplitPickerState extends State<SplitPicker> {
       itemBuilder: (_, i) {
         final it = _items[i];
         if (it is LiveStream) {
-          return ListTile(
-            leading: _thumb(it.icon, Icons.live_tv_rounded),
+          return _pickerRow(
+            image: it.icon,
+            fallback: Icons.live_tv_rounded,
             title: Text(it.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+            subtitle: const Text(
+              'Add live channel',
+              style: TextStyle(color: Colors.white54, fontSize: 11.5),
+            ),
             onTap: () => _pickLive(it),
           );
         } else if (it is VodStream) {
-          return ListTile(
-            leading: _thumb(it.icon, Icons.movie_rounded),
+          return _pickerRow(
+            image: it.icon,
+            fallback: Icons.movie_rounded,
             title: Text(it.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+            subtitle: const Text(
+              'Play alongside',
+              style: TextStyle(color: Colors.white54, fontSize: 11.5),
+            ),
             onTap: () => _pickMovie(it),
           );
         } else if (it is Series) {
-          return ListTile(
-            leading: _thumb(it.cover, Icons.video_library_rounded),
+          return _pickerRow(
+            image: it.cover,
+            fallback: Icons.video_library_rounded,
             title: Text(it.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+            subtitle: const Text(
+              'Choose an episode',
+              style: TextStyle(color: Colors.white54, fontSize: 11.5),
+            ),
             trailing: Icon(Icons.chevron_right_rounded, color: Colors.white54),
             onTap: () => _openSeries(it),
           );
@@ -312,6 +347,54 @@ class _SplitPickerState extends State<SplitPicker> {
       },
     );
   }
+
+  Widget _pickerRow({
+    required String image,
+    required IconData fallback,
+    required Widget title,
+    required VoidCallback onTap,
+    Widget? subtitle,
+    Widget? trailing,
+  }) => RemoteTap(
+    onTap: onTap,
+    focusRadius: 15,
+    child: Container(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      padding: const EdgeInsets.fromLTRB(9, 8, 12, 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.075),
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+      ),
+      child: Row(
+        children: [
+          _thumb(image, fallback),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                DefaultTextStyle(
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13.5,
+                  ),
+                  child: title,
+                ),
+                if (subtitle != null) ...[const SizedBox(height: 3), subtitle],
+              ],
+            ),
+          ),
+          if (trailing != null) ...[
+            const SizedBox(width: 8),
+            trailing,
+          ] else
+            Icon(Icons.add_rounded, color: accent, size: 19),
+        ],
+      ),
+    ),
+  );
 
   Widget _thumb(String url, IconData fallback) => ClipRRect(
     borderRadius: BorderRadius.circular(8),

@@ -9,9 +9,16 @@ import '../xtream.dart';
 
 /// Offline downloads library: shows downloading/ready items, plays the local
 /// file, and lets you remove them.
-class DownloadsScreen extends StatelessWidget {
+class DownloadsScreen extends StatefulWidget {
   final XtreamClient client;
   const DownloadsScreen({super.key, required this.client});
+
+  @override
+  State<DownloadsScreen> createState() => _DownloadsScreenState();
+}
+
+class _DownloadsScreenState extends State<DownloadsScreen> {
+  String _filter = 'all';
 
   void _play(DownloadItem d) {
     final path = Downloads.instance.localPath(d.id);
@@ -33,6 +40,14 @@ class DownloadsScreen extends StatelessWidget {
     return '${v.toStringAsFixed(v >= 10 || i == 0 ? 0 : 1)} ${u[i]}';
   }
 
+  List<DownloadItem> _visible(List<DownloadItem> items) => switch (_filter) {
+    'ready' =>
+      items.where((item) => item.status == DlStatus.completed).toList(),
+    'active' =>
+      items.where((item) => item.status != DlStatus.completed).toList(),
+    _ => items,
+  };
+
   @override
   Widget build(BuildContext context) {
     // Self-contained (Scaffold) so it renders correctly whether it's a sidebar
@@ -45,44 +60,130 @@ class DownloadsScreen extends StatelessWidget {
       body: SafeArea(
         child: AnimatedBuilder(
           animation: Downloads.instance,
-          builder: (_, __) {
+          builder: (_, child) {
             final items = Downloads.instance.items;
+            final visible = _visible(items);
+            final ready = items
+                .where((item) => item.status == DlStatus.completed)
+                .length;
+            final active = items.length - ready;
+            final totalBytes = items
+                .where((item) => item.status == DlStatus.completed)
+                .fold<int>(0, (sum, item) => sum + item.received);
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Padding(
-                  padding: EdgeInsets.fromLTRB(canBack ? 6 : 18, 8, 16, 10),
-                  child: Row(
-                    children: [
-                      if (canBack)
-                        IconButton(
-                          autofocus: true,
-                          onPressed: () => Navigator.of(context).pop(),
-                          icon: Icon(Icons.arrow_back_rounded, color: textHi),
+                EditorialPageHeader(
+                  eyebrow: 'Offline library',
+                  title: canBack ? 'Downloads' : 'Ready when you are',
+                  subtitle: ready == 0
+                      ? 'Save films and episodes for moments without a connection.'
+                      : '$ready ready offline${totalBytes > 0 ? ' · ${_bytes(totalBytes)}' : ''}',
+                  icon: Icons.download_done_rounded,
+                  onBack: canBack ? () => Navigator.of(context).pop() : null,
+                  trailing: Downloads.instance.folderPath == null
+                      ? null
+                      : RemoteTap(
+                          onTap: () {
+                            final path = Downloads.instance.folderPath;
+                            if (path != null) launchUrl(Uri.file(path));
+                          },
+                          semanticLabel: 'Open downloads folder',
+                          focusRadius: 14,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 13,
+                              vertical: 10,
+                            ),
+                            decoration: BoxDecoration(
+                              color: surfaceHi.withValues(alpha: 0.7),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: line),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.folder_open_rounded,
+                                  color: accent,
+                                  size: 17,
+                                ),
+                                if (MediaQuery.sizeOf(context).width >=
+                                    620) ...[
+                                  const SizedBox(width: 7),
+                                  const Text(
+                                    'Open folder',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 12.5,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
                         ),
-                      const Text('Downloads', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
-                      const SizedBox(width: 12),
-                      Icon(Icons.download_rounded, color: accent, size: 22),
-                      const Spacer(),
-                      TextButton.icon(
-                        onPressed: () {
-                          final p = Downloads.instance.folderPath;
-                          if (p != null) launchUrl(Uri.file(p));
-                        },
-                        icon: Icon(Icons.folder_open_rounded, color: accent, size: 18),
-                        label: Text('Open folder', style: TextStyle(color: accent, fontWeight: FontWeight.w700, fontSize: 13)),
-                      ),
-                    ],
-                  ),
                 ),
+                if (items.isNotEmpty)
+                  SizedBox(
+                    height: 46,
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                      children: [
+                        LumenFilterPill(
+                          label: 'All ${items.length}',
+                          icon: Icons.grid_view_rounded,
+                          selected: _filter == 'all',
+                          onTap: () => setState(() => _filter = 'all'),
+                        ),
+                        const SizedBox(width: 8),
+                        LumenFilterPill(
+                          label: 'Ready $ready',
+                          icon: Icons.offline_pin_rounded,
+                          selected: _filter == 'ready',
+                          onTap: () => setState(() => _filter = 'ready'),
+                        ),
+                        const SizedBox(width: 8),
+                        LumenFilterPill(
+                          label: 'In progress $active',
+                          icon: Icons.downloading_rounded,
+                          selected: _filter == 'active',
+                          onTap: () => setState(() => _filter = 'active'),
+                        ),
+                      ],
+                    ),
+                  ),
                 Expanded(
                   child: items.isEmpty
-                      ? _empty()
-                      : ListView.separated(
-                          padding: const EdgeInsets.fromLTRB(14, 4, 14, 120),
-                          itemCount: items.length,
-                          separatorBuilder: (_, __) => const SizedBox(height: 10),
-                          itemBuilder: (_, i) => _row(context, items[i]),
+                      ? const LumenEmptyState(
+                          icon: Icons.download_for_offline_outlined,
+                          eyebrow: 'Take it with you',
+                          title: 'Your offline shelf is empty',
+                          message:
+                              'Use the download button on a film or episode and Lumen will keep it ready here.',
+                        )
+                      : visible.isEmpty
+                      ? LumenEmptyState(
+                          icon: Icons.filter_alt_off_rounded,
+                          eyebrow: 'Nothing in this view',
+                          title: 'Try another download filter',
+                          message:
+                              'Your downloads are safe—this filter simply has no matching items.',
+                          actionLabel: 'Show all downloads',
+                          onAction: () => setState(() => _filter = 'all'),
+                        )
+                      : GridView.builder(
+                          padding: const EdgeInsets.fromLTRB(18, 8, 18, 120),
+                          gridDelegate:
+                              const SliverGridDelegateWithMaxCrossAxisExtent(
+                                maxCrossAxisExtent: 620,
+                                mainAxisExtent: 104,
+                                crossAxisSpacing: 12,
+                                mainAxisSpacing: 12,
+                              ),
+                          itemCount: visible.length,
+                          itemBuilder: (_, i) => _row(context, visible[i]),
                         ),
                 ),
               ],
@@ -93,27 +194,6 @@ class DownloadsScreen extends StatelessWidget {
     );
   }
 
-  Widget _empty() => Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(22),
-              decoration: BoxDecoration(color: surfaceHi.withValues(alpha: 0.5), shape: BoxShape.circle),
-              child: Icon(Icons.download_for_offline_rounded, color: accent, size: 34),
-            ),
-            const SizedBox(height: 16),
-            const Text('No downloads yet', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 6),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 50),
-              child: Text('Tap the download icon on a movie or episode to save it for offline viewing.',
-                  textAlign: TextAlign.center, style: TextStyle(color: subtle, height: 1.4)),
-            ),
-          ],
-        ),
-      );
-
   Widget _row(BuildContext context, DownloadItem d) {
     final ready = d.status == DlStatus.completed;
     final failed = d.status == DlStatus.failed;
@@ -121,7 +201,11 @@ class DownloadsScreen extends StatelessWidget {
       onTap: ready ? () => _play(d) : null,
       child: Container(
         padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(color: surface, borderRadius: BorderRadius.circular(16), border: Border.all(color: line)),
+        decoration: BoxDecoration(
+          color: surfaceHi.withValues(alpha: 0.48),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: line),
+        ),
         child: Row(
           children: [
             ClipRRect(
@@ -134,8 +218,19 @@ class DownloadsScreen extends StatelessWidget {
                   children: [
                     ColoredBox(color: surfaceHi),
                     if (d.poster.isNotEmpty)
-                      CachedNetworkImage(imageUrl: d.poster, fit: BoxFit.cover, errorWidget: (_, _, _) => const SizedBox.shrink()),
-                    if (ready) const Center(child: Icon(Icons.play_circle_fill_rounded, color: Colors.white, size: 28)),
+                      CachedNetworkImage(
+                        imageUrl: d.poster,
+                        fit: BoxFit.cover,
+                        errorWidget: (_, _, _) => const SizedBox.shrink(),
+                      ),
+                    if (ready)
+                      const Center(
+                        child: Icon(
+                          Icons.play_circle_fill_rounded,
+                          color: Colors.white,
+                          size: 28,
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -145,33 +240,71 @@ class DownloadsScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(d.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, height: 1.2)),
+                  Text(
+                    d.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                      height: 1.2,
+                    ),
+                  ),
                   const SizedBox(height: 6),
                   if (ready)
-                    Text('Ready · ${_bytes(d.received)}', style: TextStyle(color: accent, fontSize: 12, fontWeight: FontWeight.w600))
+                    Text(
+                      'Ready · ${_bytes(d.received)}',
+                      style: TextStyle(
+                        color: accent,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    )
                   else if (failed)
-                    Text(d.errorMessage ?? 'Download failed — resume to retry',
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: Color(0xFFFF6B6B), fontSize: 12))
+                    Text(
+                      d.errorMessage ?? 'Download failed — resume to retry',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFFFF6B6B),
+                        fontSize: 12,
+                      ),
+                    )
                   else if (d.status == DlStatus.queued)
-                    Row(children: [
-                      Icon(Icons.schedule_rounded, color: muted, size: 14),
-                      const SizedBox(width: 6),
-                      Text('Queued — waiting for current download', style: TextStyle(color: muted, fontSize: 12)),
-                    ])
+                    Row(
+                      children: [
+                        Icon(Icons.schedule_rounded, color: muted, size: 14),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Queued — waiting for current download',
+                          style: TextStyle(color: muted, fontSize: 12),
+                        ),
+                      ],
+                    )
                   else ...[
-                    Row(children: [
-                      Text(
+                    Row(
+                      children: [
+                        Text(
                           d.status == DlStatus.paused
                               ? 'Paused'
-                              : (d.total > 0 ? '${(d.progress * 100).round()}%' : 'Downloading…'),
+                              : (d.total > 0
+                                    ? '${(d.progress * 100).round()}%'
+                                    : 'Downloading…'),
                           style: TextStyle(
-                              color: d.status == DlStatus.paused ? muted : accent, fontSize: 12, fontWeight: FontWeight.w700)),
-                      const SizedBox(width: 8),
-                      Text(d.total > 0 ? '${_bytes(d.received)} / ${_bytes(d.total)}' : _bytes(d.received),
-                          style: TextStyle(color: subtle, fontSize: 11)),
-                    ]),
+                            color: d.status == DlStatus.paused ? muted : accent,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          d.total > 0
+                              ? '${_bytes(d.received)} / ${_bytes(d.total)}'
+                              : _bytes(d.received),
+                          style: TextStyle(color: subtle, fontSize: 11),
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 6),
                     ClipRRect(
                       borderRadius: BorderRadius.circular(2),
