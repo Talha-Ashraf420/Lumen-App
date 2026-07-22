@@ -16,13 +16,22 @@ import '../session.dart';
 import '../split.dart';
 import 'split_picker.dart';
 import '../theme.dart';
+import '../widgets.dart';
 
 /// The one and only player view — a persistent app-level overlay. A single
 /// [Video] (never recreated) animates between full-screen and a docked mini, so
 /// playback is continuous and there's never a second video surface (which races
 /// / crashes libmpv on desktop).
 class PlayerHost extends StatefulWidget {
-  const PlayerHost({super.key});
+  static final _hostKey = GlobalKey<_PlayerHostState>();
+
+  const PlayerHost._({super.key});
+
+  static Widget overlay() => PlayerHost._(key: _hostKey);
+
+  static bool handleSystemBack() =>
+      _hostKey.currentState?._handleSystemBack() ?? false;
+
   @override
   State<PlayerHost> createState() => _PlayerHostState();
 }
@@ -160,8 +169,10 @@ class _PlayerHostState extends State<PlayerHost> {
 
   void _autoPromote() {
     if (!sc.active || !mounted) return;
-    final mainPlaying = (_splitMainIsPc ? pc.player! : sc.player!).state.playing;
-    final otherPlaying = (_splitMainIsPc ? sc.player! : pc.player!).state.playing;
+    final mainPlaying =
+        (_splitMainIsPc ? pc.player! : sc.player!).state.playing;
+    final otherPlaying =
+        (_splitMainIsPc ? sc.player! : pc.player!).state.playing;
     if (!mainPlaying && otherPlaying) {
       setState(() => _splitMainIsPc = !_splitMainIsPc);
       _applySplitAudio();
@@ -207,34 +218,43 @@ class _PlayerHostState extends State<PlayerHost> {
       _controls = true;
       _panelKind = 'split';
     });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) FocusScope.of(context).nextFocus();
+    });
   }
 
   Widget _splitSmallBtn(IconData icon, VoidCallback onTap) => MouseRegion(
-        cursor: SystemMouseCursors.click,
-        child: GestureDetector(
-          onTap: onTap,
-          child: Container(
-            padding: const EdgeInsets.all(7),
-            decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.55), shape: BoxShape.circle, border: Border.all(color: Colors.white24)),
-            child: Icon(icon, color: Colors.white, size: 20),
-          ),
+    cursor: SystemMouseCursors.click,
+    child: RemoteTap(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(7),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.55),
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white24),
         ),
-      );
+        child: Icon(icon, color: Colors.white, size: 20),
+      ),
+    ),
+  );
 
   // Each libmpv surface is a persistent Video (never recreated) — only its rect
   // animates, so swapping the two is a smooth slide + resize.
   Widget _splitVideo(VideoController ctrl, Player p) => Stack(
-        fit: StackFit.expand,
-        children: [
-          Video(
-            controller: ctrl,
-            controls: NoVideoControls,
-            fit: BoxFit.contain,
-            subtitleViewConfiguration: const SubtitleViewConfiguration(visible: false),
-          ),
-          _bufferingDot(p),
-        ],
-      );
+    fit: StackFit.expand,
+    children: [
+      Video(
+        controller: ctrl,
+        controls: NoVideoControls,
+        fit: BoxFit.contain,
+        subtitleViewConfiguration: const SubtitleViewConfiguration(
+          visible: false,
+        ),
+      ),
+      _bufferingDot(p),
+    ],
+  );
 
   Widget _splitStack(double w, double h) {
     final bigW = w * 0.64;
@@ -246,7 +266,9 @@ class _PlayerHostState extends State<PlayerHost> {
     final mainTitle = _splitMainIsPc ? _item.title : (sc.item?.title ?? '');
     final smallTitle = _splitMainIsPc ? (sc.item?.title ?? '') : _item.title;
     return MouseRegion(
-      cursor: (_isDesktop && !_controls) ? SystemMouseCursors.none : MouseCursor.defer,
+      cursor: (_isDesktop && !_controls)
+          ? SystemMouseCursors.none
+          : MouseCursor.defer,
       onHover: _onHover,
       child: Stack(
         fit: StackFit.expand,
@@ -270,17 +292,33 @@ class _PlayerHostState extends State<PlayerHost> {
             height: h,
             child: _splitVideo(sc.controller!, sc.player!),
           ),
-          Positioned(left: bigW - 1, top: 0, bottom: 0, width: 2, child: const ColoredBox(color: Colors.white24)),
+          Positioned(
+            left: bigW - 1,
+            top: 0,
+            bottom: 0,
+            width: 2,
+            child: const ColoredBox(color: Colors.white24),
+          ),
           // BIG (left) — tap toggles controls
           Positioned(
             left: 0,
             top: 0,
             width: bigW,
             height: h,
-            child: GestureDetector(behavior: HitTestBehavior.opaque, onTap: _tap, child: const SizedBox.expand()),
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _tap,
+              child: const SizedBox.expand(),
+            ),
           ),
           // SMALL (right) — tap to enlarge + play; title + muted + close
-          Positioned(left: bigW, top: 0, width: smallW, height: h, child: _smallChrome(smallTitle)),
+          Positioned(
+            left: bigW,
+            top: 0,
+            width: smallW,
+            height: h,
+            child: _smallChrome(smallTitle),
+          ),
           // MAIN controls, over the big-left region only
           Positioned(
             left: 0,
@@ -290,7 +328,10 @@ class _PlayerHostState extends State<PlayerHost> {
             child: AnimatedOpacity(
               opacity: _controls ? 1 : 0,
               duration: const Duration(milliseconds: 220),
-              child: IgnorePointer(ignoring: !_controls, child: _splitOverlay(mainTitle)),
+              child: IgnorePointer(
+                ignoring: !_controls,
+                child: _splitOverlay(mainTitle),
+              ),
             ),
           ),
         ],
@@ -298,48 +339,79 @@ class _PlayerHostState extends State<PlayerHost> {
     );
   }
 
-  Widget _smallChrome(String title) => GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: _focusSmall, // tap the small screen → enlarge + play
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            const Center(
-              child: DecoratedBox(
-                decoration: BoxDecoration(color: Colors.black45, shape: BoxShape.circle),
-                child: Padding(padding: EdgeInsets.all(11), child: Icon(Icons.open_in_full_rounded, color: Colors.white, size: 22)),
+  Widget _smallChrome(String title) => RemoteTap(
+    behavior: HitTestBehavior.opaque,
+    onTap: _focusSmall, // tap the small screen → enlarge + play
+    child: Stack(
+      fit: StackFit.expand,
+      children: [
+        const Center(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: Colors.black45,
+              shape: BoxShape.circle,
+            ),
+            child: Padding(
+              padding: EdgeInsets.all(11),
+              child: Icon(
+                Icons.open_in_full_rounded,
+                color: Colors.white,
+                size: 22,
               ),
             ),
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: Container(
-                padding: const EdgeInsets.fromLTRB(10, 6, 4, 8),
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xCC000000), Colors.transparent]),
-                ),
-                child: Row(children: [
-                  Expanded(
-                    child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w700)),
-                  ),
-                  const Icon(Icons.volume_off_rounded, color: Colors.white54, size: 16),
-                  const SizedBox(width: 4),
-                  _splitSmallBtn(Icons.close_rounded, _exitSplit),
-                ]),
-              ),
-            ),
-          ],
+          ),
         ),
-      );
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(10, 6, 4, 8),
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0xCC000000), Colors.transparent],
+              ),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const Icon(
+                  Icons.volume_off_rounded,
+                  color: Colors.white54,
+                  size: 16,
+                ),
+                const SizedBox(width: 4),
+                _splitSmallBtn(Icons.close_rounded, _exitSplit),
+              ],
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
 
   Widget _bufferingDot(Player p) => StreamBuilder<bool>(
-        stream: p.stream.buffering,
-        initialData: p.state.buffering,
-        builder: (_, s) => (s.data ?? false)
-            ? Center(child: CircularProgressIndicator(color: accent, strokeWidth: 2.4))
-            : const SizedBox.shrink(),
-      );
+    stream: p.stream.buffering,
+    initialData: p.state.buffering,
+    builder: (_, s) => (s.data ?? false)
+        ? Center(
+            child: CircularProgressIndicator(color: accent, strokeWidth: 2.4),
+          )
+        : const SizedBox.shrink(),
+  );
 
   Widget _splitOverlay(String title) {
     return DefaultTextStyle.merge(
@@ -347,86 +419,155 @@ class _PlayerHostState extends State<PlayerHost> {
       child: IconTheme.merge(
         data: const IconThemeData(color: Colors.white),
         child: Column(
-      children: [
-        Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xCC000000), Colors.transparent]),
-          ),
-          child: SafeArea(
-            bottom: false,
-            minimum: const EdgeInsets.fromLTRB(8, 8, 12, 8),
-            child: Row(children: [
-              IconButton(onPressed: _minimize, icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.white, size: 30)),
-              Expanded(
-                child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700)),
-              ),
-              IconButton(onPressed: _close, icon: const Icon(Icons.close_rounded, color: Colors.white)),
-            ]),
-          ),
-        ),
-        const Spacer(),
-        StreamBuilder<bool>(
-          stream: _mainPlayer.stream.playing,
-          initialData: _mainPlayer.state.playing,
-          builder: (_, s) {
-            final playing = s.data ?? false;
-            return MouseRegion(
-              cursor: SystemMouseCursors.click,
-              child: GestureDetector(
-                onTap: () {
-                  if (_splitMainIsPc) {
-                    pc.togglePlayPause();
-                  } else {
-                    _mainPlayer.playOrPause();
-                  }
-                  _scheduleHide();
-                },
-                child: Container(
-                  width: 72,
-                  height: 72,
-                  decoration: BoxDecoration(color: accent, shape: BoxShape.circle, boxShadow: glow(accent, a: 0.5)),
-                  child: Icon(playing ? Icons.pause_rounded : Icons.play_arrow_rounded, color: Colors.white, size: 40),
+          children: [
+            Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0xCC000000), Colors.transparent],
                 ),
               ),
-            );
-          },
-        ),
-        const Spacer(),
-        Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(begin: Alignment.bottomCenter, end: Alignment.topCenter, colors: [Color(0xCC000000), Colors.transparent]),
-          ),
-          child: SafeArea(
-            top: false,
-            minimum: const EdgeInsets.fromLTRB(12, 30, 12, 12),
-            child: Row(children: [
-              IconButton(
-                onPressed: () {
-                  setState(() => _muted = !_muted);
-                  _applySplitAudio();
-                },
-                icon: Icon(_muted ? Icons.volume_off_rounded : Icons.volume_up_rounded, color: Colors.white),
+              child: SafeArea(
+                bottom: false,
+                minimum: const EdgeInsets.fromLTRB(8, 8, 12, 8),
+                child: Row(
+                  children: [
+                    IconButton(
+                      onPressed: _minimize,
+                      icon: const Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        color: Colors.white,
+                        size: 30,
+                      ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: _close,
+                      icon: const Icon(
+                        Icons.close_rounded,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              TextButton.icon(
-                onPressed: _swapSplit,
-                icon: const Icon(Icons.swap_horiz_rounded, color: Colors.white),
-                label: const Text('Swap audio', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+            ),
+            const Spacer(),
+            StreamBuilder<bool>(
+              stream: _mainPlayer.stream.playing,
+              initialData: _mainPlayer.state.playing,
+              builder: (_, s) {
+                final playing = s.data ?? false;
+                return MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: RemoteTap(
+                    onTap: () {
+                      if (_splitMainIsPc) {
+                        pc.togglePlayPause();
+                      } else {
+                        _mainPlayer.playOrPause();
+                      }
+                      _scheduleHide();
+                    },
+                    child: Container(
+                      width: 72,
+                      height: 72,
+                      decoration: BoxDecoration(
+                        color: accent,
+                        shape: BoxShape.circle,
+                        boxShadow: glow(accent, a: 0.5),
+                      ),
+                      child: Icon(
+                        playing
+                            ? Icons.pause_rounded
+                            : Icons.play_arrow_rounded,
+                        color: Colors.white,
+                        size: 40,
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+            const Spacer(),
+            Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.bottomCenter,
+                  end: Alignment.topCenter,
+                  colors: [Color(0xCC000000), Colors.transparent],
+                ),
               ),
-              const SizedBox(width: 4),
-              TextButton.icon(
-                onPressed: _exitSplit,
-                icon: Icon(Icons.close_fullscreen_rounded, color: accent, size: 18),
-                label: Text('Exit split', style: TextStyle(color: accent, fontWeight: FontWeight.w700)),
+              child: SafeArea(
+                top: false,
+                minimum: const EdgeInsets.fromLTRB(12, 30, 12, 12),
+                child: Row(
+                  children: [
+                    IconButton(
+                      onPressed: () {
+                        setState(() => _muted = !_muted);
+                        _applySplitAudio();
+                      },
+                      icon: Icon(
+                        _muted
+                            ? Icons.volume_off_rounded
+                            : Icons.volume_up_rounded,
+                        color: Colors.white,
+                      ),
+                    ),
+                    TextButton.icon(
+                      onPressed: _swapSplit,
+                      icon: const Icon(
+                        Icons.swap_horiz_rounded,
+                        color: Colors.white,
+                      ),
+                      label: const Text(
+                        'Swap audio',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    TextButton.icon(
+                      onPressed: _exitSplit,
+                      icon: Icon(
+                        Icons.close_fullscreen_rounded,
+                        color: accent,
+                        size: 18,
+                      ),
+                      label: Text(
+                        'Exit split',
+                        style: TextStyle(
+                          color: accent,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      onPressed: _toggleFullscreen,
+                      icon: Icon(
+                        _fullscreen
+                            ? Icons.fullscreen_exit_rounded
+                            : Icons.fullscreen_rounded,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              const Spacer(),
-              IconButton(
-                onPressed: _toggleFullscreen,
-                icon: Icon(_fullscreen ? Icons.fullscreen_exit_rounded : Icons.fullscreen_rounded, color: Colors.white),
-              ),
-            ]),
-          ),
-        ),
-      ],
+            ),
+          ],
         ),
       ),
     );
@@ -500,6 +641,20 @@ class _PlayerHostState extends State<PlayerHost> {
     pc.stop();
   }
 
+  bool _handleSystemBack() {
+    if (!pc.hasMedia || pc.minimized) return false;
+    if (_panelKind != null) {
+      _closePanel();
+    } else if (_focus.hasFocus && !_focus.hasPrimaryFocus) {
+      _focus.requestFocus();
+      setState(() => _controls = true);
+      _scheduleHide();
+    } else {
+      _minimize();
+    }
+    return true;
+  }
+
   void _expand() {
     pc.expand();
     _controls = true;
@@ -516,7 +671,13 @@ class _PlayerHostState extends State<PlayerHost> {
   void _scheduleHide() {
     _hideTimer?.cancel();
     _hideTimer = Timer(const Duration(seconds: 4), () {
-      if (mounted && !pc.minimized && (pc.player?.state.playing ?? false)) setState(() => _controls = false);
+      if (mounted &&
+          !pc.minimized &&
+          _focus.hasPrimaryFocus &&
+          _panelKind == null &&
+          (pc.player?.state.playing ?? false)) {
+        setState(() => _controls = false);
+      }
     });
   }
 
@@ -536,7 +697,10 @@ class _PlayerHostState extends State<PlayerHost> {
     if (_isDesktop) {
       await windowManager.setFullScreen(_fullscreen);
     } else if (_fullscreen) {
-      await SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
+      await SystemChrome.setPreferredOrientations([
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
       await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     } else {
       await SystemChrome.setPreferredOrientations([]);
@@ -581,7 +745,8 @@ class _PlayerHostState extends State<PlayerHost> {
 
           return Stack(
             children: [
-              if (!mini) const Positioned.fill(child: ColoredBox(color: Colors.black)),
+              if (!mini)
+                const Positioned.fill(child: ColoredBox(color: Colors.black)),
               // The single persistent video — only its rect/shape animate.
               AnimatedPositioned(
                 duration: const Duration(milliseconds: 280),
@@ -597,7 +762,15 @@ class _PlayerHostState extends State<PlayerHost> {
                     color: Colors.black,
                     borderRadius: BorderRadius.circular(mini ? 14 : 0),
                     border: mini ? Border.all(color: Colors.white24) : null,
-                    boxShadow: mini ? const [BoxShadow(color: Colors.black54, blurRadius: 22, offset: Offset(0, 10))] : null,
+                    boxShadow: mini
+                        ? const [
+                            BoxShadow(
+                              color: Colors.black54,
+                              blurRadius: 22,
+                              offset: Offset(0, 10),
+                            ),
+                          ]
+                        : null,
                   ),
                   clipBehavior: Clip.antiAlias,
                   child: Transform.scale(
@@ -612,9 +785,13 @@ class _PlayerHostState extends State<PlayerHost> {
                           height: 1.4,
                           fontSize: 32.0 * _subScale,
                           color: Colors.white,
-                          backgroundColor: _subBg ? Colors.black54 : Colors.transparent,
+                          backgroundColor: _subBg
+                              ? Colors.black54
+                              : Colors.transparent,
                           fontWeight: FontWeight.w600,
-                          shadows: const [Shadow(color: Colors.black, blurRadius: 6)],
+                          shadows: const [
+                            Shadow(color: Colors.black, blurRadius: 6),
+                          ],
                         ),
                         padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
                       ),
@@ -642,40 +819,47 @@ class _PlayerHostState extends State<PlayerHost> {
     return Positioned.fill(
       child: MouseRegion(
         opaque: false,
-        cursor: (_isDesktop && !_controls) ? SystemMouseCursors.none : MouseCursor.defer,
+        cursor: (_isDesktop && !_controls)
+            ? SystemMouseCursors.none
+            : MouseCursor.defer,
         onHover: _onHover,
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: _tap,
-        onDoubleTapDown: (d) => _doubleTapX = d.localPosition.dx,
-        onDoubleTap: _onDoubleTap,
-        onLongPressStart: _isLive ? null : (_) => _holdSpeedStart(),
-        onLongPressEnd: _isLive ? null : (_) => _holdSpeedEnd(),
-        onScaleStart: _onScaleStart,
-        onScaleUpdate: _onScaleUpdate,
-        onScaleEnd: _onScaleEnd,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            _hudOverlay(),
-            StreamBuilder<bool>(
-              stream: pc.player!.stream.buffering,
-              builder: (_, s) => (s.data ?? false)
-                  ? Center(child: CircularProgressIndicator(color: accent, strokeWidth: 2.6))
-                  : const SizedBox.shrink(),
-            ),
-            // Reconnect overlay — shown while auto-retry is in progress.
-            _reconnectOverlay(),
-            AnimatedOpacity(
-              opacity: _controls ? 1 : 0,
-              duration: const Duration(milliseconds: 220),
-              child: IgnorePointer(ignoring: !_controls, child: _overlay()),
-            ),
-            // Skip-intro / Up-next prompts (shown regardless of control chrome).
-            _autoOverlays(),
-            if (_panelKind != null) _panel(),
-          ],
-        ),
+          onDoubleTapDown: (d) => _doubleTapX = d.localPosition.dx,
+          onDoubleTap: _onDoubleTap,
+          onLongPressStart: _isLive ? null : (_) => _holdSpeedStart(),
+          onLongPressEnd: _isLive ? null : (_) => _holdSpeedEnd(),
+          onScaleStart: _onScaleStart,
+          onScaleUpdate: _onScaleUpdate,
+          onScaleEnd: _onScaleEnd,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              _hudOverlay(),
+              StreamBuilder<bool>(
+                stream: pc.player!.stream.buffering,
+                builder: (_, s) => (s.data ?? false)
+                    ? Center(
+                        child: CircularProgressIndicator(
+                          color: accent,
+                          strokeWidth: 2.6,
+                        ),
+                      )
+                    : const SizedBox.shrink(),
+              ),
+              // Reconnect overlay — shown while auto-retry is in progress.
+              _reconnectOverlay(),
+              AnimatedOpacity(
+                opacity: _controls ? 1 : 0,
+                duration: const Duration(milliseconds: 220),
+                child: IgnorePointer(ignoring: !_controls, child: _overlay()),
+              ),
+              // Skip-intro / Up-next prompts (shown regardless of control chrome).
+              _autoOverlays(),
+              if (_panelKind != null) _panel(),
+            ],
+          ),
         ),
       ),
     );
@@ -699,7 +883,11 @@ class _PlayerHostState extends State<PlayerHost> {
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [Colors.black26, Colors.transparent, Colors.black45],
+                    colors: [
+                      Colors.black26,
+                      Colors.transparent,
+                      Colors.black45,
+                    ],
                     stops: [0, 0.45, 1],
                   ),
                 ),
@@ -719,34 +907,68 @@ class _PlayerHostState extends State<PlayerHost> {
                 ),
               ),
             ),
-            Positioned(right: 2, top: 2, child: _miniBtn(Icons.close_rounded, _close, 18)),
-            Positioned(left: 2, top: 2, child: _miniBtn(Icons.open_in_full_rounded, _expand, 18)),
+            Positioned(
+              right: 2,
+              top: 2,
+              child: _miniBtn(Icons.close_rounded, _close, 18),
+            ),
+            Positioned(
+              left: 2,
+              top: 2,
+              child: _miniBtn(Icons.open_in_full_rounded, _expand, 18),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _miniBtn(IconData icon, VoidCallback onTap, double size) => MouseRegion(
+  Widget _miniBtn(IconData icon, VoidCallback onTap, double size) =>
+      MouseRegion(
         cursor: SystemMouseCursors.click,
-        child: GestureDetector(
+        child: RemoteTap(
           onTap: onTap,
           child: Container(
             margin: const EdgeInsets.all(5),
             padding: const EdgeInsets.all(5),
-            decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.5), shape: BoxShape.circle),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.5),
+              shape: BoxShape.circle,
+            ),
             child: Icon(icon, color: Colors.white, size: size),
           ),
         ),
       );
 
   KeyEventResult _onKey(FocusNode node, KeyEvent e) {
-    if (pc.minimized || (e is! KeyDownEvent && e is! KeyRepeatEvent)) return KeyEventResult.ignored;
+    if (pc.minimized || (e is! KeyDownEvent && e is! KeyRepeatEvent))
+      return KeyEventResult.ignored;
     final k = e.logicalKey;
+    final isBack =
+        k == LogicalKeyboardKey.escape ||
+        k == LogicalKeyboardKey.goBack ||
+        k == LogicalKeyboardKey.browserBack;
+    // Once a visible control owns focus, let Flutter's directional traversal
+    // and ActivateIntent handle the D-pad. Back first exits the panel/control
+    // focus mode, then a second Back minimizes the player.
+    if (!_focus.hasPrimaryFocus) {
+      if (isBack) {
+        if (_panelKind != null) {
+          _closePanel();
+        } else {
+          _focus.requestFocus();
+          setState(() => _controls = true);
+          _scheduleHide();
+        }
+        return KeyEventResult.handled;
+      }
+      return KeyEventResult.ignored;
+    }
     // TV remote / D-pad center, gamepad A, keyboard space/enter → show controls
     // first if hidden, otherwise play/pause (direct transport — the expected
     // TV video UX, no focus-hunting among tiny buttons).
-    final isSelect = k == LogicalKeyboardKey.select ||
+    final isSelect =
+        k == LogicalKeyboardKey.select ||
         k == LogicalKeyboardKey.enter ||
         k == LogicalKeyboardKey.numpadEnter ||
         k == LogicalKeyboardKey.space ||
@@ -762,14 +984,16 @@ class _PlayerHostState extends State<PlayerHost> {
       pc.togglePlayPause();
       setState(() => _controls = true);
       _scheduleHide();
-    } else if (k == LogicalKeyboardKey.arrowRight || k == LogicalKeyboardKey.mediaTrackNext) {
+    } else if (k == LogicalKeyboardKey.arrowRight ||
+        k == LogicalKeyboardKey.mediaTrackNext) {
       if (!_isLive) {
         _seekBy(10);
         _flashHud('+10s', Icons.forward_10_rounded);
       } else if (_hasNext) {
         _go(pc.index + 1);
       }
-    } else if (k == LogicalKeyboardKey.arrowLeft || k == LogicalKeyboardKey.mediaTrackPrevious) {
+    } else if (k == LogicalKeyboardKey.arrowLeft ||
+        k == LogicalKeyboardKey.mediaTrackPrevious) {
       if (!_isLive) {
         _seekBy(-10);
         _flashHud('−10s', Icons.replay_10_rounded);
@@ -777,17 +1001,18 @@ class _PlayerHostState extends State<PlayerHost> {
         _go(pc.index - 1);
       }
     } else if (k == LogicalKeyboardKey.arrowUp) {
-      // reveal controls (and bump volume hint on keyboard)
+      // Reveal the chrome, then enter button-focus mode. From here all four
+      // D-pad directions traverse every control and center activates it.
       setState(() => _controls = true);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) FocusScope.of(context).nextFocus();
+      });
       _scheduleHide();
     } else if (k == LogicalKeyboardKey.keyF) {
       _toggleFullscreen();
     } else if (k == LogicalKeyboardKey.keyM) {
       _toggleMute();
-    } else if (k == LogicalKeyboardKey.escape ||
-        k == LogicalKeyboardKey.goBack ||
-        k == LogicalKeyboardKey.browserBack ||
-        k == LogicalKeyboardKey.arrowDown) {
+    } else if (isBack || k == LogicalKeyboardKey.arrowDown) {
       _minimize();
     } else {
       return KeyEventResult.ignored;
@@ -843,15 +1068,21 @@ class _PlayerHostState extends State<PlayerHost> {
         if (target < 0) target = 0;
         _gSeekTarget = Duration(seconds: target);
         final delta = target - _gStartPos.inSeconds;
-        _flashHud('${delta >= 0 ? '+' : '−'}${_fmt(Duration(seconds: delta.abs()))}   ${_fmt(_gSeekTarget)}',
-            delta >= 0 ? Icons.fast_forward_rounded : Icons.fast_rewind_rounded,
-            persist: true);
+        _flashHud(
+          '${delta >= 0 ? '+' : '−'}${_fmt(Duration(seconds: delta.abs()))}   ${_fmt(_gSeekTarget)}',
+          delta >= 0 ? Icons.fast_forward_rounded : Icons.fast_rewind_rounded,
+          persist: true,
+        );
       case 'vol':
         _curVol = (_curVol - dy * 0.4).clamp(0.0, 100.0);
         pc.player!.setVolume(_curVol);
         _muted = _curVol == 0;
-        _flashHud('${_curVol.round()}%', _curVol == 0 ? Icons.volume_off_rounded : Icons.volume_up_rounded,
-            value: _curVol / 100, persist: true);
+        _flashHud(
+          '${_curVol.round()}%',
+          _curVol == 0 ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+          value: _curVol / 100,
+          persist: true,
+        );
       case 'bri':
         _curBri = (_curBri - dy * 0.003).clamp(0.0, 1.0);
         _brightnessChanged = true;
@@ -891,24 +1122,39 @@ class _PlayerHostState extends State<PlayerHost> {
   Future<void> _setSubDelay(double v) async {
     _subDelay = double.parse(v.toStringAsFixed(1));
     try {
-      await (pc.player!.platform as dynamic)?.setProperty('sub-delay', '$_subDelay');
+      await (pc.player!.platform as dynamic)?.setProperty(
+        'sub-delay',
+        '$_subDelay',
+      );
     } catch (_) {}
     setState(() {});
   }
 
-  void _flashHud(String text, IconData icon, {double? value, bool persist = false}) {
+  void _flashHud(
+    String text,
+    IconData icon, {
+    double? value,
+    bool persist = false,
+  }) {
     _hudTimer?.cancel();
     setState(() {
       _hud = text;
       _hudIcon = icon;
       _hudValue = value;
     });
-    if (!persist) _hudTimer = Timer(const Duration(milliseconds: 650), () => mounted ? setState(() => _hud = null) : null);
+    if (!persist)
+      _hudTimer = Timer(
+        const Duration(milliseconds: 650),
+        () => mounted ? setState(() => _hud = null) : null,
+      );
   }
 
   void _hideHud() {
     _hudTimer?.cancel();
-    _hudTimer = Timer(const Duration(milliseconds: 450), () => mounted ? setState(() => _hud = null) : null);
+    _hudTimer = Timer(
+      const Duration(milliseconds: 450),
+      () => mounted ? setState(() => _hud = null) : null,
+    );
   }
 
   /// Reconnect banner — shown while the player is auto-retrying a dropped stream.
@@ -916,7 +1162,8 @@ class _PlayerHostState extends State<PlayerHost> {
   /// button once all automatic attempts have been exhausted.
   Widget _reconnectOverlay() {
     final status = pc.reconnectStatus;
-    final exhausted = pc.reconnectAttempt >= pc.reconnectConfig.maxAttempts && status == null;
+    final exhausted =
+        pc.reconnectAttempt >= pc.reconnectConfig.maxAttempts && status == null;
 
     // Nothing to show while connected and not retrying.
     if (status == null && !exhausted) return const SizedBox.shrink();
@@ -935,19 +1182,30 @@ class _PlayerHostState extends State<PlayerHost> {
               SizedBox(
                 width: 28,
                 height: 28,
-                child: CircularProgressIndicator(color: accent, strokeWidth: 2.5),
+                child: CircularProgressIndicator(
+                  color: accent,
+                  strokeWidth: 2.5,
+                ),
               ),
               const SizedBox(height: 12),
               Text(
                 status,
-                style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ] else ...[
               Icon(Icons.wifi_off_rounded, color: Colors.white54, size: 36),
               const SizedBox(height: 10),
               const Text(
                 'Stream unavailable',
-                style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
               if ((pc.playbackError ?? '').isNotEmpty) ...[
                 const SizedBox(height: 6),
@@ -964,7 +1222,10 @@ class _PlayerHostState extends State<PlayerHost> {
               ],
               const SizedBox(height: 14),
               FilledButton.icon(
-                style: FilledButton.styleFrom(backgroundColor: accent, foregroundColor: Colors.white),
+                style: FilledButton.styleFrom(
+                  backgroundColor: accent,
+                  foregroundColor: Colors.white,
+                ),
                 onPressed: () {
                   pc.retryNow();
                   setState(() {});
@@ -984,13 +1245,22 @@ class _PlayerHostState extends State<PlayerHost> {
     return Center(
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-        decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.6), borderRadius: BorderRadius.circular(16)),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.6),
+          borderRadius: BorderRadius.circular(16),
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(_hudIcon, color: Colors.white, size: 30),
             const SizedBox(height: 8),
-            Text(_hud!, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+            Text(
+              _hud!,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
             if (_hudValue != null) ...[
               const SizedBox(height: 8),
               SizedBox(
@@ -1035,7 +1305,11 @@ class _PlayerHostState extends State<PlayerHost> {
         final total = pc.player!.state.duration.inSeconds;
         final remaining = total - secs;
         // Up-next countdown takes priority near the end.
-        if (_hasNext && pc.autoAdvance && total > 0 && remaining >= 0 && remaining <= 20) {
+        if (_hasNext &&
+            pc.autoAdvance &&
+            total > 0 &&
+            remaining >= 0 &&
+            remaining <= 20) {
           return _nextEpisodeCard(remaining);
         }
         // Skip intro for episodes, early in playback.
@@ -1053,7 +1327,7 @@ class _PlayerHostState extends State<PlayerHost> {
       bottom: 100,
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
-        child: GestureDetector(
+        child: RemoteTap(
           onTap: () {
             pc.player!.seek(const Duration(seconds: 90));
             setState(() => _introDismissed = true);
@@ -1066,11 +1340,20 @@ class _PlayerHostState extends State<PlayerHost> {
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: Colors.white24),
             ),
-            child: const Row(mainAxisSize: MainAxisSize.min, children: [
-              Text('Skip to 1:30', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
-              SizedBox(width: 6),
-              Icon(Icons.fast_forward_rounded, color: Colors.white, size: 18),
-            ]),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Skip to 1:30',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                SizedBox(width: 6),
+                Icon(Icons.fast_forward_rounded, color: Colors.white, size: 18),
+              ],
+            ),
           ),
         ),
       ),
@@ -1094,29 +1377,70 @@ class _PlayerHostState extends State<PlayerHost> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Up next in ${remaining}s', style: TextStyle(color: accent, fontWeight: FontWeight.w800, fontSize: 12.5)),
+            Text(
+              'Up next in ${remaining}s',
+              style: TextStyle(
+                color: accent,
+                fontWeight: FontWeight.w800,
+                fontSize: 12.5,
+              ),
+            ),
             const SizedBox(height: 6),
-            Text(next.title,
-                maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+            Text(
+              next.title,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
             const SizedBox(height: 12),
             Row(
               children: [
-                GestureDetector(
+                RemoteTap(
                   onTap: () => pc.go(pc.index + 1),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
-                    decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(20)),
-                    child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                      Icon(Icons.play_arrow_rounded, color: Colors.white, size: 18),
-                      SizedBox(width: 4),
-                      Text('Play now', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13)),
-                    ]),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 9,
+                    ),
+                    decoration: BoxDecoration(
+                      color: accent,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.play_arrow_rounded,
+                          color: Colors.white,
+                          size: 18,
+                        ),
+                        SizedBox(width: 4),
+                        Text(
+                          'Play now',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
                 const SizedBox(width: 12),
-                GestureDetector(
+                RemoteTap(
                   onTap: pc.cancelAutoAdvance,
-                  child: const Text('Dismiss', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w700, fontSize: 13)),
+                  child: const Text(
+                    'Dismiss',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -1134,7 +1458,15 @@ class _PlayerHostState extends State<PlayerHost> {
       style: const TextStyle(color: Colors.white),
       child: IconTheme.merge(
         data: const IconThemeData(color: Colors.white),
-        child: Column(children: [_topBar(), const Spacer(), _centerControls(), const Spacer(), _bottomBar()]),
+        child: Column(
+          children: [
+            _topBar(),
+            const Spacer(),
+            _centerControls(),
+            const Spacer(),
+            _bottomBar(),
+          ],
+        ),
       ),
     );
   }
@@ -1142,51 +1474,91 @@ class _PlayerHostState extends State<PlayerHost> {
   Widget _topBar() {
     return Container(
       decoration: const BoxDecoration(
-        gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xCC000000), Colors.transparent]),
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xCC000000), Colors.transparent],
+        ),
       ),
       child: SafeArea(
         bottom: false,
         minimum: const EdgeInsets.only(left: 8, right: 16, top: 8, bottom: 8),
         child: Row(
           children: [
-            IconButton(onPressed: _minimize, icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.white, size: 30)),
+            IconButton(
+              onPressed: _minimize,
+              icon: const Icon(
+                Icons.keyboard_arrow_down_rounded,
+                color: Colors.white,
+                size: 30,
+              ),
+            ),
             if (_isLive)
               Container(
                 margin: const EdgeInsets.only(right: 10),
                 padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                decoration: BoxDecoration(color: const Color(0xFFFF3B5C), borderRadius: BorderRadius.circular(8)),
-                child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.circle, color: Colors.white, size: 7),
-                  SizedBox(width: 5),
-                  Text('LIVE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
-                ]),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFF3B5C),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.circle, color: Colors.white, size: 7),
+                    SizedBox(width: 5),
+                    Text(
+                      'LIVE',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(_item.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w700, shadows: [Shadow(color: Colors.black, blurRadius: 8)])),
+                  Text(
+                    _item.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      shadows: [Shadow(color: Colors.black, blurRadius: 8)],
+                    ),
+                  ),
                   if (_isLive && pc.epgNow != null) ...[
                     const SizedBox(height: 3),
                     Row(
                       children: [
                         Flexible(
-                          child: Text('Now · ${pc.epgNow!.title}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontSize: 11.5, color: Colors.white70, fontWeight: FontWeight.w600)),
+                          child: Text(
+                            'Now · ${pc.epgNow!.title}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 11.5,
+                              color: Colors.white70,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                         ),
                         if (pc.epgNext != null) ...[
                           const SizedBox(width: 8),
                           Flexible(
-                            child: Text('Next · ${pc.epgNext!.title}',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontSize: 11.5, color: Colors.white38)),
+                            child: Text(
+                              'Next · ${pc.epgNext!.title}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 11.5,
+                                color: Colors.white38,
+                              ),
+                            ),
                           ),
                         ],
                       ],
@@ -1212,11 +1584,19 @@ class _PlayerHostState extends State<PlayerHost> {
                   final fav = Library.instance.isFav(_item.favRef!.key);
                   return IconButton(
                     onPressed: () => Library.instance.toggleFav(_item.favRef!),
-                    icon: Icon(fav ? Icons.favorite_rounded : Icons.favorite_border_rounded, color: fav ? accent2 : Colors.white),
+                    icon: Icon(
+                      fav
+                          ? Icons.favorite_rounded
+                          : Icons.favorite_border_rounded,
+                      color: fav ? accent2 : Colors.white,
+                    ),
                   );
                 },
               ),
-            IconButton(onPressed: _close, icon: const Icon(Icons.close_rounded, color: Colors.white)),
+            IconButton(
+              onPressed: _close,
+              icon: const Icon(Icons.close_rounded, color: Colors.white),
+            ),
           ],
         ),
       ),
@@ -1227,7 +1607,10 @@ class _PlayerHostState extends State<PlayerHost> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        _smallBtn(Icons.skip_previous_rounded, _hasPrev ? () => _go(pc.index - 1) : null),
+        _smallBtn(
+          Icons.skip_previous_rounded,
+          _hasPrev ? () => _go(pc.index - 1) : null,
+        ),
         const SizedBox(width: 18),
         if (!_isLive) _roundBtn(Icons.replay_10_rounded, () => _seekBy(-10)),
         const SizedBox(width: 22),
@@ -1238,7 +1621,7 @@ class _PlayerHostState extends State<PlayerHost> {
             final playing = s.data ?? false;
             return MouseRegion(
               cursor: SystemMouseCursors.click,
-              child: GestureDetector(
+              child: RemoteTap(
                 onTap: () {
                   pc.togglePlayPause();
                   _scheduleHide();
@@ -1264,35 +1647,49 @@ class _PlayerHostState extends State<PlayerHost> {
         const SizedBox(width: 22),
         if (!_isLive) _roundBtn(Icons.forward_10_rounded, () => _seekBy(10)),
         const SizedBox(width: 18),
-        _smallBtn(Icons.skip_next_rounded, _hasNext ? () => _go(pc.index + 1) : null),
+        _smallBtn(
+          Icons.skip_next_rounded,
+          _hasNext ? () => _go(pc.index + 1) : null,
+        ),
       ],
     );
   }
 
   Widget _roundBtn(IconData icon, VoidCallback onTap) => MouseRegion(
-        cursor: SystemMouseCursors.click,
-        child: GestureDetector(
-          onTap: onTap,
-          child: Container(
-            padding: const EdgeInsets.all(11),
-            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.13), shape: BoxShape.circle),
-            child: Icon(icon, color: Colors.white, size: 30),
-          ),
+    cursor: SystemMouseCursors.click,
+    child: RemoteTap(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(11),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.13),
+          shape: BoxShape.circle,
         ),
-      );
+        child: Icon(icon, color: Colors.white, size: 30),
+      ),
+    ),
+  );
 
   Widget _smallBtn(IconData icon, VoidCallback? onTap) => MouseRegion(
-        cursor: onTap == null ? MouseCursor.defer : SystemMouseCursors.click,
-        child: GestureDetector(
-          onTap: onTap,
-          child: Icon(icon, color: onTap == null ? Colors.white24 : Colors.white, size: 34),
-        ),
-      );
+    cursor: onTap == null ? MouseCursor.defer : SystemMouseCursors.click,
+    child: RemoteTap(
+      onTap: onTap,
+      child: Icon(
+        icon,
+        color: onTap == null ? Colors.white24 : Colors.white,
+        size: 34,
+      ),
+    ),
+  );
 
   Widget _bottomBar() {
     return Container(
       decoration: const BoxDecoration(
-        gradient: LinearGradient(begin: Alignment.bottomCenter, end: Alignment.topCenter, colors: [Color(0xCC000000), Colors.transparent]),
+        gradient: LinearGradient(
+          begin: Alignment.bottomCenter,
+          end: Alignment.topCenter,
+          colors: [Color(0xCC000000), Colors.transparent],
+        ),
       ),
       child: SafeArea(
         top: false,
@@ -1302,34 +1699,66 @@ class _PlayerHostState extends State<PlayerHost> {
             if (!_isLive) _seekBar(),
             Row(
               children: [
-                IconButton(onPressed: _toggleMute, icon: Icon(_muted ? Icons.volume_off_rounded : Icons.volume_up_rounded, color: Colors.white)),
-                IconButton(onPressed: _pickSubtitles, icon: const Icon(Icons.closed_caption_rounded, color: Colors.white)),
+                IconButton(
+                  onPressed: _toggleMute,
+                  icon: Icon(
+                    _muted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+                    color: Colors.white,
+                  ),
+                ),
+                IconButton(
+                  onPressed: _pickSubtitles,
+                  icon: const Icon(
+                    Icons.closed_caption_rounded,
+                    color: Colors.white,
+                  ),
+                ),
                 if (activeClient != null)
                   IconButton(
                     onPressed: _openSplitPicker,
                     tooltip: 'Split view',
-                    icon: const Icon(Icons.splitscreen_rounded, color: Colors.white),
+                    icon: const Icon(
+                      Icons.splitscreen_rounded,
+                      color: Colors.white,
+                    ),
                   ),
-                IconButton(onPressed: _openSettings, icon: const Icon(Icons.tune_rounded, color: Colors.white)),
+                IconButton(
+                  onPressed: _openSettings,
+                  icon: const Icon(Icons.tune_rounded, color: Colors.white),
+                ),
                 if (_isAndroid)
                   IconButton(
                     tooltip: 'Picture-in-picture',
                     onPressed: () => Pip.instance.enter(),
-                    icon: const Icon(Icons.picture_in_picture_alt_rounded, color: Colors.white),
+                    icon: const Icon(
+                      Icons.picture_in_picture_alt_rounded,
+                      color: Colors.white,
+                    ),
                   ),
                 const Spacer(),
                 if (_isLive)
                   const Padding(
                     padding: EdgeInsets.only(right: 8),
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      Icon(Icons.circle, color: Color(0xFFFF3B5C), size: 9),
-                      SizedBox(width: 6),
-                      Text('LIVE', style: TextStyle(fontWeight: FontWeight.w700)),
-                    ]),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.circle, color: Color(0xFFFF3B5C), size: 9),
+                        SizedBox(width: 6),
+                        Text(
+                          'LIVE',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ],
+                    ),
                   ),
                 IconButton(
                   onPressed: _toggleFullscreen,
-                  icon: Icon(_fullscreen ? Icons.fullscreen_exit_rounded : Icons.fullscreen_rounded, color: Colors.white),
+                  icon: Icon(
+                    _fullscreen
+                        ? Icons.fullscreen_exit_rounded
+                        : Icons.fullscreen_rounded,
+                    color: Colors.white,
+                  ),
                 ),
               ],
             ),
@@ -1346,11 +1775,16 @@ class _PlayerHostState extends State<PlayerHost> {
         final pos = posSnap.data ?? Duration.zero;
         final dur = pc.player!.state.duration;
         final max = dur.inMilliseconds.toDouble();
-        final val = max <= 0 ? 0.0 : pos.inMilliseconds.toDouble().clamp(0, max);
+        final val = max <= 0
+            ? 0.0
+            : pos.inMilliseconds.toDouble().clamp(0, max);
         return Row(
           children: [
             const SizedBox(width: 4),
-            Text(_fmt(pos), style: const TextStyle(fontSize: 12, color: Colors.white)),
+            Text(
+              _fmt(pos),
+              style: const TextStyle(fontSize: 12, color: Colors.white),
+            ),
             Expanded(
               child: SliderTheme(
                 data: SliderThemeData(
@@ -1358,18 +1792,28 @@ class _PlayerHostState extends State<PlayerHost> {
                   thumbColor: accent,
                   activeTrackColor: accent,
                   inactiveTrackColor: Colors.white24,
-                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
-                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                  overlayShape: const RoundSliderOverlayShape(
+                    overlayRadius: 14,
+                  ),
+                  thumbShape: const RoundSliderThumbShape(
+                    enabledThumbRadius: 6,
+                  ),
                 ),
                 child: Slider(
                   value: val.toDouble(),
                   max: max <= 0 ? 1 : max,
-                  onChanged: max <= 0 ? null : (v) => pc.player!.seek(Duration(milliseconds: v.round())),
+                  onChanged: max <= 0
+                      ? null
+                      : (v) =>
+                            pc.player!.seek(Duration(milliseconds: v.round())),
                   onChangeEnd: (_) => _scheduleHide(),
                 ),
               ),
             ),
-            Text(_fmt(dur), style: const TextStyle(fontSize: 12, color: Colors.white)),
+            Text(
+              _fmt(dur),
+              style: const TextStyle(fontSize: 12, color: Colors.white),
+            ),
             const SizedBox(width: 4),
           ],
         );
@@ -1392,6 +1836,9 @@ class _PlayerHostState extends State<PlayerHost> {
     setState(() {
       _controls = true;
       _panelKind = 'subs';
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) FocusScope.of(context).nextFocus();
     });
   }
 
@@ -1480,6 +1927,9 @@ class _PlayerHostState extends State<PlayerHost> {
       _controls = true;
       _panelKind = 'settings';
     });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) FocusScope.of(context).nextFocus();
+    });
   }
 
   void _closePanel() {
@@ -1507,7 +1957,9 @@ class _PlayerHostState extends State<PlayerHost> {
           right: 0,
           width: panelW,
           child: ClipRRect(
-            borderRadius: const BorderRadius.horizontal(left: Radius.circular(22)),
+            borderRadius: const BorderRadius.horizontal(
+              left: Radius.circular(22),
+            ),
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
               child: Container(
@@ -1521,21 +1973,35 @@ class _PlayerHostState extends State<PlayerHost> {
                     child: IconTheme.merge(
                       data: const IconThemeData(color: Colors.white),
                       child: ListTileTheme(
-                        data: const ListTileThemeData(textColor: Colors.white, iconColor: Colors.white),
-                      child: _panelKind == 'split'
-                          ? (activeClient == null
-                              ? const Center(child: Text('Not available.', style: TextStyle(color: Colors.white54)))
-                              : SplitPicker(
-                                  client: activeClient!,
-                                  onPick: (it) {
-                                    _closePanel();
-                                    _openSplitWith(it);
-                                  },
-                                ))
-                          : ScrollConfiguration(
-                              behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
-                              child: SingleChildScrollView(child: _panelKind == 'subs' ? _subsContent() : _settingsContent()),
-                            ),
+                        data: const ListTileThemeData(
+                          textColor: Colors.white,
+                          iconColor: Colors.white,
+                        ),
+                        child: _panelKind == 'split'
+                            ? (activeClient == null
+                                  ? const Center(
+                                      child: Text(
+                                        'Not available.',
+                                        style: TextStyle(color: Colors.white54),
+                                      ),
+                                    )
+                                  : SplitPicker(
+                                      client: activeClient!,
+                                      onPick: (it) {
+                                        _closePanel();
+                                        _openSplitWith(it);
+                                      },
+                                    ))
+                            : ScrollConfiguration(
+                                behavior: ScrollConfiguration.of(
+                                  context,
+                                ).copyWith(scrollbars: false),
+                                child: SingleChildScrollView(
+                                  child: _panelKind == 'subs'
+                                      ? _subsContent()
+                                      : _settingsContent(),
+                                ),
+                              ),
                       ),
                     ),
                   ),
@@ -1550,7 +2016,9 @@ class _PlayerHostState extends State<PlayerHost> {
 
   Widget _subsContent() {
     final current = pc.player!.state.track.subtitle;
-    final real = pc.player!.state.tracks.subtitle.where((t) => t.id != 'auto' && t.id != 'no').toList();
+    final real = pc.player!.state.tracks.subtitle
+        .where((t) => t.id != 'auto' && t.id != 'no')
+        .toList();
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1558,7 +2026,13 @@ class _PlayerHostState extends State<PlayerHost> {
         const SizedBox(height: 10),
         const Padding(
           padding: EdgeInsets.fromLTRB(20, 8, 20, 4),
-          child: Align(alignment: Alignment.centerLeft, child: Text('Subtitles', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800))),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'Subtitles',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+            ),
+          ),
         ),
         _subRow('Off', current.id == 'no', () {
           pc.player!.setSubtitleTrack(SubtitleTrack.no());
@@ -1571,11 +2045,18 @@ class _PlayerHostState extends State<PlayerHost> {
             () => _closePanel(),
           ),
         ...real.map((t) {
-          final label = [t.title, t.language].whereType<String>().where((e) => e.isNotEmpty).join(' · ');
-          return _subRow(label.isEmpty ? 'Track ${t.id}' : label, current.id == t.id, () {
-            pc.player!.setSubtitleTrack(t);
-            _closePanel();
-          });
+          final label = [
+            t.title,
+            t.language,
+          ].whereType<String>().where((e) => e.isNotEmpty).join(' · ');
+          return _subRow(
+            label.isEmpty ? 'Track ${t.id}' : label,
+            current.id == t.id,
+            () {
+              pc.player!.setSubtitleTrack(t);
+              _closePanel();
+            },
+          );
         }),
         if (real.isEmpty && _appliedSubName == null)
           const Padding(
@@ -1657,7 +2138,7 @@ class _PlayerHostState extends State<PlayerHost> {
               itemBuilder: (_, i) {
                 final (label, code) = OpenSubs.langs[i];
                 final sel = code == _subLang;
-                return GestureDetector(
+                return RemoteTap(
                   onTap: () {
                     setState(() => _subLang = code);
                     _searchSubs();
@@ -1756,10 +2237,17 @@ class _PlayerHostState extends State<PlayerHost> {
       n >= 1000 ? '${(n / 1000).toStringAsFixed(n >= 10000 ? 0 : 1)}k' : '$n';
 
   Widget _subRow(String label, bool sel, VoidCallback onTap) => ListTile(
-        onTap: onTap,
-        leading: Icon(sel ? Icons.check_circle_rounded : Icons.subtitles_outlined, color: sel ? accent : Colors.white54),
-        title: Text(label, style: TextStyle(fontWeight: sel ? FontWeight.w700 : FontWeight.w500)),
-      );
+    autofocus: label == 'Off',
+    onTap: onTap,
+    leading: Icon(
+      sel ? Icons.check_circle_rounded : Icons.subtitles_outlined,
+      color: sel ? accent : Colors.white54,
+    ),
+    title: Text(
+      label,
+      style: TextStyle(fontWeight: sel ? FontWeight.w700 : FontWeight.w500),
+    ),
+  );
 
   void _setVolume(double v) {
     _curVol = v.clamp(0.0, 100.0);
@@ -1769,9 +2257,13 @@ class _PlayerHostState extends State<PlayerHost> {
   }
 
   Widget _settingsContent() {
-    final audio = pc.player!.state.tracks.audio.where((t) => t.id != 'auto' && t.id != 'no').toList();
+    final audio = pc.player!.state.tracks.audio
+        .where((t) => t.id != 'auto' && t.id != 'no')
+        .toList();
     final curAudio = pc.player!.state.track.audio;
-    final subs = pc.player!.state.tracks.subtitle.where((t) => t.id != 'auto' && t.id != 'no').toList();
+    final subs = pc.player!.state.tracks.subtitle
+        .where((t) => t.id != 'auto' && t.id != 'no')
+        .toList();
     final curSub = pc.player!.state.track.subtitle;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1779,72 +2271,133 @@ class _PlayerHostState extends State<PlayerHost> {
         const SizedBox(height: 12),
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 4, 12, 4),
-          child: Row(children: [
-            const Text('Playback', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-            const Spacer(),
-            IconButton(onPressed: _closePanel, icon: const Icon(Icons.close_rounded, color: Colors.white70)),
-          ]),
+          child: Row(
+            children: [
+              const Text(
+                'Playback',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+              ),
+              const Spacer(),
+              IconButton(
+                autofocus: true,
+                onPressed: _closePanel,
+                icon: const Icon(Icons.close_rounded, color: Colors.white70),
+              ),
+            ],
+          ),
         ),
         _settingLabel('Volume'),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Row(children: [
-            MouseRegion(
-              cursor: SystemMouseCursors.click,
-              child: GestureDetector(
-                onTap: _toggleMute,
-                child: Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: Icon(_muted || _curVol == 0 ? Icons.volume_off_rounded : Icons.volume_up_rounded, color: Colors.white70),
+          child: Row(
+            children: [
+              MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: RemoteTap(
+                  onTap: _toggleMute,
+                  child: Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: Icon(
+                      _muted || _curVol == 0
+                          ? Icons.volume_off_rounded
+                          : Icons.volume_up_rounded,
+                      color: Colors.white70,
+                    ),
+                  ),
                 ),
               ),
-            ),
-            Expanded(
-              child: SliderTheme(
-                data: SliderThemeData(
-                  trackHeight: 3,
-                  thumbColor: accent,
-                  activeTrackColor: accent,
-                  inactiveTrackColor: Colors.white24,
-                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
-                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+              Expanded(
+                child: SliderTheme(
+                  data: SliderThemeData(
+                    trackHeight: 3,
+                    thumbColor: accent,
+                    activeTrackColor: accent,
+                    inactiveTrackColor: Colors.white24,
+                    overlayShape: const RoundSliderOverlayShape(
+                      overlayRadius: 14,
+                    ),
+                    thumbShape: const RoundSliderThumbShape(
+                      enabledThumbRadius: 7,
+                    ),
+                  ),
+                  child: Slider(
+                    value: _muted ? 0 : _curVol,
+                    max: 100,
+                    onChanged: _setVolume,
+                  ),
                 ),
-                child: Slider(value: _muted ? 0 : _curVol, max: 100, onChanged: _setVolume),
               ),
-            ),
-            SizedBox(width: 40, child: Text('${(_muted ? 0 : _curVol).round()}', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white54, fontSize: 12))),
-          ]),
+              SizedBox(
+                width: 40,
+                child: Text(
+                  '${(_muted ? 0 : _curVol).round()}',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.white54, fontSize: 12),
+                ),
+              ),
+            ],
+          ),
         ),
         _settingLabel('Video fit'),
         _chipRow([
-          ('Fit', _fit == BoxFit.contain, () => setState(() => _fit = BoxFit.contain)),
-          ('Fill', _fit == BoxFit.cover, () => setState(() => _fit = BoxFit.cover)),
-          ('Stretch', _fit == BoxFit.fill, () => setState(() => _fit = BoxFit.fill)),
+          (
+            'Fit',
+            _fit == BoxFit.contain,
+            () => setState(() => _fit = BoxFit.contain),
+          ),
+          (
+            'Fill',
+            _fit == BoxFit.cover,
+            () => setState(() => _fit = BoxFit.cover),
+          ),
+          (
+            'Stretch',
+            _fit == BoxFit.fill,
+            () => setState(() => _fit = BoxFit.fill),
+          ),
         ]),
         if (!_isLive) ...[
           _settingLabel('Speed'),
           _chipRow([
             for (final r in const [0.5, 1.0, 1.25, 1.5, 2.0])
-              ('${r}x', _rate == r, () {
-                pc.player!.setRate(r);
-                setState(() => _rate = r);
-              }),
+              (
+                '${r}x',
+                _rate == r,
+                () {
+                  pc.player!.setRate(r);
+                  setState(() => _rate = r);
+                },
+              ),
           ]),
         ],
         _settingLabel('Sleep timer'),
         _chipRow([
-          for (final mn in const [0, 15, 30, 45, 60]) (mn == 0 ? 'Off' : '${mn}m', _sleepMin == mn, () => _setSleep(mn)),
+          for (final mn in const [0, 15, 30, 45, 60])
+            (mn == 0 ? 'Off' : '${mn}m', _sleepMin == mn, () => _setSleep(mn)),
         ]),
         _settingLabel('Audio'),
         if (audio.isEmpty)
-          const Padding(padding: EdgeInsets.fromLTRB(20, 2, 20, 4), child: Text('Only one audio track.', style: TextStyle(color: Colors.white54)))
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 2, 20, 4),
+            child: Text(
+              'Only one audio track.',
+              style: TextStyle(color: Colors.white54),
+            ),
+          )
         else
           ...audio.map((t) {
-            final label = [t.title, t.language].whereType<String>().where((e) => e.isNotEmpty).join(' · ');
-            return _trackRow(label.isEmpty ? 'Track ${t.id}' : label, curAudio.id == t.id, () {
-              pc.player!.setAudioTrack(t);
-              setState(() {});
-            });
+            final label = [
+              t.title,
+              t.language,
+            ].whereType<String>().where((e) => e.isNotEmpty).join(' · ');
+            return _trackRow(
+              label.isEmpty ? 'Track ${t.id}' : label,
+              curAudio.id == t.id,
+              () {
+                pc.player!.setAudioTrack(t);
+                setState(() {});
+              },
+            );
           }),
         _settingLabel('Subtitles'),
         _trackRow('Off', curSub.id == 'no', () {
@@ -1852,11 +2405,18 @@ class _PlayerHostState extends State<PlayerHost> {
           setState(() {});
         }),
         ...subs.map((t) {
-          final label = [t.title, t.language].whereType<String>().where((e) => e.isNotEmpty).join(' · ');
-          return _trackRow(label.isEmpty ? 'Track ${t.id}' : label, curSub.id == t.id, () {
-            pc.player!.setSubtitleTrack(t);
-            setState(() {});
-          });
+          final label = [
+            t.title,
+            t.language,
+          ].whereType<String>().where((e) => e.isNotEmpty).join(' · ');
+          return _trackRow(
+            label.isEmpty ? 'Track ${t.id}' : label,
+            curSub.id == t.id,
+            () {
+              pc.player!.setSubtitleTrack(t);
+              setState(() {});
+            },
+          );
         }),
         _settingLabel('Subtitle size'),
         _chipRow([
@@ -1864,17 +2424,26 @@ class _PlayerHostState extends State<PlayerHost> {
           ('M', _subScale == 1.0, () => setState(() => _subScale = 1.0)),
           ('L', _subScale == 1.25, () => setState(() => _subScale = 1.25)),
           ('XL', _subScale == 1.6, () => setState(() => _subScale = 1.6)),
-          ('Box ${_subBg ? 'on' : 'off'}', _subBg, () => setState(() => _subBg = !_subBg)),
+          (
+            'Box ${_subBg ? 'on' : 'off'}',
+            _subBg,
+            () => setState(() => _subBg = !_subBg),
+          ),
         ]),
         _settingLabel('Subtitle sync'),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Row(
             children: [
-              _stepBtn(Icons.remove_rounded, () => _setSubDelay(_subDelay - 0.5)),
+              _stepBtn(
+                Icons.remove_rounded,
+                () => _setSubDelay(_subDelay - 0.5),
+              ),
               Expanded(
                 child: Text(
-                  _subDelay == 0 ? 'In sync' : '${_subDelay > 0 ? '+' : ''}${_subDelay.toStringAsFixed(1)}s',
+                  _subDelay == 0
+                      ? 'In sync'
+                      : '${_subDelay > 0 ? '+' : ''}${_subDelay.toStringAsFixed(1)}s',
                   textAlign: TextAlign.center,
                   style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
@@ -1889,51 +2458,77 @@ class _PlayerHostState extends State<PlayerHost> {
   }
 
   Widget _settingLabel(String s) => Padding(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-        child: Text(s, style: const TextStyle(color: Colors.white54, fontWeight: FontWeight.w700, fontSize: 13)),
-      );
+    padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+    child: Text(
+      s,
+      style: const TextStyle(
+        color: Colors.white54,
+        fontWeight: FontWeight.w700,
+        fontSize: 13,
+      ),
+    ),
+  );
 
   Widget _chipRow(List<(String, bool, VoidCallback)> chips) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (final (label, sel, onTap) in chips)
-              MouseRegion(
-                cursor: SystemMouseCursors.click,
-                child: GestureDetector(
-                  onTap: onTap,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-                    decoration: BoxDecoration(
-                      color: sel ? accent : Colors.white.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(label, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: sel ? Colors.white : Colors.white70)),
+    padding: const EdgeInsets.symmetric(horizontal: 16),
+    child: Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final (label, sel, onTap) in chips)
+          MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: RemoteTap(
+              onTap: onTap,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 9,
+                ),
+                decoration: BoxDecoration(
+                  color: sel ? accent : Colors.white.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                    color: sel ? Colors.white : Colors.white70,
                   ),
                 ),
               ),
-          ],
-        ),
-      );
+            ),
+          ),
+      ],
+    ),
+  );
 
   Widget _stepBtn(IconData icon, VoidCallback onTap) => MouseRegion(
-        cursor: SystemMouseCursors.click,
-        child: GestureDetector(
-          onTap: onTap,
-          child: Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.14), shape: BoxShape.circle),
-            child: Icon(icon, color: accent, size: 22),
-          ),
+    cursor: SystemMouseCursors.click,
+    child: RemoteTap(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.14),
+          shape: BoxShape.circle,
         ),
-      );
+        child: Icon(icon, color: accent, size: 22),
+      ),
+    ),
+  );
 
   Widget _trackRow(String label, bool sel, VoidCallback onTap) => ListTile(
-        onTap: onTap,
-        dense: true,
-        leading: Icon(sel ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded, color: sel ? accent : Colors.white54),
-        title: Text(label, style: TextStyle(fontWeight: sel ? FontWeight.w700 : FontWeight.w500)),
-      );
+    onTap: onTap,
+    dense: true,
+    leading: Icon(
+      sel ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+      color: sel ? accent : Colors.white54,
+    ),
+    title: Text(
+      label,
+      style: TextStyle(fontWeight: sel ? FontWeight.w700 : FontWeight.w500),
+    ),
+  );
 }

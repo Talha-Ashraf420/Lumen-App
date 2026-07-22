@@ -13,10 +13,12 @@ import 'session.dart';
 import 'stats.dart';
 import 'store.dart';
 import 'library.dart';
+import 'legal.dart';
 import 'theme.dart';
 import 'widgets.dart';
 import 'xtream.dart';
 import 'screens/login_screen.dart';
+import 'screens/legal_screen.dart';
 import 'screens/player_host.dart';
 import 'screens/shell.dart';
 
@@ -30,15 +32,15 @@ Future<void> main() async {
 
   // Never show a blank/white error screen — paint errors on the dark canvas.
   ErrorWidget.builder = (details) => Container(
-        color: bg,
-        alignment: Alignment.center,
-        padding: const EdgeInsets.all(24),
-        child: Text(
-          details.exceptionAsString(),
-          textAlign: TextAlign.center,
-          style: const TextStyle(color: Color(0xFFFF8FA3), fontSize: 13),
-        ),
-      );
+    color: bg,
+    alignment: Alignment.center,
+    padding: const EdgeInsets.all(24),
+    child: Text(
+      details.exceptionAsString(),
+      textAlign: TextAlign.center,
+      style: const TextStyle(color: Color(0xFFFF8FA3), fontSize: 13),
+    ),
+  );
 
   runApp(const LumenApp());
 }
@@ -55,7 +57,8 @@ class LumenApp extends StatelessWidget {
         final accent = ThemeController.instance.accent.value;
         // Resolve & publish the active palette for this build (used by the
         // theme-aware colour getters across the app).
-        final platform = MediaQuery.maybePlatformBrightnessOf(context) ?? Brightness.dark;
+        final platform =
+            MediaQuery.maybePlatformBrightnessOf(context) ?? Brightness.dark;
         resolvePalette(mode, platform);
         return MaterialApp(
           title: 'Lumen',
@@ -72,20 +75,38 @@ class LumenApp extends StatelessWidget {
           // slider) and a text style, while passing clicks through wherever the
           // player isn't painting — so the app stays interactive (e.g. while the
           // mini is docked).
-          builder: (context, child) => Stack(
-            children: [
-              child ?? const SizedBox.shrink(),
-              Positioned.fill(
-                child: Material(
-                  type: MaterialType.transparency,
-                  child: Overlay(
-                    initialEntries: [
-                      OverlayEntry(maintainState: true, opaque: false, builder: (_) => const PlayerHost()),
-                    ],
+          builder: (context, child) => AnimatedBuilder(
+            animation: PlaybackController.instance,
+            child: Stack(
+              children: [
+                child ?? const SizedBox.shrink(),
+                Positioned.fill(
+                  child: Material(
+                    type: MaterialType.transparency,
+                    child: Overlay(
+                      initialEntries: [
+                        OverlayEntry(
+                          maintainState: true,
+                          opaque: false,
+                          builder: (_) => PlayerHost.overlay(),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
+            builder: (context, stack) {
+              final playback = PlaybackController.instance;
+              final playerOwnsBack = playback.hasMedia && !playback.minimized;
+              return PopScope(
+                canPop: !playerOwnsBack,
+                onPopInvokedWithResult: (didPop, _) {
+                  if (!didPop) PlayerHost.handleSystemBack();
+                },
+                child: stack!,
+              );
+            },
           ),
           home: _Gate(),
         );
@@ -103,6 +124,7 @@ class _Gate extends StatefulWidget {
 
 class _GateState extends State<_Gate> {
   XtreamCredentials? _creds;
+  bool _legalAccepted = false;
   bool _loading = true;
 
   @override
@@ -113,22 +135,33 @@ class _GateState extends State<_Gate> {
     WatchStats.instance.load();
     ThemeController.instance.load();
     Downloads.instance.load();
-    Store.active().then((c) => setState(() {
-          _creds = c;
-          _loading = false;
-        }));
+    Future.wait<dynamic>([Store.active(), LegalAcceptance.isAccepted()]).then((
+      values,
+    ) {
+      if (!mounted) return;
+      setState(() {
+        _creds = values[0] as XtreamCredentials?;
+        _legalAccepted = values[1] as bool;
+        _loading = false;
+      });
+    });
+  }
+
+  Future<void> _acceptLegal() async {
+    await LegalAcceptance.accept();
+    if (mounted) setState(() => _legalAccepted = true);
   }
 
   XtreamClient? _client; // cached so theme rebuilds don't recreate it
 
   /// Make these credentials active: rebuild the client and drop cached catalogs.
   void _activate(XtreamCredentials c) => setState(() {
-        _creds = c;
-        _client = null;
-        PlaybackController.instance.stop();
-        CatalogCache.instance.clear();
-        EpgCache.instance.clear();
-      });
+    _creds = c;
+    _client = null;
+    PlaybackController.instance.stop();
+    CatalogCache.instance.clear();
+    EpgCache.instance.clear();
+  });
 
   void _onLogin(XtreamCredentials c) => _activate(c);
 
@@ -138,12 +171,12 @@ class _GateState extends State<_Gate> {
   }
 
   void _onLogout() => setState(() {
-        _creds = null;
-        _client = null;
-        PlaybackController.instance.stop();
-        CatalogCache.instance.clear();
-        EpgCache.instance.clear();
-      });
+    _creds = null;
+    _client = null;
+    PlaybackController.instance.stop();
+    CatalogCache.instance.clear();
+    EpgCache.instance.clear();
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -156,6 +189,9 @@ class _GateState extends State<_Gate> {
         resolvePalette(mode, MediaQuery.platformBrightnessOf(context));
         if (_loading) {
           return const Scaffold(body: BrandedLoading(background: true));
+        }
+        if (!_legalAccepted) {
+          return LegalWelcomeScreen(onAccepted: _acceptLegal);
         }
         if (_creds == null) return LoginScreen(onLogin: _onLogin);
         _client ??= XtreamClient(_creds!);

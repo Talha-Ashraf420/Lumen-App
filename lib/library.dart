@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'store.dart';
 
 /// A favouritable item (movie / series / live channel).
 class MediaRef {
@@ -74,11 +74,10 @@ class Library extends ChangeNotifier {
   final List<MediaRef> recent = [];
 
   Future<void> load() async {
-    final p = await SharedPreferences.getInstance();
-    _readList(p.getString(_kFav), favourites);
-    _readList(p.getString(_kRecent), recent);
+    _readList(await Store.readPrivate(_kFav), favourites);
+    _readList(await Store.readPrivate(_kRecent), recent);
     progress.clear();
-    final pr = p.getString(_kProg);
+    final pr = await Store.readPrivate(_kProg);
     if (pr != null) {
       try {
         (jsonDecode(pr) as Map).forEach((k, v) => progress[k] = Progress.fromJson((v as Map).cast<String, dynamic>()));
@@ -98,10 +97,20 @@ class Library extends ChangeNotifier {
   }
 
   Future<void> _save() async {
-    final p = await SharedPreferences.getInstance();
-    p.setString(_kFav, jsonEncode(favourites.map((e) => e.toJson()).toList()));
-    p.setString(_kRecent, jsonEncode(recent.map((e) => e.toJson()).toList()));
-    p.setString(_kProg, jsonEncode(progress.map((k, v) => MapEntry(k, v.toJson()))));
+    await Future.wait([
+      Store.writePrivate(
+        _kFav,
+        jsonEncode(favourites.map((e) => e.toJson()).toList()),
+      ),
+      Store.writePrivate(
+        _kRecent,
+        jsonEncode(recent.map((e) => e.toJson()).toList()),
+      ),
+      Store.writePrivate(
+        _kProg,
+        jsonEncode(progress.map((k, v) => MapEntry(k, v.toJson()))),
+      ),
+    ]);
   }
 
   // ---- favourites ----

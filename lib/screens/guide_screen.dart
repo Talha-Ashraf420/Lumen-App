@@ -20,7 +20,8 @@ class GuideScreen extends StatefulWidget {
   State<GuideScreen> createState() => _GuideScreenState();
 }
 
-class _GuideScreenState extends State<GuideScreen> with AutomaticKeepAliveClientMixin {
+class _GuideScreenState extends State<GuideScreen>
+    with AutomaticKeepAliveClientMixin {
   List<Category> _cats = [];
   String? _cat;
   Future<List<LiveStream>> _channels = Future.value(<LiveStream>[]);
@@ -50,27 +51,46 @@ class _GuideScreenState extends State<GuideScreen> with AutomaticKeepAliveClient
     }
   }
 
-  Future<List<LiveStream>> _load() => widget.client.liveStreams(_cat).catchError((_) => <LiveStream>[]);
+  Future<List<LiveStream>> _load() =>
+      widget.client.liveStreams(_cat).catchError((_) => <LiveStream>[]);
 
-  String get _catName =>
-      _cats.firstWhere((c) => c.id == _cat, orElse: () => Category(_cat ?? 'all', 'All channels')).name;
+  String get _catName => _cats
+      .firstWhere(
+        (c) => c.id == _cat,
+        orElse: () => Category(_cat ?? 'all', 'All channels'),
+      )
+      .name;
 
   Future<void> _pickCategory() async {
-    final r = await showCategorySheet(context, categories: _cats, selected: _cat);
-    if (r != null && mounted) setState(() {
-      _cat = r;
-      _channels = _load();
-    });
+    final r = await showCategorySheet(
+      context,
+      categories: _cats,
+      selected: _cat,
+    );
+    if (r != null && mounted)
+      setState(() {
+        _cat = r;
+        _channels = _load();
+      });
   }
 
   PlayerItem _liveItem(LiveStream s) {
     final url = widget.client.streamUrl('live', s.streamId, ext: 'ts');
-    return PlayerItem(url, s.name,
-        isLive: true,
-        poster: s.icon,
-        httpHeaders: widget.client.streamHeaders(s.streamId),
-        favRef: MediaRef(kind: 'live', id: s.streamId, name: s.name, image: s.icon, url: url),
-        epg: () => EpgCache.instance.nowNext(widget.client, s.streamId));
+    return PlayerItem(
+      url,
+      s.name,
+      isLive: true,
+      poster: s.icon,
+      httpHeaders: widget.client.streamHeaders(s.streamId),
+      favRef: MediaRef(
+        kind: 'live',
+        id: s.streamId,
+        name: s.name,
+        image: s.icon,
+        url: url,
+      ),
+      epg: () => EpgCache.instance.nowNext(widget.client, s.streamId),
+    );
   }
 
   void _play(List<LiveStream> all, int index) {
@@ -87,31 +107,41 @@ class _GuideScreenState extends State<GuideScreen> with AutomaticKeepAliveClient
       children: [
         const Padding(
           padding: EdgeInsets.fromLTRB(20, 6, 20, 10),
-          child: Text('Live TV', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800)),
+          child: Text(
+            'Live TV',
+            style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800),
+          ),
         ),
         if (_cats.isNotEmpty)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: GestureDetector(
+            child: RemoteTap(
               onTap: _pickCategory,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
                 decoration: BoxDecoration(
                   color: surfaceHi.withValues(alpha: 0.7),
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(color: line),
                 ),
-                child: Row(children: [
-                  Icon(Icons.grid_view_rounded, size: 18, color: accent),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(_catName,
+                child: Row(
+                  children: [
+                    Icon(Icons.grid_view_rounded, size: 18, color: accent),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        _catName,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontWeight: FontWeight.w700)),
-                  ),
-                  Icon(Icons.keyboard_arrow_down_rounded, color: muted),
-                ]),
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    Icon(Icons.keyboard_arrow_down_rounded, color: muted),
+                  ],
+                ),
               ),
             ),
           ),
@@ -120,10 +150,21 @@ class _GuideScreenState extends State<GuideScreen> with AutomaticKeepAliveClient
             future: _channels,
             builder: (context, snap) {
               if (snap.connectionState != ConnectionState.done) {
-                return Center(child: CircularProgressIndicator(color: accent, strokeWidth: 2));
+                return Center(
+                  child: CircularProgressIndicator(
+                    color: accent,
+                    strokeWidth: 2,
+                  ),
+                );
               }
               final chans = snap.data ?? [];
-              if (chans.isEmpty) return Center(child: Text('No channels here.', style: TextStyle(color: subtle)));
+              if (chans.isEmpty)
+                return Center(
+                  child: Text(
+                    'No channels here.',
+                    style: TextStyle(color: subtle),
+                  ),
+                );
               return ListView.separated(
                 padding: const EdgeInsets.fromLTRB(12, 4, 12, 120),
                 itemCount: chans.length,
@@ -160,10 +201,13 @@ class _GuideScreenState extends State<GuideScreen> with AutomaticKeepAliveClient
             startTime: entry.start,
           );
           PlaybackController.instance.open([
-            PlayerItem(url, '${channel.name} · ${entry.title}',
-                ext: 'ts',
-                poster: channel.icon,
-                httpHeaders: widget.client.streamHeaders(channel.streamId)),
+            PlayerItem(
+              url,
+              '${channel.name} · ${entry.title}',
+              ext: 'ts',
+              poster: channel.icon,
+              httpHeaders: widget.client.streamHeaders(channel.streamId),
+            ),
           ], 0);
         },
       ),
@@ -177,11 +221,16 @@ class _ChannelRow extends StatelessWidget {
   final LiveStream channel;
   final VoidCallback onTap;
   final VoidCallback onSchedule;
-  const _ChannelRow({required this.client, required this.channel, required this.onTap, required this.onSchedule});
+  const _ChannelRow({
+    required this.client,
+    required this.channel,
+    required this.onTap,
+    required this.onSchedule,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return RemoteTap(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Padding(
@@ -200,7 +249,11 @@ class _ChannelRow extends StatelessWidget {
                     ? CachedNetworkImage(
                         imageUrl: channel.icon,
                         fit: BoxFit.contain,
-                        errorWidget: (_, _, _) => Icon(Icons.live_tv_rounded, color: subtle, size: 24),
+                        errorWidget: (_, _, _) => Icon(
+                          Icons.live_tv_rounded,
+                          color: subtle,
+                          size: 24,
+                        ),
                       )
                     : Icon(Icons.live_tv_rounded, color: subtle, size: 24),
               ),
@@ -213,15 +266,24 @@ class _ChannelRow extends StatelessWidget {
                   Row(
                     children: [
                       Expanded(
-                        child: Text(channel.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5)),
+                        child: Text(
+                          channel.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14.5,
+                          ),
+                        ),
                       ),
                       if (channel.hasArchive)
                         Padding(
                           padding: const EdgeInsets.only(left: 6),
-                          child: Icon(Icons.history_rounded, size: 15, color: subtle),
+                          child: Icon(
+                            Icons.history_rounded,
+                            size: 15,
+                            color: subtle,
+                          ),
                         ),
                     ],
                   ),
@@ -232,20 +294,31 @@ class _ChannelRow extends StatelessWidget {
                       final list = snap.data ?? const [];
                       if (list.isEmpty) {
                         return Text(
-                          snap.connectionState == ConnectionState.done ? 'No guide data' : '…',
+                          snap.connectionState == ConnectionState.done
+                              ? 'No guide data'
+                              : '…',
                           style: TextStyle(color: subtle, fontSize: 12),
                         );
                       }
-                      final now = list.firstWhere((e) => e.isNow, orElse: () => list.first);
+                      final now = list.firstWhere(
+                        (e) => e.isNow,
+                        orElse: () => list.first,
+                      );
                       final ni = list.indexOf(now);
                       final next = ni + 1 < list.length ? list[ni + 1] : null;
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Now · ${now.title}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(color: muted, fontSize: 12.5, fontWeight: FontWeight.w600)),
+                          Text(
+                            'Now · ${now.title}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: muted,
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                           const SizedBox(height: 4),
                           ClipRRect(
                             borderRadius: BorderRadius.circular(2),
@@ -258,10 +331,12 @@ class _ChannelRow extends StatelessWidget {
                           ),
                           if (next != null) ...[
                             const SizedBox(height: 4),
-                            Text('Next · ${next.title}',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(color: subtle, fontSize: 11.5)),
+                            Text(
+                              'Next · ${next.title}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(color: subtle, fontSize: 11.5),
+                            ),
                           ],
                         ],
                       );
@@ -287,12 +362,17 @@ class _ScheduleSheet extends StatelessWidget {
   final XtreamClient client;
   final LiveStream channel;
   final void Function(EpgEntry) onWatch;
-  const _ScheduleSheet({required this.client, required this.channel, required this.onWatch});
+  const _ScheduleSheet({
+    required this.client,
+    required this.channel,
+    required this.onWatch,
+  });
 
   bool _canCatchUp(EpgEntry e) {
     if (!channel.hasArchive || !e.isPast) return false;
     final daysAgo = DateTime.now().difference(e.start).inDays;
-    return daysAgo <= (channel.tvArchiveDuration <= 0 ? 7 : channel.tvArchiveDuration);
+    return daysAgo <=
+        (channel.tvArchiveDuration <= 0 ? 7 : channel.tvArchiveDuration);
   }
 
   String _time(DateTime d) {
@@ -316,23 +396,51 @@ class _ScheduleSheet extends StatelessWidget {
           child: Column(
             children: [
               const SizedBox(height: 10),
-              Container(width: 40, height: 4, decoration: BoxDecoration(color: subtle, borderRadius: BorderRadius.circular(2))),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: subtle,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 14, 20, 8),
                 child: Row(
                   children: [
                     Expanded(
-                      child: Text(channel.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800)),
+                      child: Text(
+                        channel.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 19,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
                     ),
                     if (channel.hasArchive)
-                      Row(mainAxisSize: MainAxisSize.min, children: [
-                        Icon(Icons.history_rounded, size: 15, color: accent),
-                        const SizedBox(width: 4),
-                        Text('Catch-up', style: TextStyle(color: accent, fontSize: 12, fontWeight: FontWeight.w700)),
-                      ]),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.history_rounded, size: 15, color: accent),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Catch-up',
+                            style: TextStyle(
+                              color: accent,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    IconButton(
+                      autofocus: true,
+                      tooltip: 'Close schedule',
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
                   ],
                 ),
               ),
@@ -341,11 +449,21 @@ class _ScheduleSheet extends StatelessWidget {
                   future: EpgCache.instance.fullDay(client, channel.streamId),
                   builder: (_, snap) {
                     if (snap.connectionState != ConnectionState.done) {
-                      return Center(child: CircularProgressIndicator(color: accent, strokeWidth: 2));
+                      return Center(
+                        child: CircularProgressIndicator(
+                          color: accent,
+                          strokeWidth: 2,
+                        ),
+                      );
                     }
                     final list = snap.data ?? const [];
                     if (list.isEmpty) {
-                      return Center(child: Text('No schedule available.', style: TextStyle(color: subtle)));
+                      return Center(
+                        child: Text(
+                          'No schedule available.',
+                          style: TextStyle(color: subtle),
+                        ),
+                      );
                     }
                     return ListView.builder(
                       controller: scroll,
@@ -356,47 +474,91 @@ class _ScheduleSheet extends StatelessWidget {
                         final canWatch = _canCatchUp(e);
                         return Container(
                           margin: const EdgeInsets.symmetric(vertical: 3),
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 12,
+                          ),
                           decoration: BoxDecoration(
-                            color: e.isNow ? accent.withValues(alpha: 0.14) : surfaceHi.withValues(alpha: 0.4),
+                            color: e.isNow
+                                ? accent.withValues(alpha: 0.14)
+                                : surfaceHi.withValues(alpha: 0.4),
                             borderRadius: BorderRadius.circular(14),
-                            border: e.isNow ? Border.all(color: accent.withValues(alpha: 0.5)) : null,
+                            border: e.isNow
+                                ? Border.all(
+                                    color: accent.withValues(alpha: 0.5),
+                                  )
+                                : null,
                           ),
                           child: Row(
                             children: [
                               Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text('${_time(e.start)}–${_time(e.end)}',
-                                      style: TextStyle(color: e.isNow ? accent : subtle, fontSize: 11.5, fontWeight: FontWeight.w700)),
+                                  Text(
+                                    '${_time(e.start)}–${_time(e.end)}',
+                                    style: TextStyle(
+                                      color: e.isNow ? accent : subtle,
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
                                 ],
                               ),
                               const SizedBox(width: 14),
                               Expanded(
-                                child: Text(e.title,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                        fontWeight: e.isNow ? FontWeight.w700 : FontWeight.w500,
-                                        fontSize: 13.5,
-                                        color: e.isPast && !e.isNow ? muted : null)),
+                                child: Text(
+                                  e.title,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontWeight: e.isNow
+                                        ? FontWeight.w700
+                                        : FontWeight.w500,
+                                    fontSize: 13.5,
+                                    color: e.isPast && !e.isNow ? muted : null,
+                                  ),
+                                ),
                               ),
                               if (e.isNow)
                                 Padding(
                                   padding: const EdgeInsets.only(left: 8),
-                                  child: Icon(Icons.circle, size: 9, color: accent),
+                                  child: Icon(
+                                    Icons.circle,
+                                    size: 9,
+                                    color: accent,
+                                  ),
                                 )
                               else if (canWatch)
-                                GestureDetector(
+                                RemoteTap(
                                   onTap: () => onWatch(e),
                                   child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                                    decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(10)),
-                                    child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                                      Icon(Icons.play_arrow_rounded, color: Colors.white, size: 16),
-                                      SizedBox(width: 3),
-                                      Text('Watch', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700)),
-                                    ]),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 7,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: accent,
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: const Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.play_arrow_rounded,
+                                          color: Colors.white,
+                                          size: 16,
+                                        ),
+                                        SizedBox(width: 3),
+                                        Text(
+                                          'Watch',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
                             ],

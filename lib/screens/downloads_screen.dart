@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../downloads.dart';
 import '../playback.dart';
 import '../theme.dart';
+import '../widgets.dart';
 import '../xtream.dart';
 
 /// Offline downloads library: shows downloading/ready items, plays the local
@@ -55,6 +56,7 @@ class DownloadsScreen extends StatelessWidget {
                     children: [
                       if (canBack)
                         IconButton(
+                          autofocus: true,
                           onPressed: () => Navigator.of(context).pop(),
                           icon: Icon(Icons.arrow_back_rounded, color: textHi),
                         ),
@@ -115,7 +117,7 @@ class DownloadsScreen extends StatelessWidget {
   Widget _row(BuildContext context, DownloadItem d) {
     final ready = d.status == DlStatus.completed;
     final failed = d.status == DlStatus.failed;
-    return GestureDetector(
+    return RemoteTap(
       onTap: ready ? () => _play(d) : null,
       child: Container(
         padding: const EdgeInsets.all(10),

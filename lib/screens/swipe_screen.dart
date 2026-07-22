@@ -174,7 +174,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
         padding: const EdgeInsets.fromLTRB(8, 6, 16, 0),
         child: Row(
           children: [
-            IconButton(onPressed: () => Navigator.of(context).pop(), icon: const Icon(Icons.arrow_back_rounded)),
+            IconButton(autofocus: true, onPressed: () => Navigator.of(context).pop(), icon: const Icon(Icons.arrow_back_rounded)),
             const SizedBox(width: 4),
             const Text('For you', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
             const SizedBox(width: 10),
@@ -272,7 +272,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
       );
 
   Widget _panelBtn(IconData icon, String label, Color color, VoidCallback onTap) => HoverScale(
-        child: GestureDetector(
+        child: RemoteTap(
           onTap: onTap,
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
@@ -291,7 +291,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
       );
 
   Widget _ghostBtn(IconData icon, String label, VoidCallback onTap) => HoverScale(
-        child: GestureDetector(
+        child: RemoteTap(
           onTap: onTap,
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 13),
@@ -330,7 +330,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
             const SizedBox(height: 6),
             Text(_liked > 0 ? 'Added $_liked to My List' : 'Swipe right to save favourites', style: TextStyle(color: subtle)),
             const SizedBox(height: 18),
-            GestureDetector(
+            RemoteTap(
               onTap: () {
                 setState(() => _loading = true);
                 _load();
@@ -349,7 +349,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
     final t = _meta[m.streamId];
     final year = _yearOf(m.name) > 0 ? _yearOf(m.name) : _yearOf(t?.releaseDate ?? '');
     final genre = t?.genres ?? '';
-    return GestureDetector(
+    return RemoteTap(
       onTap: () => _open(m),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(22),
@@ -451,7 +451,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
     );
   }
 
-  Widget _btn(IconData icon, Color color, double size, VoidCallback onTap) => GestureDetector(
+  Widget _btn(IconData icon, Color color, double size, VoidCallback onTap) => RemoteTap(
         onTap: onTap,
         child: Container(
           width: size,

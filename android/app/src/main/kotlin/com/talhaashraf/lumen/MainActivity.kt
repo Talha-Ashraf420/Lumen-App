@@ -1,4 +1,4 @@
-package com.lumen.lumen_tv
+package com.talhaashraf.lumen
 
 import android.app.PictureInPictureParams
 import android.content.pm.PackageManager
@@ -19,13 +19,10 @@ class MainActivity : FlutterActivity() {
         methodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
         methodChannel!!.setMethodCallHandler { call, result ->
             when (call.method) {
-                // Flutter tells us whether a video is currently active, so we
-                // only enter PiP when there's something worth keeping on screen.
                 "setPipAllowed" -> {
                     pipAllowed = call.arguments as? Boolean ?: false
                     result.success(null)
                 }
-                // Explicit request (e.g. a PiP button) — enter immediately.
                 "enterPip" -> result.success(enterPip())
                 "isSupported" -> result.success(
                     Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
@@ -49,7 +46,6 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    // Fires when the user presses Home / Recents while the app is foreground.
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         if (pipAllowed) enterPip()
@@ -60,7 +56,6 @@ class MainActivity : FlutterActivity() {
         newConfig: Configuration
     ) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
-        // Let Flutter hide the chrome and show video-only while in PiP.
         methodChannel?.invokeMethod("pipChanged", isInPictureInPictureMode)
     }
 }

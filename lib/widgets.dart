@@ -38,6 +38,20 @@ class _FocusableTapState extends State<FocusableTap> {
     SingleActivator(LogicalKeyboardKey.gameButtonA): ActivateIntent(),
   };
 
+  void _focusChanged(bool value) {
+    if (_focus != value) setState(() => _focus = value);
+    if (!value) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      Scrollable.ensureVisible(
+        context,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+      );
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return FocusableActionDetector(
@@ -53,10 +67,108 @@ class _FocusableTapState extends State<FocusableTap> {
         ),
       },
       onShowHoverHighlight: (v) => setState(() => _hover = v),
-      onShowFocusHighlight: (v) => setState(() => _focus = v),
-      child: GestureDetector(
+      onFocusChange: _focusChanged,
+      child: Semantics(
+        button: true,
         onTap: widget.onTap,
-        child: widget.builder(context, _hover || _focus),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: widget.onTap,
+          child: widget.builder(context, _hover || _focus),
+        ),
+      ),
+    );
+  }
+}
+
+/// Drop-in replacement for a touch-only [GestureDetector]. It adds a focus
+/// node, visible focus ring, D-pad-center/Enter activation and scroll-to-focus
+/// without requiring every screen to implement its own TV behavior.
+class RemoteTap extends StatefulWidget {
+  final Widget child;
+  final VoidCallback? onTap;
+  final HitTestBehavior? behavior;
+  final bool autofocus;
+  final String? semanticLabel;
+  final double focusRadius;
+  final bool showFocusRing;
+
+  const RemoteTap({
+    super.key,
+    required this.child,
+    required this.onTap,
+    this.behavior,
+    this.autofocus = false,
+    this.semanticLabel,
+    this.focusRadius = 16,
+    this.showFocusRing = true,
+  });
+
+  @override
+  State<RemoteTap> createState() => _RemoteTapState();
+}
+
+class _RemoteTapState extends State<RemoteTap> {
+  bool _focused = false;
+  bool _hovered = false;
+
+  void _onFocusChange(bool value) {
+    if (_focused != value) setState(() => _focused = value);
+    if (!value) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      Scrollable.ensureVisible(
+        context,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = widget.onTap != null;
+    final active = enabled && (_focused || _hovered);
+    return FocusableActionDetector(
+      enabled: enabled,
+      autofocus: widget.autofocus,
+      mouseCursor: enabled ? SystemMouseCursors.click : MouseCursor.defer,
+      shortcuts: _FocusableTapState._activators,
+      actions: {
+        ActivateIntent: CallbackAction<ActivateIntent>(
+          onInvoke: (_) {
+            widget.onTap?.call();
+            return null;
+          },
+        ),
+      },
+      onShowHoverHighlight: (value) => setState(() => _hovered = value),
+      onFocusChange: _onFocusChange,
+      child: Semantics(
+        button: true,
+        enabled: enabled,
+        label: widget.semanticLabel,
+        onTap: widget.onTap,
+        child: AnimatedScale(
+          scale: active ? 1.025 : 1,
+          duration: const Duration(milliseconds: 130),
+          curve: Curves.easeOut,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 130),
+            foregroundDecoration: widget.showFocusRing && _focused
+                ? BoxDecoration(
+                    borderRadius: BorderRadius.circular(widget.focusRadius),
+                    border: Border.all(color: accent, width: 2.5),
+                  )
+                : null,
+            child: GestureDetector(
+              behavior: widget.behavior ?? HitTestBehavior.opaque,
+              onTap: widget.onTap,
+              child: widget.child,
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -263,9 +375,10 @@ class Glass extends StatelessWidget {
 }
 
 /// The single, consistent search field used across the whole app.
-class SearchField extends StatelessWidget {
+class SearchField extends StatefulWidget {
   final String hint;
   final TextEditingController? controller;
+  final FocusNode? focusNode;
   final ValueChanged<String>? onChanged;
   final VoidCallback? onTap; // read-only mode (e.g. Home → opens Search)
   final bool readOnly;
@@ -274,6 +387,7 @@ class SearchField extends StatelessWidget {
     super.key,
     required this.hint,
     this.controller,
+    this.focusNode,
     this.onChanged,
     this.onTap,
     this.readOnly = false,
@@ -281,31 +395,78 @@ class SearchField extends StatelessWidget {
   });
 
   @override
+  State<SearchField> createState() => _SearchFieldState();
+}
+
+class _SearchFieldState extends State<SearchField> {
+  late FocusNode _focusNode;
+  late bool _ownsFocusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _attachFocusNode(widget.focusNode);
+  }
+
+  void _attachFocusNode(FocusNode? supplied) {
+    _ownsFocusNode = supplied == null;
+    _focusNode = supplied ?? FocusNode();
+    _focusNode.addListener(_focusChanged);
+  }
+
+  void _focusChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void didUpdateWidget(covariant SearchField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.focusNode == widget.focusNode) return;
+    _focusNode.removeListener(_focusChanged);
+    if (_ownsFocusNode) _focusNode.dispose();
+    _attachFocusNode(widget.focusNode);
+  }
+
+  @override
+  void dispose() {
+    _focusNode.removeListener(_focusChanged);
+    if (_ownsFocusNode) _focusNode.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final focused = !widget.readOnly && _focusNode.hasFocus;
     final field = Container(
       height: 50,
       padding: const EdgeInsets.fromLTRB(17, 0, 7, 0),
       decoration: BoxDecoration(
-        color: surface.withValues(alpha: 0.92),
+        color: focused
+            ? surfaceHi.withValues(alpha: 0.92)
+            : surface.withValues(alpha: 0.92),
         borderRadius: BorderRadius.circular(25),
-        border: Border.all(color: line),
+        border: Border.all(
+          color: focused ? accent : line,
+          width: focused ? 1.6 : 1,
+        ),
       ),
       child: Row(
         children: [
-          Icon(Icons.search_rounded, color: muted, size: 20),
+          Icon(Icons.search_rounded, color: focused ? accent : muted, size: 20),
           const SizedBox(width: 10),
           Expanded(
-            child: readOnly
+            child: widget.readOnly
                 ? Align(
                     alignment: Alignment.centerLeft,
                     child: Text(
-                      hint,
+                      widget.hint,
                       style: TextStyle(color: subtle, fontSize: 15),
                     ),
                   )
                 : TextField(
-                    controller: controller,
-                    onChanged: onChanged,
+                    controller: widget.controller,
+                    focusNode: _focusNode,
+                    onChanged: widget.onChanged,
                     style: const TextStyle(fontSize: 15.5),
                     cursorColor: accent,
                     decoration: InputDecoration(
@@ -314,18 +475,18 @@ class SearchField extends StatelessWidget {
                       border: InputBorder.none,
                       enabledBorder: InputBorder.none,
                       focusedBorder: InputBorder.none,
-                      hintText: hint,
+                      hintText: widget.hint,
                       hintStyle: TextStyle(color: subtle, fontSize: 15),
                     ),
                   ),
           ),
-          if (trailing != null) trailing!,
+          if (widget.trailing != null) widget.trailing!,
         ],
       ),
     );
-    if (onTap != null) {
+    if (widget.onTap != null) {
       return FocusableTap(
-        onTap: onTap!,
+        onTap: widget.onTap!,
         builder: (context, active) => AnimatedContainer(
           duration: const Duration(milliseconds: 140),
           decoration: BoxDecoration(
@@ -630,7 +791,7 @@ class SectionHeader extends StatelessWidget {
           ),
           const SizedBox(width: 12),
           if (onSeeAll != null)
-            GestureDetector(
+            RemoteTap(
               onTap: onSeeAll,
               behavior: HitTestBehavior.opaque,
               child: Padding(

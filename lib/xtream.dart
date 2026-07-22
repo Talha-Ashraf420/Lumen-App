@@ -16,7 +16,7 @@ String normalizeBaseUrl(String raw) {
   var url = raw.trim();
   if (url.isEmpty) return '';
   if (!RegExp(r'^https?://', caseSensitive: false).hasMatch(url))
-    url = 'http://$url';
+    url = 'https://$url';
   try {
     final u = Uri.parse(url);
     final port = u.hasPort ? ':${u.port}' : '';
@@ -27,15 +27,15 @@ String normalizeBaseUrl(String raw) {
 }
 
 /// Extract Xtream credentials from a pasted playlist / panel URL, e.g.
-/// `http://host:port/get.php?username=U&password=P&type=m3u_plus` or
-/// `http://host:port/player_api.php?username=U&password=P`. Most "M3U URL"
+/// `https://host:port/get.php?username=U&password=P&type=m3u_plus` or
+/// `https://host:port/player_api.php?username=U&password=P`. Most "M3U URL"
 /// links from IPTV providers are Xtream-backed get.php links, so this lets the
 /// user paste their playlist URL and get the full catalog + EPG. Returns null
 /// if the URL carries no username/password (a plain, non-Xtream playlist).
 XtreamCredentials? credentialsFromUrl(String raw) {
   var s = raw.trim();
   if (s.isEmpty) return null;
-  if (!RegExp(r'^https?://', caseSensitive: false).hasMatch(s)) s = 'http://$s';
+  if (!RegExp(r'^https?://', caseSensitive: false).hasMatch(s)) s = 'https://$s';
   Uri u;
   try {
     u = Uri.parse(s);

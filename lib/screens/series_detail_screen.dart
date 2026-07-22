@@ -10,6 +10,7 @@ import '../playback.dart';
 import '../responsive.dart';
 import '../theme.dart';
 import '../tmdb.dart';
+import '../widgets.dart';
 import '../xtream.dart';
 
 class SeriesDetailScreen extends StatefulWidget {
@@ -179,6 +180,7 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
               child: Row(
                 children: [
                   IconButton(
+                    autofocus: true,
                     onPressed: () => Navigator.of(context).pop(),
                     icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
                     style: IconButton.styleFrom(backgroundColor: Colors.black38),
@@ -219,7 +221,7 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
                 Row(
                   children: [
                     if (eps.isNotEmpty)
-                      GestureDetector(
+                      RemoteTap(
                         onTap: () => _playEpisodes(eps, 0, info),
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 13),
@@ -233,7 +235,7 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
                       ),
                     if (_tmdb?.trailerUrl != null) ...[
                       const SizedBox(width: 12),
-                      GestureDetector(
+                      RemoteTap(
                         onTap: _trailer,
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
@@ -308,7 +310,7 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
               itemBuilder: (_, i) {
                 final s = seasons[i];
                 final sel = s == active;
-                return GestureDetector(
+                return RemoteTap(
                   onTap: () => setState(() => _season = s),
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
@@ -355,7 +357,7 @@ class _EpisodeTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final img = ep.image.isNotEmpty ? ep.image : fallback;
     final title = ep.title.isEmpty ? 'Episode ${ep.episodeNum}' : ep.title;
-    return GestureDetector(
+    return RemoteTap(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.all(10),
@@ -413,7 +415,7 @@ class _EpisodeTile extends StatelessWidget {
                   );
                 }
                 if (d?.status == DlStatus.downloading) {
-                  return GestureDetector(
+                  return RemoteTap(
                     onTap: () => Downloads.instance.pause('ep:${ep.id}'),
                     child: Padding(
                       padding: const EdgeInsets.only(left: 4),
@@ -444,7 +446,7 @@ class _EpisodeTile extends StatelessWidget {
                 );
               },
             ),
-            GestureDetector(
+            RemoteTap(
               onTap: onTap,
               child: Container(
                 margin: const EdgeInsets.only(left: 6),

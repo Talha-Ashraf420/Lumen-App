@@ -281,7 +281,7 @@ class _EpgGuideScreenState extends State<EpgGuideScreen>
           Icon(Icons.grid_view_rounded, color: accent, size: 22),
           const Spacer(),
           if (_cats.isNotEmpty)
-            GestureDetector(
+            RemoteTap(
               onTap: _pickCategory,
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
@@ -298,7 +298,7 @@ class _EpgGuideScreenState extends State<EpgGuideScreen>
               ),
             ),
           const SizedBox(width: 8),
-          GestureDetector(
+          RemoteTap(
             onTap: _jumpToNow,
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
@@ -345,7 +345,7 @@ class _EpgGuideScreenState extends State<EpgGuideScreen>
   }
 
   Widget _channelTile(LiveStream c, int i) {
-    return GestureDetector(
+    return RemoteTap(
       behavior: HitTestBehavior.opaque,
       onTap: () => _playLive(i),
       child: Container(
@@ -428,7 +428,7 @@ class _EpgGuideScreenState extends State<EpgGuideScreen>
         top: 4,
         bottom: 5,
         width: w > 3 ? w - 3 : w,
-        child: GestureDetector(
+        child: RemoteTap(
           onTap: () => _onTapProgram(c, chIndex, e),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),

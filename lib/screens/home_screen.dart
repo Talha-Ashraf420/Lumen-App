@@ -288,7 +288,7 @@ class _HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMi
     required VoidCallback onTap,
   }) {
     return HoverScale(
-      child: GestureDetector(
+      child: RemoteTap(
         onTap: onTap,
         child: ClipRRect(
           borderRadius: BorderRadius.circular(20),
@@ -743,7 +743,7 @@ class _HeroCard extends StatelessWidget {
   const _HeroCard({required this.item});
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return RemoteTap(
       onTap: item.onTap,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(24),
@@ -821,7 +821,7 @@ class _ContinueCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return RemoteTap(
       onTap: onTap,
       child: SizedBox(
         width: 240,
@@ -1087,7 +1087,7 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
             PillButton(icon: Icons.play_arrow_rounded, label: 'Play', onTap: () => _play(m)),
             const SizedBox(width: 10),
             HoverScale(
-              child: GestureDetector(
+              child: RemoteTap(
                 onTap: () => widget.onOpen(m),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
@@ -1101,7 +1101,7 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
               animation: Library.instance,
               builder: (_, __) {
                 final fav = Library.instance.isFav(_ref(m).key);
-                return GestureDetector(
+                return RemoteTap(
                   onTap: () => Library.instance.toggleFav(_ref(m)),
                   child: Container(
                     padding: const EdgeInsets.all(14),
@@ -1486,7 +1486,7 @@ class _TopTenCard extends StatelessWidget {
       letterSpacing: wide ? -14 : -4,
     );
     return HoverScale(
-      child: GestureDetector(
+      child: RemoteTap(
         onTap: onTap,
         child: SizedBox(
           width: wide ? 178 : 158,

@@ -157,7 +157,7 @@ class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin
             // button when there's actually something to pop — otherwise popping
             // would unwind the whole app shell and leave a black screen.
             if (Navigator.of(context).canPop()) ...[
-              IconButton(onPressed: () => Navigator.of(context).pop(), icon: const Icon(Icons.arrow_back_rounded)),
+              IconButton(autofocus: true, onPressed: () => Navigator.of(context).pop(), icon: const Icon(Icons.arrow_back_rounded)),
               const SizedBox(width: 4),
             ] else
               const SizedBox(width: 4),
@@ -188,7 +188,7 @@ class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin
         itemBuilder: (_, i) {
           final (id, label) = chips[i];
           final sel = id == _cat;
-          return GestureDetector(
+          return RemoteTap(
             onTap: _cats.isEmpty && i > 0 ? null : () => _pickCat(id),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 180),
@@ -222,7 +222,7 @@ class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin
           children: [
             Text('Couldn’t load titles.', style: TextStyle(color: subtle)),
             const SizedBox(height: 12),
-            GestureDetector(
+            RemoteTap(
               onTap: () {
                 setState(() => _loading = true);
                 _load();
@@ -315,7 +315,7 @@ class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin
 
   Widget _poster(VodStream m, double w, double h, bool focused, bool loadImage) {
     return RepaintBoundary(
-      child: GestureDetector(
+      child: RemoteTap(
         onTap: () => _open(m),
         child: Container(
           width: w,
@@ -368,7 +368,7 @@ class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               // Compact pill: spin to a random pick.
-              GestureDetector(
+              RemoteTap(
                 onTap: _surprise,
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
@@ -385,7 +385,7 @@ class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin
               ),
               const SizedBox(width: 12),
               // Compact pill: open the focused pick.
-              GestureDetector(
+              RemoteTap(
                 onTap: m == null ? null : () => _open(m),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 11),
