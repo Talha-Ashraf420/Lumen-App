@@ -63,7 +63,7 @@ class _CustomizeHomeScreenState extends State<CustomizeHomeScreen> {
                   padding: const EdgeInsets.fromLTRB(8, 6, 16, 6),
                   child: Row(
                     children: [
-                      IconButton(onPressed: () => Navigator.of(context).pop(), icon: const Icon(Icons.arrow_back_rounded)),
+                      IconButton(autofocus: true, onPressed: () => Navigator.of(context).pop(), icon: const Icon(Icons.arrow_back_rounded)),
                       const SizedBox(width: 4),
                       const Text('Customize Home', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
                       const Spacer(),
@@ -133,7 +133,7 @@ class _CustomizeHomeScreenState extends State<CustomizeHomeScreen> {
         ),
         ...cats.map((cat) {
           final on = HomeConfig.instance.isEnabled(type, cat.id);
-          return GestureDetector(
+          return RemoteTap(
             behavior: HitTestBehavior.opaque,
             onTap: () {
               HapticFeedback.selectionClick();

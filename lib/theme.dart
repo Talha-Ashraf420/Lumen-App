@@ -113,35 +113,65 @@ Color get accent => activePalette.accent;
 Color get accentDark => activePalette.accentDark;
 Color get accent2 => activePalette.accent; // legacy alias → single accent
 Color get gold => activePalette.gold;
-Color get onAccent => ThemeData.estimateBrightnessForColor(accent) == Brightness.light
+Color get onAccent =>
+    ThemeData.estimateBrightnessForColor(accent) == Brightness.light
     ? const Color(0xFF11130F)
     : Colors.white;
 
 /// One soft, neutral shadow for floating surfaces (no coloured glow).
-List<BoxShadow> glow(Color c, {double blur = 24, double y = 10, double a = 0.0}) => [
-      BoxShadow(
-        color: Colors.black.withValues(alpha: isDark ? 0.40 : 0.10),
-        blurRadius: blur,
-        offset: Offset(0, y),
-      ),
-    ];
+List<BoxShadow> glow(
+  Color c, {
+  double blur = 24,
+  double y = 10,
+  double a = 0.0,
+}) => [
+  BoxShadow(
+    color: Colors.black.withValues(alpha: isDark ? 0.40 : 0.10),
+    blurRadius: blur,
+    offset: Offset(0, y),
+  ),
+];
 
 // Space Grotesk gives the interface a compact editorial rhythm without making
 // long metadata or settings text feel ornamental.
-TextStyle kHero({Color? color}) =>
-    GoogleFonts.spaceGrotesk(fontSize: 62, fontWeight: FontWeight.w500, letterSpacing: -2.4, height: 0.98, color: color ?? textHi);
-TextStyle kDisplay({Color? color}) =>
-    GoogleFonts.spaceGrotesk(fontSize: 38, fontWeight: FontWeight.w600, letterSpacing: -1.2, height: 1.02, color: color ?? textHi);
-TextStyle kTitle({Color? color}) =>
-    GoogleFonts.spaceGrotesk(fontSize: 23, fontWeight: FontWeight.w600, letterSpacing: -0.6, color: color ?? textHi);
-TextStyle kSection({Color? color}) =>
-    GoogleFonts.spaceGrotesk(fontSize: 11.5, fontWeight: FontWeight.w600, letterSpacing: 1.8, color: color ?? muted);
-TextStyle kBody({Color? color}) =>
-    GoogleFonts.spaceGrotesk(fontSize: 15, fontWeight: FontWeight.w400, height: 1.55, color: color ?? muted);
+TextStyle kHero({Color? color}) => GoogleFonts.spaceGrotesk(
+  fontSize: 62,
+  fontWeight: FontWeight.w500,
+  letterSpacing: -2.4,
+  height: 0.98,
+  color: color ?? textHi,
+);
+TextStyle kDisplay({Color? color}) => GoogleFonts.spaceGrotesk(
+  fontSize: 38,
+  fontWeight: FontWeight.w600,
+  letterSpacing: -1.2,
+  height: 1.02,
+  color: color ?? textHi,
+);
+TextStyle kTitle({Color? color}) => GoogleFonts.spaceGrotesk(
+  fontSize: 23,
+  fontWeight: FontWeight.w600,
+  letterSpacing: -0.6,
+  color: color ?? textHi,
+);
+TextStyle kSection({Color? color}) => GoogleFonts.spaceGrotesk(
+  fontSize: 11.5,
+  fontWeight: FontWeight.w600,
+  letterSpacing: 1.8,
+  color: color ?? muted,
+);
+TextStyle kBody({Color? color}) => GoogleFonts.spaceGrotesk(
+  fontSize: 15,
+  fontWeight: FontWeight.w400,
+  height: 1.55,
+  color: color ?? muted,
+);
 
 ThemeData buildTheme(Palette p) {
   final base = ThemeData(brightness: p.brightness, useMaterial3: true);
-  final text = GoogleFonts.spaceGroteskTextTheme(base.textTheme).apply(bodyColor: p.textHi, displayColor: p.textHi);
+  final text = GoogleFonts.spaceGroteskTextTheme(
+    base.textTheme,
+  ).apply(bodyColor: p.textHi, displayColor: p.textHi);
   return base.copyWith(
     scaffoldBackgroundColor: p.bg,
     colorScheme: base.colorScheme.copyWith(
@@ -156,7 +186,12 @@ ThemeData buildTheme(Palette p) {
       backgroundColor: Colors.transparent,
       elevation: 0,
       scrolledUnderElevation: 0,
-      titleTextStyle: GoogleFonts.spaceGrotesk(fontSize: 22, fontWeight: FontWeight.w600, color: p.textHi, letterSpacing: -0.5),
+      titleTextStyle: GoogleFonts.spaceGrotesk(
+        fontSize: 22,
+        fontWeight: FontWeight.w600,
+        color: p.textHi,
+        letterSpacing: -0.5,
+      ),
     ),
     iconTheme: IconThemeData(color: p.textHi),
     inputDecorationTheme: InputDecorationTheme(
@@ -164,11 +199,22 @@ ThemeData buildTheme(Palette p) {
       fillColor: p.surfaceHi.withValues(alpha: 0.7),
       hintStyle: TextStyle(color: p.subtle),
       labelStyle: TextStyle(color: p.muted),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: p.line)),
-      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: p.accent)),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide.none,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: p.line),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: p.accent),
+      ),
     ),
     dividerTheme: DividerThemeData(color: p.line, thickness: 1),
+    focusColor: p.accent.withValues(alpha: 0.30),
+    hoverColor: p.accent.withValues(alpha: 0.12),
     splashColor: p.accent.withValues(alpha: 0.08),
     highlightColor: p.accent.withValues(alpha: 0.05),
   );
@@ -226,10 +272,12 @@ Palette resolvePalette(ThemeMode mode, Brightness platform) {
   final a = ThemeController.instance.accent.value;
   final p = wantDark ? darkPaletteFor(a) : lightPaletteFor(a);
   activePalette = p;
-  SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
-    statusBarColor: Colors.transparent,
-    statusBarIconBrightness: wantDark ? Brightness.light : Brightness.dark,
-    statusBarBrightness: wantDark ? Brightness.dark : Brightness.light,
-  ));
+  SystemChrome.setSystemUIOverlayStyle(
+    SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: wantDark ? Brightness.light : Brightness.dark,
+      statusBarBrightness: wantDark ? Brightness.dark : Brightness.light,
+    ),
+  );
   return p;
 }

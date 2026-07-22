@@ -34,7 +34,9 @@ class _CategorySheetState extends State<_CategorySheet> {
     final q = _q.trim().toLowerCase();
     final filtered = q.isEmpty
         ? widget.categories
-        : widget.categories.where((c) => c.name.toLowerCase().contains(q)).toList();
+        : widget.categories
+              .where((c) => c.name.toLowerCase().contains(q))
+              .toList();
 
     return DraggableScrollableSheet(
       initialChildSize: 0.7,
@@ -50,18 +52,31 @@ class _CategorySheetState extends State<_CategorySheet> {
           child: Column(
             children: [
               const SizedBox(height: 10),
-              Container(width: 40, height: 4, decoration: BoxDecoration(color: subtle, borderRadius: BorderRadius.circular(2))),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: subtle,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
               const Padding(
                 padding: EdgeInsets.fromLTRB(20, 14, 20, 10),
                 child: Align(
                   alignment: Alignment.centerLeft,
-                  child: Text('Categories', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+                  child: Text(
+                    'Categories',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+                  ),
                 ),
               ),
               // search categories (unified field — single border)
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-                child: SearchField(hint: 'Search categories…', onChanged: (v) => setState(() => _q = v)),
+                child: SearchField(
+                  hint: 'Search categories…',
+                  onChanged: (v) => setState(() => _q = v),
+                ),
               ),
               Expanded(
                 child: ListView(
@@ -71,7 +86,15 @@ class _CategorySheetState extends State<_CategorySheet> {
                     _row('all', 'All categories'),
                     for (final c in filtered) _row(c.id, c.name),
                     if (filtered.isEmpty)
-                      Padding(padding: const EdgeInsets.all(24), child: Center(child: Text('No matches', style: TextStyle(color: subtle)))),
+                      Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Center(
+                          child: Text(
+                            'No matches',
+                            style: TextStyle(color: subtle),
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -84,7 +107,8 @@ class _CategorySheetState extends State<_CategorySheet> {
 
   Widget _row(String id, String name) {
     final sel = (widget.selected ?? 'all') == id;
-    return GestureDetector(
+    return RemoteTap(
+      autofocus: id == 'all',
       onTap: () => Navigator.of(context).pop(id),
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 3),
@@ -93,10 +117,21 @@ class _CategorySheetState extends State<_CategorySheet> {
           color: sel ? accent : surfaceHi.withValues(alpha: 0.5),
           borderRadius: BorderRadius.circular(14),
         ),
-        child: Row(children: [
-          Expanded(child: Text(name, style: TextStyle(fontWeight: FontWeight.w700, color: sel ? Colors.white : cream))),
-          if (sel) const Icon(Icons.check_rounded, color: Colors.white, size: 18),
-        ]),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                name,
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: sel ? Colors.white : cream,
+                ),
+              ),
+            ),
+            if (sel)
+              const Icon(Icons.check_rounded, color: Colors.white, size: 18),
+          ],
+        ),
       ),
     );
   }

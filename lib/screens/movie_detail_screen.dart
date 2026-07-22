@@ -9,6 +9,7 @@ import '../responsive.dart';
 import '../theme.dart';
 import '../playback.dart';
 import '../tmdb.dart';
+import '../widgets.dart';
 import '../xtream.dart';
 
 class MovieDetailScreen extends StatefulWidget {
@@ -173,7 +174,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
           animation: Library.instance,
           builder: (_, __) {
             final fav = Library.instance.isFav(_ref().key);
-            return GestureDetector(
+            return RemoteTap(
               onTap: () => Library.instance.toggleFav(_ref()),
               child: Container(
                 padding: const EdgeInsets.all(15),
@@ -224,7 +225,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
           inner = Icon(Icons.download_rounded, color: textHi, size: 22);
           onTap = _download;
         }
-        return GestureDetector(
+        return RemoteTap(
           onTap: onTap,
           child: Container(
             padding: const EdgeInsets.all(15),
@@ -240,7 +241,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
     );
 
     Widget actions(bool expandPlay) {
-      final play = GestureDetector(
+      final play = RemoteTap(
         onTap: _play,
         child: Container(
           padding: EdgeInsets.symmetric(horizontal: expandPlay ? 0 : 34, vertical: 15),
@@ -257,7 +258,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
           expandPlay ? Expanded(child: play) : play,
           if (t?.trailerUrl != null) ...[
             const SizedBox(width: 12),
-            GestureDetector(
+            RemoteTap(
               onTap: _trailer,
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 15),
@@ -379,6 +380,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
             child: Padding(
               padding: const EdgeInsets.all(8),
               child: IconButton(
+                autofocus: true,
                 onPressed: () => Navigator.of(context).pop(),
                 icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
                 style: IconButton.styleFrom(backgroundColor: Colors.black38),

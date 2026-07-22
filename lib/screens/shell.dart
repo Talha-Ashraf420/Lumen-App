@@ -36,6 +36,8 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   int _index = 0;
+  final GlobalKey<SearchScreenState> _searchKey =
+      GlobalKey<SearchScreenState>();
   // Auto-refresh the catalog when the app returns to the foreground (throttled),
   // so recently-added movies surface without a manual Refresh.
   DateTime _lastRefresh = DateTime.now();
@@ -61,7 +63,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     // Quietly check for a newer build once per launch (skip dev builds).
-    if (kBuildNumber > 0) {
+    if (Updater.instance.isEnabled && kBuildNumber > 0) {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         final result = await Updater.instance.check();
         if (result.status == UpdateCheckStatus.available && mounted) {
@@ -103,7 +105,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   Widget _pageFor(int i) => switch (i) {
     0 => HomeScreen(client: widget.client, onBrowse: () => _select(2)),
     1 => GlobeScreen(client: widget.client),
-    2 => SearchScreen(client: widget.client),
+    2 => SearchScreen(key: _searchKey, client: widget.client),
     3 => MyListScreen(client: widget.client),
     4 => ProfileScreen(
       client: widget.client,
@@ -120,6 +122,11 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   void _select(int i) {
     if (i != _index) HapticFeedback.selectionClick();
     setState(() => _index = i);
+    if (i == 2) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _searchKey.currentState?.focusSearch();
+      });
+    }
   }
 
   @override
@@ -138,7 +145,6 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
             _select(2),
       },
       child: Focus(
-        autofocus: true,
         child: Scaffold(
           body: Stack(
             children: [
@@ -231,7 +237,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
 
   Widget _item(int i) {
     final sel = i == _index;
-    return GestureDetector(
+    return RemoteTap(
+      autofocus: i == 0,
       behavior: HitTestBehavior.opaque,
       onTap: () => _select(i),
       child: AnimatedContainer(
@@ -353,6 +360,7 @@ class _DockItem extends StatelessWidget {
       message: nav.label,
       waitDuration: const Duration(milliseconds: 450),
       child: FocusableTap(
+        autofocus: nav.page == 0,
         onTap: onTap,
         builder: (context, active) => AnimatedContainer(
           duration: const Duration(milliseconds: 180),
@@ -438,7 +446,7 @@ class _CommandBar extends StatelessWidget {
   static const _titles = <int, String>{
     0: 'Tonight',
     1: 'Discover',
-    2: 'Search',
+    2: 'Search library',
     3: 'My list',
     4: 'Profile',
     5: 'Movies',
@@ -464,41 +472,43 @@ class _CommandBar extends StatelessWidget {
               decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
             ),
             const Spacer(),
-            FocusableTap(
-              onTap: onSearch,
-              builder: (_, active) => AnimatedContainer(
-                duration: const Duration(milliseconds: 160),
-                width: 236,
-                height: 40,
-                padding: const EdgeInsets.symmetric(horizontal: 14),
-                decoration: BoxDecoration(
-                  color: active ? surfaceHi : surface,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: active ? accent : line),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.search_rounded, size: 18, color: muted),
-                    const SizedBox(width: 9),
-                    Expanded(
-                      child: Text(
-                        'Find anything',
-                        style: TextStyle(color: subtle, fontSize: 13),
+            if (index != 2) ...[
+              FocusableTap(
+                onTap: onSearch,
+                builder: (_, active) => AnimatedContainer(
+                  duration: const Duration(milliseconds: 160),
+                  width: 236,
+                  height: 40,
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  decoration: BoxDecoration(
+                    color: active ? surfaceHi : surface,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: active ? accent : line),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.search_rounded, size: 18, color: muted),
+                      const SizedBox(width: 9),
+                      Expanded(
+                        child: Text(
+                          'Find anything',
+                          style: TextStyle(color: subtle, fontSize: 13),
+                        ),
                       ),
-                    ),
-                    Text(
-                      '⌘ K',
-                      style: TextStyle(
-                        color: subtle,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
+                      Text(
+                        '⌘ K',
+                        style: TextStyle(
+                          color: subtle,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(width: 10),
+              const SizedBox(width: 10),
+            ],
             IconButton(
               tooltip: 'Refresh library',
               onPressed: () {

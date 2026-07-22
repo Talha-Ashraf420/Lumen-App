@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models.dart';
+import '../distribution.dart';
 import '../store.dart';
 import '../widgets.dart';
 import '../theme.dart';
@@ -32,6 +33,12 @@ class _LoginScreenState extends State<LoginScreen> {
       _error = null;
     });
     try {
+      final transportError = providerTransportError([
+        c.baseUrl,
+        c.m3uUrl,
+        c.epgUrl,
+      ]);
+      if (transportError != null) throw XtreamException(transportError);
       await XtreamClient(c).authenticate();
       await Store.setActive(c);
       if (mounted) widget.onLogin(c);
@@ -95,6 +102,12 @@ class _LoginScreenState extends State<LoginScreen> {
                   setLocal(() => err = 'Enter a playlist URL.');
                   return;
                 }
+                if (!isAllowedProviderUrl(raw)) {
+                  setLocal(() => err = requiresSecureProviderTransport
+                      ? 'Enter a valid HTTPS URL.'
+                      : 'Enter a valid HTTP or HTTPS URL.');
+                  return;
+                }
                 // Xtream-backed link → full login.
                 final x = credentialsFromUrl(raw);
                 if (x != null) {
@@ -102,11 +115,13 @@ class _LoginScreenState extends State<LoginScreen> {
                   return;
                 }
                 // Plain M3U playlist.
-                if (!RegExp(r'^https?://', caseSensitive: false).hasMatch(raw)) {
-                  setLocal(() => err = 'Enter a valid http(s) URL.');
+                final epg = epgCtrl.text.trim();
+                if (epg.isNotEmpty && !isAllowedProviderUrl(epg)) {
+                  setLocal(() => err = requiresSecureProviderTransport
+                      ? 'Enter a valid HTTPS EPG URL.'
+                      : 'Enter a valid HTTP or HTTPS EPG URL.');
                   return;
                 }
-                final epg = epgCtrl.text.trim();
                 Navigator.pop(
                   ctx,
                   XtreamCredentials(
@@ -159,7 +174,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           )),
                       Divider(height: 28, color: line),
                     ],
-                    _field(_url, 'Server URL', hint: 'http://host:8080'),
+                    _field(_url, 'Server URL', hint: 'https://host:443'),
                     const SizedBox(height: 12),
                     _field(_user, 'Username'),
                     const SizedBox(height: 12),
@@ -206,7 +221,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           style: TextStyle(color: accent, fontWeight: FontWeight.w600)),
                     ),
                     const SizedBox(height: 8),
-                    Text('Credentials are stored only on this device.',
+                    Text('Credentials are encrypted and stored only on this device.',
                         style: TextStyle(color: subtle, fontSize: 12)),
                   ],
                 ),

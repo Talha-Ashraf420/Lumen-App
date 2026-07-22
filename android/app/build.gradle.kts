@@ -8,16 +8,16 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
-// Stable release signing so every build (CI + local) shares one signature —
-// otherwise sideloaded updates fail with a package/signature conflict.
+// Release signing is loaded from an untracked local file. Google Play App
+// Signing should own the distribution key; this is only the upload key.
 val keystorePropertiesFile = rootProject.file("key.properties")
 val hasKeystore = keystorePropertiesFile.exists()
 val keystoreProperties = Properties()
 if (hasKeystore) keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 
 android {
-    namespace = "com.lumen.lumen_tv"
-    compileSdk = flutter.compileSdkVersion
+    namespace = "com.talhaashraf.lumen"
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -30,12 +30,11 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.lumen.lumen_tv"
+        applicationId = "com.talhaashraf.lumen"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
@@ -53,8 +52,8 @@ android {
 
     buildTypes {
         release {
-            // Use the stable release key when present; fall back to debug locally.
-            signingConfig = signingConfigs.getByName(if (hasKeystore) "release" else "debug")
+            // Never ship a release artifact signed with Android's public debug key.
+            signingConfig = if (hasKeystore) signingConfigs.getByName("release") else null
         }
     }
 }

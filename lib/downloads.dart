@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
+import 'store.dart';
 
 enum DlStatus { queued, downloading, paused, completed, failed }
 
@@ -78,6 +79,7 @@ class Downloads extends ChangeNotifier {
 
   final List<DownloadItem> items = [];
   Directory? _dir;
+  static const _stateKey = 'lumen_downloads_index';
   final Map<String, http.Client> _active = {};
   final Set<String> _pausing = {}; // ids being paused (keep the partial file)
   final Set<String> _cancelling = {};
@@ -107,9 +109,15 @@ class Downloads extends ChangeNotifier {
     if (!await _dir!.exists()) await _dir!.create(recursive: true);
     items.clear();
     try {
-      final index = File('${_dir!.path}/index.json');
-      if (await index.exists()) {
-        final list = (jsonDecode(await index.readAsString()) as List)
+      final legacyIndex = File('${_dir!.path}/index.json');
+      var raw = await Store.readPrivate(_stateKey);
+      if (raw == null && await legacyIndex.exists()) {
+        raw = await legacyIndex.readAsString();
+        await Store.writePrivate(_stateKey, raw);
+        await legacyIndex.delete();
+      }
+      if (raw != null) {
+        final list = (jsonDecode(raw) as List)
             .map(
               (e) => DownloadItem.fromJson((e as Map).cast<String, dynamic>()),
             )
@@ -193,11 +201,7 @@ class Downloads extends ChangeNotifier {
       do {
         _persistAgain = false;
         final payload = jsonEncode(items.map((d) => d.toJson()).toList());
-        final index = File('${_dir!.path}/index.json');
-        final temp = File('${index.path}.tmp');
-        await temp.writeAsString(payload, flush: true);
-        if (await index.exists()) await index.delete();
-        await temp.rename(index.path);
+        await Store.writePrivate(_stateKey, payload);
       } while (_persistAgain);
     } catch (_) {
       // A later state transition will retry persistence.

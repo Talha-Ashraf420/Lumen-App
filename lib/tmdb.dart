@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 /// TMDB metadata enrichment — better backdrops, overviews, ratings, cast and
 /// YouTube trailers matched to provider titles. Results are memoised per query.
 class Tmdb {
-  static const _key = 'a1da981e444dd4584c26de3e4380c089';
+  static const _key = String.fromEnvironment('TMDB_API_KEY');
   static const _base = 'https://api.themoviedb.org/3';
   static const img = 'https://image.tmdb.org/t/p'; // append /w780, /w500 + path
 
@@ -14,6 +14,7 @@ class Tmdb {
   static Future<TmdbInfo?> tv(String rawName) => _lookup('tv', rawName);
 
   static Future<TmdbInfo?> _lookup(String kind, String rawName) {
+    if (_key.trim().isEmpty) return Future.value(null);
     final title = _clean(rawName);
     if (title.isEmpty) return Future.value(null);
     final year = _year(rawName);

@@ -65,7 +65,7 @@ class _StatsScreenState extends State<StatsScreen> {
                   children: [
                     Row(
                       children: [
-                        IconButton(onPressed: () => Navigator.of(context).pop(), icon: const Icon(Icons.arrow_back_rounded)),
+                        IconButton(autofocus: true, onPressed: () => Navigator.of(context).pop(), icon: const Icon(Icons.arrow_back_rounded)),
                         const SizedBox(width: 4),
                         const Text('Your Lumen', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
                         const Spacer(),

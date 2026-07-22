@@ -7,14 +7,15 @@ import 'models.dart';
 
 /// Local persistence for the active login + saved profiles.
 ///
-/// On iOS the credentials live in the Keychain (survives uninstall, more
-/// secure). On macOS/desktop the Keychain needs entitlements a local build
-/// doesn't have (error -34018), so we use SharedPreferences there instead.
+/// On Android and iOS sensitive values live in encrypted platform storage.
+/// Desktop builds use SharedPreferences because local macOS builds may not have
+/// the Keychain entitlements required by flutter_secure_storage.
 class Store {
   static const _kActive = 'lumen_active';
   static const _kProfiles = 'lumen_profiles';
   static const _secure = FlutterSecureStorage();
-  static final bool _useSecure = !kIsWeb && Platform.isIOS;
+  static final bool _useSecure =
+      !kIsWeb && (Platform.isAndroid || Platform.isIOS);
 
   static bool _migrated = false;
 
@@ -36,8 +37,32 @@ class Store {
     await p.remove(key);
   }
 
+  /// Encrypted persistence for app state that may contain tokenized media URLs.
+  /// Old SharedPreferences values are migrated on first read.
+  static Future<String?> readPrivate(String key) async {
+    if (!_useSecure) return _read(key);
+    try {
+      final secureValue = await _secure.read(key: key);
+      if (secureValue != null) return secureValue;
+      final preferences = await SharedPreferences.getInstance();
+      final legacyValue = preferences.getString(key);
+      if (legacyValue != null) {
+        await _secure.write(key: key, value: legacyValue);
+        await preferences.remove(key);
+      }
+      return legacyValue;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<void> writePrivate(String key, String value) =>
+      _write(key, value);
+
+  static Future<void> deletePrivate(String key) => _delete(key);
+
   /// One-time migration of creds left in the old SharedPreferences store into
-  /// the Keychain (iOS only — on desktop prefs already is the store).
+  /// encrypted platform storage (Android/iOS only).
   static Future<void> _migrate() async {
     if (_migrated) return;
     _migrated = true;
