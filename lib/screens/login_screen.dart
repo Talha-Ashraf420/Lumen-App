@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models.dart';
 import '../distribution.dart';
+import '../responsive.dart';
 import '../store.dart';
 import '../widgets.dart';
 import '../theme.dart';
@@ -24,7 +25,9 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
-    Store.savedProfiles().then((p) => setState(() => _profiles = p));
+    Store.savedProfiles().then((profiles) {
+      if (mounted) setState(() => _profiles = profiles);
+    });
   }
 
   Future<void> _connect(XtreamCredentials c) async {
@@ -39,10 +42,16 @@ class _LoginScreenState extends State<LoginScreen> {
         c.epgUrl,
       ]);
       if (transportError != null) throw XtreamException(transportError);
-      await XtreamClient(c).authenticate();
+      final client = XtreamClient(c);
+      try {
+        await client.authenticate();
+      } finally {
+        client.close();
+      }
       await Store.setActive(c);
       if (mounted) widget.onLogin(c);
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = e.toString();
         _busy = false;
@@ -73,29 +82,49 @@ class _LoginScreenState extends State<LoginScreen> {
                 enableSuggestions: false,
                 minLines: 1,
                 maxLines: 3,
-                decoration: const InputDecoration(labelText: 'Playlist URL', hintText: 'https://…/playlist.m3u  or  get.php?username=…'),
+                decoration: const InputDecoration(
+                  labelText: 'Playlist URL',
+                  hintText: 'https://…/playlist.m3u  or  get.php?username=…',
+                ),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: epgCtrl,
                 autocorrect: false,
                 enableSuggestions: false,
-                decoration: const InputDecoration(labelText: 'XMLTV EPG URL (optional)', hintText: 'https://…/epg.xml'),
+                decoration: const InputDecoration(
+                  labelText: 'XMLTV EPG URL (optional)',
+                  hintText: 'https://…/epg.xml',
+                ),
               ),
               const SizedBox(height: 6),
-              Text('Tip: Xtream links bring the full catalog. Plain .m3u links load live channels.',
-                  style: TextStyle(color: subtle, fontSize: 11.5)),
+              Text(
+                'Tip: Xtream links bring the full catalog. Plain .m3u links load live channels.',
+                style: TextStyle(color: subtle, fontSize: 11.5),
+              ),
               if (err != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 10),
-                  child: Text(err!, style: const TextStyle(color: Color(0xFFFFB4B4), fontSize: 13)),
+                  child: Text(
+                    err!,
+                    style: const TextStyle(
+                      color: Color(0xFFFFB4B4),
+                      fontSize: 13,
+                    ),
+                  ),
                 ),
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancel', style: TextStyle(color: muted))),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text('Cancel', style: TextStyle(color: muted)),
+            ),
             FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: accent, foregroundColor: bg),
+              style: FilledButton.styleFrom(
+                backgroundColor: accent,
+                foregroundColor: bg,
+              ),
               onPressed: () {
                 final raw = urlCtrl.text.trim();
                 if (raw.isEmpty) {
@@ -103,9 +132,11 @@ class _LoginScreenState extends State<LoginScreen> {
                   return;
                 }
                 if (!isAllowedProviderUrl(raw)) {
-                  setLocal(() => err = requiresSecureProviderTransport
-                      ? 'Enter a valid HTTPS URL.'
-                      : 'Enter a valid HTTP or HTTPS URL.');
+                  setLocal(
+                    () => err = requiresSecureProviderTransport
+                        ? 'Enter a valid HTTPS URL.'
+                        : 'Enter a valid HTTP or HTTPS URL.',
+                  );
                   return;
                 }
                 // Xtream-backed link → full login.
@@ -117,9 +148,11 @@ class _LoginScreenState extends State<LoginScreen> {
                 // Plain M3U playlist.
                 final epg = epgCtrl.text.trim();
                 if (epg.isNotEmpty && !isAllowedProviderUrl(epg)) {
-                  setLocal(() => err = requiresSecureProviderTransport
-                      ? 'Enter a valid HTTPS EPG URL.'
-                      : 'Enter a valid HTTP or HTTPS EPG URL.');
+                  setLocal(
+                    () => err = requiresSecureProviderTransport
+                        ? 'Enter a valid HTTPS EPG URL.'
+                        : 'Enter a valid HTTP or HTTPS EPG URL.',
+                  );
                   return;
                 }
                 Navigator.pop(
@@ -144,87 +177,36 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final wide = isWide(context);
     return Scaffold(
       body: Stack(
         children: [
-          // ambient glow
+          Aurora(),
           Positioned(
             top: -120,
             left: -80,
             child: _blob(accent.withValues(alpha: 0.18), 320),
           ),
-          Positioned(bottom: -100, right: -60, child: _blob(accent2.withValues(alpha: 0.12), 280)),
+          Positioned(
+            bottom: -100,
+            right: -60,
+            child: _blob(accent2.withValues(alpha: 0.12), 280),
+          ),
           Center(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(24),
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 420),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Wordmark(size: 42),
-                    const SizedBox(height: 14),
-                    Text('Sign in with your Xtream / X3U codes — or paste an M3U URL.',
-                        textAlign: TextAlign.center, style: TextStyle(color: muted)),
-                    const SizedBox(height: 24),
-                    if (_profiles.isNotEmpty) ...[
-                      ..._profiles.map((p) => Padding(
-                            padding: const EdgeInsets.only(bottom: 10),
-                            child: _ProfileTile(profile: p, busy: _busy, onTap: () => _connect(p)),
-                          )),
-                      Divider(height: 28, color: line),
-                    ],
-                    _field(_url, 'Server URL', hint: 'https://host:443'),
-                    const SizedBox(height: 12),
-                    _field(_user, 'Username'),
-                    const SizedBox(height: 12),
-                    _field(_pass, 'Password', obscure: true),
-                    if (_error != null) ...[
-                      const SizedBox(height: 12),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                            color: Colors.red.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(12)),
-                        child: Text(_error!, style: const TextStyle(color: Color(0xFFFFB4B4))),
-                      ),
-                    ],
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton(
-                        style: FilledButton.styleFrom(
-                          backgroundColor: accent,
-                          foregroundColor: bg,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                        ),
-                        onPressed: _busy
-                            ? null
-                            : () => _connect(XtreamCredentials(
-                                  baseUrl: normalizeBaseUrl(_url.text),
-                                  username: _user.text.trim(),
-                                  password: _pass.text.trim(),
-                                )),
-                        child: _busy
-                            ? SizedBox(
-                                width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2, color: bg))
-                            : const Text('Connect', style: TextStyle(fontWeight: FontWeight.bold)),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    TextButton.icon(
-                      onPressed: _busy ? null : _pasteUrl,
-                      icon: Icon(Icons.link_rounded, size: 18, color: accent),
-                      label: Text('Have an M3U / playlist URL?',
-                          style: TextStyle(color: accent, fontWeight: FontWeight.w600)),
-                    ),
-                    const SizedBox(height: 8),
-                    Text('Credentials are encrypted and stored only on this device.',
-                        style: TextStyle(color: subtle, fontSize: 12)),
-                  ],
-                ),
+                constraints: const BoxConstraints(maxWidth: 1080),
+                child: wide
+                    ? Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Expanded(child: _brandPanel()),
+                          const SizedBox(width: 56),
+                          SizedBox(width: 440, child: _formCard()),
+                        ],
+                      )
+                    : _formCard(showWordmark: true),
               ),
             ),
           ),
@@ -233,7 +215,194 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _field(TextEditingController c, String label, {String? hint, bool obscure = false}) {
+  Widget _brandPanel() => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 18),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Wordmark(size: 46),
+        const SizedBox(height: 34),
+        Text(
+          'Your screen.\nYour signal.',
+          style: kDisplay().copyWith(fontSize: 52, height: 0.98),
+        ),
+        const SizedBox(height: 18),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 470),
+          child: Text(
+            'Bring an authorized provider or playlist and turn it into a calm, personal cinema across phone, desktop and TV.',
+            style: TextStyle(color: muted, fontSize: 15, height: 1.55),
+          ),
+        ),
+        const SizedBox(height: 30),
+        const Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            _TrustPill(
+              icon: Icons.lock_outline_rounded,
+              label: 'Private by default',
+            ),
+            _TrustPill(icon: Icons.tv_rounded, label: 'Remote ready'),
+            _TrustPill(icon: Icons.download_rounded, label: 'Offline playback'),
+          ],
+        ),
+      ],
+    ),
+  );
+
+  Widget _formCard({bool showWordmark = false}) => Glass(
+    radius: 28,
+    padding: const EdgeInsets.all(24),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (showWordmark) ...[
+          const Center(child: Wordmark(size: 38)),
+          const SizedBox(height: 24),
+        ],
+        Text('CONNECT YOUR LIBRARY', style: kSection(color: accent)),
+        const SizedBox(height: 7),
+        const Text(
+          'Welcome to Lumen',
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.5,
+          ),
+        ),
+        const SizedBox(height: 5),
+        Text(
+          'Use provider credentials or bring a playlist URL.',
+          style: TextStyle(color: muted, fontSize: 13),
+        ),
+        const SizedBox(height: 20),
+        if (_profiles.isNotEmpty) ...[
+          Text('SAVED ACCOUNTS', style: kSection()),
+          const SizedBox(height: 9),
+          ..._profiles.map(
+            (profile) => Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: _ProfileTile(
+                profile: profile,
+                busy: _busy,
+                onTap: () => _connect(profile),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Row(
+              children: [
+                Expanded(child: Divider(color: line)),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  child: Text('OR NEW ACCOUNT', style: kSection()),
+                ),
+                Expanded(child: Divider(color: line)),
+              ],
+            ),
+          ),
+        ],
+        _field(_url, 'Server URL', hint: 'https://host:443'),
+        const SizedBox(height: 11),
+        Row(
+          children: [
+            Expanded(child: _field(_user, 'Username')),
+            const SizedBox(width: 10),
+            Expanded(child: _field(_pass, 'Password', obscure: true)),
+          ],
+        ),
+        if (_error != null) ...[
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.red.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              _error!,
+              style: const TextStyle(color: Color(0xFFFFB4B4), fontSize: 12.5),
+            ),
+          ),
+        ],
+        const SizedBox(height: 15),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            style: FilledButton.styleFrom(
+              backgroundColor: accent,
+              foregroundColor: onAccent,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+            onPressed: _busy
+                ? null
+                : () => _connect(
+                    XtreamCredentials(
+                      baseUrl: normalizeBaseUrl(_url.text),
+                      username: _user.text.trim(),
+                      password: _pass.text.trim(),
+                    ),
+                  ),
+            icon: _busy
+                ? SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: onAccent,
+                    ),
+                  )
+                : const Icon(Icons.arrow_forward_rounded, size: 19),
+            label: const Text(
+              'Enter Lumen',
+              style: TextStyle(fontWeight: FontWeight.w800),
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Center(
+          child: TextButton.icon(
+            onPressed: _busy ? null : _pasteUrl,
+            icon: Icon(Icons.link_rounded, size: 18, color: accent),
+            label: Text(
+              'Connect a playlist URL instead',
+              style: TextStyle(color: accent, fontWeight: FontWeight.w700),
+            ),
+          ),
+        ),
+        const SizedBox(height: 5),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.lock_rounded, color: subtle, size: 12),
+            const SizedBox(width: 5),
+            Flexible(
+              child: Text(
+                'Credentials stay encrypted on this device.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: subtle, fontSize: 11.5),
+              ),
+            ),
+          ],
+        ),
+      ],
+    ),
+  );
+
+  Widget _field(
+    TextEditingController c,
+    String label, {
+    String? hint,
+    bool obscure = false,
+  }) {
     return TextField(
       controller: c,
       obscureText: obscure,
@@ -244,34 +413,96 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Widget _blob(Color color, double size) => Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: RadialGradient(colors: [color, color.withValues(alpha: 0)]),
-        ),
-      );
+    width: size,
+    height: size,
+    decoration: BoxDecoration(
+      shape: BoxShape.circle,
+      gradient: RadialGradient(colors: [color, color.withValues(alpha: 0)]),
+    ),
+  );
 }
 
 class _ProfileTile extends StatelessWidget {
   final XtreamCredentials profile;
   final bool busy;
   final VoidCallback onTap;
-  const _ProfileTile({required this.profile, required this.busy, required this.onTap});
+  const _ProfileTile({
+    required this.profile,
+    required this.busy,
+    required this.onTap,
+  });
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: surface,
-      borderRadius: BorderRadius.circular(16),
-      child: ListTile(
-        onTap: busy ? null : onTap,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        leading: Icon(Icons.tv_rounded, color: accent),
-        title: Text(profile.username, style: const TextStyle(fontWeight: FontWeight.w600)),
-        subtitle: Text(profile.baseUrl.replaceFirst(RegExp(r'^https?://'), ''),
-            style: TextStyle(color: subtle)),
-        trailing: Icon(Icons.arrow_forward_ios_rounded, size: 14, color: subtle),
+    return RemoteTap(
+      onTap: busy ? null : onTap,
+      focusRadius: 15,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: surfaceHi.withValues(alpha: 0.5),
+          borderRadius: BorderRadius.circular(15),
+          border: Border.all(color: line),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: accent.withValues(alpha: 0.13),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(Icons.tv_rounded, color: accent, size: 19),
+            ),
+            const SizedBox(width: 11),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    profile.username,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  Text(
+                    profile.baseUrl.replaceFirst(RegExp(r'^https?://'), ''),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: subtle, fontSize: 11.5),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.arrow_forward_rounded, size: 17, color: accent),
+          ],
+        ),
       ),
     );
   }
+}
+
+class _TrustPill extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  const _TrustPill({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+    decoration: BoxDecoration(
+      color: surfaceHi.withValues(alpha: 0.55),
+      borderRadius: BorderRadius.circular(13),
+      border: Border.all(color: line),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, color: accent, size: 16),
+        const SizedBox(width: 7),
+        Text(
+          label,
+          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
+        ),
+      ],
+    ),
+  );
 }

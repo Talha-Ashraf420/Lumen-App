@@ -1,38 +1,190 @@
+import 'dart:async';
+
 import 'models.dart';
 import 'xtream.dart';
 
-/// Shared category cache so every screen (Home / Search / Live) reuses the same
-/// successfully-loaded categories. Retries transient failures and never caches
-/// an empty/failed result as final, so a later call can still succeed.
+/// Shared catalog cache used by Home, Search, browse pages and details.
+///
+/// Two details matter here:
+///  * futures are cached immediately, so screens asking for the same content
+///    while it is still loading share one request;
+///  * provider work is gently scheduled, preventing a newly-built page from
+///    opening a large burst of simultaneous connections.
 class CatalogCache {
   CatalogCache._();
   static final CatalogCache instance = CatalogCache._();
 
-  List<Category>? _vod, _series, _live;
+  final _requests = _RequestScheduler(maxConcurrent: 3);
 
-  Future<List<Category>> vod(XtreamClient c) async =>
-      (_vod ??= await _retry(() => c.vodCategories())) ?? const [];
+  Future<List<Category>>? _vodCategories;
+  Future<List<Category>>? _seriesCategories;
+  Future<List<Category>>? _liveCategories;
 
-  Future<List<Category>> series(XtreamClient c) async =>
-      (_series ??= await _retry(() => c.seriesCategories())) ?? const [];
+  final Map<String, Future<List<VodStream>>> _vodStreams = {};
+  final Map<String, Future<List<Series>>> _series = {};
+  final Map<String, Future<List<LiveStream>>> _liveStreams = {};
+  final Map<int, Future<VodInfo>> _vodInfo = {};
+  final Map<int, Future<SeriesInfo>> _seriesInfo = {};
 
-  Future<List<Category>> live(XtreamClient c) async =>
-      (_live ??= await _retry(() => c.liveCategories())) ?? const [];
+  Future<List<Category>> vod(XtreamClient client, {bool priority = false}) =>
+      _vodCategories ??= _loadCategories(
+        client.vodCategories,
+        priority: priority,
+      );
+
+  Future<List<Category>> series(XtreamClient client, {bool priority = false}) =>
+      _seriesCategories ??= _loadCategories(
+        client.seriesCategories,
+        priority: priority,
+      );
+
+  Future<List<Category>> live(XtreamClient client, {bool priority = false}) =>
+      _liveCategories ??= _loadCategories(
+        client.liveCategories,
+        priority: priority,
+      );
+
+  Future<List<VodStream>> vodStreams(
+    XtreamClient client,
+    String? categoryId, {
+    bool priority = false,
+  }) => _memoized(
+    _vodStreams,
+    categoryId ?? '*',
+    () =>
+        _requests.run(() => client.vodStreams(categoryId), priority: priority),
+  );
+
+  Future<List<Series>> seriesItems(
+    XtreamClient client,
+    String? categoryId, {
+    bool priority = false,
+  }) => _memoized(
+    _series,
+    categoryId ?? '*',
+    () => _requests.run(() => client.series(categoryId), priority: priority),
+  );
+
+  Future<List<LiveStream>> liveStreams(
+    XtreamClient client,
+    String? categoryId, {
+    bool priority = false,
+  }) => _memoized(
+    _liveStreams,
+    categoryId ?? '*',
+    () =>
+        _requests.run(() => client.liveStreams(categoryId), priority: priority),
+  );
+
+  Future<VodInfo> vodInfo(XtreamClient client, int id) => _memoized(
+    _vodInfo,
+    id,
+    () => _requests.run(() => client.vodInfo(id), priority: true),
+  );
+
+  Future<SeriesInfo> seriesInfo(XtreamClient client, int id) => _memoized(
+    _seriesInfo,
+    id,
+    () => _requests.run(() => client.seriesInfo(id), priority: true),
+  );
 
   void clear() {
-    _vod = _series = _live = null;
+    _vodCategories = null;
+    _seriesCategories = null;
+    _liveCategories = null;
+    _vodStreams.clear();
+    _series.clear();
+    _liveStreams.clear();
+    _vodInfo.clear();
+    _seriesInfo.clear();
   }
 
-  /// Returns the first non-empty result across a few attempts, or null on
-  /// persistent failure (so the caller's `??=` leaves the slot open to retry).
-  static Future<List<Category>?> _retry(Future<List<Category>> Function() f) async {
-    for (var i = 0; i < 3; i++) {
+  Future<List<Category>> _loadCategories(
+    Future<List<Category>> Function() fetch, {
+    bool priority = false,
+  }) async =>
+      (await _retry(() => _requests.run(fetch, priority: priority))) ??
+      const [];
+
+  /// Returns the first non-empty result across a few attempts. Empty category
+  /// lists are allowed after retrying (plain M3U profiles legitimately have no
+  /// movie or series catalog).
+  static Future<List<Category>?> _retry(
+    Future<List<Category>> Function() fetch,
+  ) async {
+    for (var attempt = 0; attempt < 3; attempt++) {
       try {
-        final r = await f();
-        if (r.isNotEmpty) return r;
+        final result = await fetch();
+        if (result.isNotEmpty) return result;
       } catch (_) {}
-      await Future.delayed(Duration(milliseconds: 400 * (i + 1)));
+      if (attempt < 2) {
+        await Future<void>.delayed(Duration(milliseconds: 350 * (attempt + 1)));
+      }
     }
     return null;
+  }
+
+  static Future<T> _memoized<K, T>(
+    Map<K, Future<T>> cache,
+    K key,
+    Future<T> Function() load,
+  ) {
+    final existing = cache[key];
+    if (existing != null) return existing;
+    final future = load();
+    cache[key] = future;
+    future.then<void>(
+      (_) {},
+      onError: (Object _, StackTrace _) {
+        if (identical(cache[key], future)) cache.remove(key);
+      },
+    );
+    return future;
+  }
+}
+
+class _RequestScheduler {
+  _RequestScheduler({required this.maxConcurrent});
+
+  final int maxConcurrent;
+  int _active = 0;
+  final List<_ScheduledRequest<dynamic>> _priority = [];
+  final List<_ScheduledRequest<dynamic>> _normal = [];
+
+  Future<T> run<T>(Future<T> Function() task, {bool priority = false}) {
+    final completer = Completer<T>();
+    final request = _ScheduledRequest<T>(task, completer);
+    (priority ? _priority : _normal).add(request);
+    _drain();
+    return completer.future;
+  }
+
+  void _drain() {
+    while (_active < maxConcurrent &&
+        (_priority.isNotEmpty || _normal.isNotEmpty)) {
+      final request = _priority.isNotEmpty
+          ? _priority.removeAt(0)
+          : _normal.removeAt(0);
+      _active++;
+      request.run().whenComplete(() {
+        _active--;
+        _drain();
+      });
+    }
+  }
+}
+
+class _ScheduledRequest<T> {
+  _ScheduledRequest(this.task, this.completer);
+
+  final Future<T> Function() task;
+  final Completer<T> completer;
+
+  Future<void> run() async {
+    try {
+      completer.complete(await task());
+    } catch (error, stackTrace) {
+      completer.completeError(error, stackTrace);
+    }
   }
 }

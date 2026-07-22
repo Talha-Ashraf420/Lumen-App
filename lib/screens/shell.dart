@@ -95,8 +95,10 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     }
     if (state != AppLifecycleState.resumed) return;
     final now = DateTime.now();
-    // Throttle: only re-fetch if it's been a few minutes since the last refresh.
-    if (now.difference(_lastRefresh) > const Duration(minutes: 3)) {
+    // Keep the warm in-memory catalog when briefly switching apps. Providers
+    // can expose tens of thousands of entries, so a three-minute expiry made
+    // returning to Lumen needlessly repeat all of that work.
+    if (now.difference(_lastRefresh) > const Duration(minutes: 30)) {
       _lastRefresh = now;
       refreshContent();
     }

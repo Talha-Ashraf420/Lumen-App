@@ -55,7 +55,10 @@ class _EpgGuideScreenState extends State<EpgGuideScreen>
     WidgetsBinding.instance.addObserver(this);
     final n = DateTime.now();
     _windowStart = DateTime(n.year, n.month, n.day);
-    _dayTimer = Timer.periodic(const Duration(minutes: 1), (_) => _rollGuideDay());
+    _dayTimer = Timer.periodic(
+      const Duration(minutes: 1),
+      (_) => _rollGuideDay(),
+    );
     _init();
   }
 
@@ -86,9 +89,14 @@ class _EpgGuideScreenState extends State<EpgGuideScreen>
 
   Future<void> _init() async {
     try {
-      final cats = await CatalogCache.instance.live(widget.client);
+      final cats = await CatalogCache.instance.live(
+        widget.client,
+        priority: true,
+      );
       _cat = cats.isNotEmpty ? cats.first.id : null;
-      final chans = await widget.client.liveStreams(_cat).catchError((_) => <LiveStream>[]);
+      final chans = await CatalogCache.instance
+          .liveStreams(widget.client, _cat, priority: true)
+          .catchError((_) => <LiveStream>[]);
       if (!mounted) return;
       setState(() {
         _cats = cats;
@@ -102,24 +110,38 @@ class _EpgGuideScreenState extends State<EpgGuideScreen>
   }
 
   Future<void> _pickCategory() async {
-    final r = await showCategorySheet(context, categories: _cats, selected: _cat);
+    final r = await showCategorySheet(
+      context,
+      categories: _cats,
+      selected: _cat,
+    );
     if (r == null || !mounted || r == _cat) return;
     setState(() {
       _cat = r;
       _ready = false;
     });
-    final chans = await widget.client.liveStreams(_cat).catchError((_) => <LiveStream>[]);
-    if (mounted) setState(() {
-      _channels = chans;
-      _ready = true;
-    });
+    final chans = await CatalogCache.instance
+        .liveStreams(widget.client, _cat, priority: true)
+        .catchError((_) => <LiveStream>[]);
+    if (mounted)
+      setState(() {
+        _channels = chans;
+        _ready = true;
+      });
   }
 
-  String get _catName =>
-      _cats.firstWhere((c) => c.id == _cat, orElse: () => Category(_cat ?? 'all', 'All channels')).name;
+  String get _catName => _cats
+      .firstWhere(
+        (c) => c.id == _cat,
+        orElse: () => Category(_cat ?? 'all', 'All channels'),
+      )
+      .name;
 
   double get _nowX {
-    final mins = DateTime.now().difference(_windowStart).inMinutes.clamp(0, _windowMinutes);
+    final mins = DateTime.now()
+        .difference(_windowStart)
+        .inMinutes
+        .clamp(0, _windowMinutes);
     return mins * _pxPerMin;
   }
 
@@ -131,12 +153,21 @@ class _EpgGuideScreenState extends State<EpgGuideScreen>
 
   PlayerItem _liveItem(LiveStream s) {
     final url = widget.client.streamUrl('live', s.streamId, ext: 'ts');
-    return PlayerItem(url, s.name,
-        isLive: true,
-        poster: s.icon,
-        httpHeaders: widget.client.streamHeaders(s.streamId),
-        favRef: MediaRef(kind: 'live', id: s.streamId, name: s.name, image: s.icon, url: url),
-        epg: () => EpgCache.instance.nowNext(widget.client, s.streamId));
+    return PlayerItem(
+      url,
+      s.name,
+      isLive: true,
+      poster: s.icon,
+      httpHeaders: widget.client.streamHeaders(s.streamId),
+      favRef: MediaRef(
+        kind: 'live',
+        id: s.streamId,
+        name: s.name,
+        image: s.icon,
+        url: url,
+      ),
+      epg: () => EpgCache.instance.nowNext(widget.client, s.streamId),
+    );
   }
 
   void _playLive(int index) {
@@ -168,10 +199,13 @@ class _EpgGuideScreenState extends State<EpgGuideScreen>
           startTime: e.start,
         );
         PlaybackController.instance.open([
-          PlayerItem(url, '${c.name} · ${e.title}',
-              ext: 'ts',
-              poster: c.icon,
-              httpHeaders: widget.client.streamHeaders(c.streamId)),
+          PlayerItem(
+            url,
+            '${c.name} · ${e.title}',
+            ext: 'ts',
+            poster: c.icon,
+            httpHeaders: widget.client.streamHeaders(c.streamId),
+          ),
         ], 0);
       } else {
         _toast('Not available for catch-up');
@@ -183,7 +217,9 @@ class _EpgGuideScreenState extends State<EpgGuideScreen>
 
   void _toast(String m) => ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(m), duration: const Duration(seconds: 2)));
+    ..showSnackBar(
+      SnackBar(content: Text(m), duration: const Duration(seconds: 2)),
+    );
 
   @override
   Widget build(BuildContext context) {
@@ -197,7 +233,12 @@ class _EpgGuideScreenState extends State<EpgGuideScreen>
         _topBar(),
         Expanded(
           child: _channels.isEmpty
-              ? Center(child: Text('No channels here.', style: TextStyle(color: subtle)))
+              ? Center(
+                  child: Text(
+                    'No channels here.',
+                    style: TextStyle(color: subtle),
+                  ),
+                )
               : Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -210,14 +251,20 @@ class _EpgGuideScreenState extends State<EpgGuideScreen>
                             height: _headerH,
                             alignment: Alignment.centerLeft,
                             padding: const EdgeInsets.only(left: 16),
-                            decoration: BoxDecoration(border: Border(bottom: BorderSide(color: line), right: BorderSide(color: line))),
+                            decoration: BoxDecoration(
+                              border: Border(
+                                bottom: BorderSide(color: line),
+                                right: BorderSide(color: line),
+                              ),
+                            ),
                             child: Text('CHANNELS', style: kSection()),
                           ),
                           Expanded(
                             child: ListView.builder(
                               controller: _vCol,
                               itemCount: _channels.length,
-                              itemBuilder: (_, i) => _channelTile(_channels[i], i),
+                              itemBuilder: (_, i) =>
+                                  _channelTile(_channels[i], i),
                             ),
                           ),
                         ],
@@ -247,14 +294,18 @@ class _EpgGuideScreenState extends State<EpgGuideScreen>
                                     ListView.builder(
                                       controller: _vBody,
                                       itemCount: _channels.length,
-                                      itemBuilder: (_, i) => _row(_channels[i], i),
+                                      itemBuilder: (_, i) =>
+                                          _row(_channels[i], i),
                                     ),
                                     // "now" marker
                                     Positioned(
                                       left: _nowX,
                                       top: 0,
                                       bottom: 0,
-                                      child: Container(width: 2, color: const Color(0xFFFF3B5C)),
+                                      child: Container(
+                                        width: 2,
+                                        color: const Color(0xFFFF3B5C),
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -276,7 +327,14 @@ class _EpgGuideScreenState extends State<EpgGuideScreen>
       padding: const EdgeInsets.fromLTRB(18, 8, 12, 10),
       child: Row(
         children: [
-          const Text('TV Guide', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
+          const Text(
+            'TV Guide',
+            style: TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.5,
+            ),
+          ),
           const SizedBox(width: 12),
           Icon(Icons.grid_view_rounded, color: accent, size: 22),
           const Spacer(),
@@ -284,17 +342,35 @@ class _EpgGuideScreenState extends State<EpgGuideScreen>
             RemoteTap(
               onTap: _pickCategory,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-                decoration: BoxDecoration(color: surfaceHi.withValues(alpha: 0.6), borderRadius: BorderRadius.circular(12), border: Border.all(color: line)),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.category_rounded, size: 16, color: accent),
-                  const SizedBox(width: 8),
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 200),
-                    child: Text(_catName, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-                  ),
-                  Icon(Icons.expand_more_rounded, color: muted, size: 18),
-                ]),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 9,
+                ),
+                decoration: BoxDecoration(
+                  color: surfaceHi.withValues(alpha: 0.6),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: line),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.category_rounded, size: 16, color: accent),
+                    const SizedBox(width: 8),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 200),
+                      child: Text(
+                        _catName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                    Icon(Icons.expand_more_rounded, color: muted, size: 18),
+                  ],
+                ),
               ),
             ),
           const SizedBox(width: 8),
@@ -302,12 +378,25 @@ class _EpgGuideScreenState extends State<EpgGuideScreen>
             onTap: _jumpToNow,
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-              decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(12)),
-              child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(Icons.schedule_rounded, size: 16, color: Colors.white),
-                SizedBox(width: 6),
-                Text('Now', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13)),
-              ]),
+              decoration: BoxDecoration(
+                color: accent,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.schedule_rounded, size: 16, color: Colors.white),
+                  SizedBox(width: 6),
+                  Text(
+                    'Now',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -333,12 +422,21 @@ class _EpgGuideScreenState extends State<EpgGuideScreen>
                   alignment: Alignment.centerLeft,
                   child: Text(
                     _hhmm(_windowStart.add(Duration(minutes: i * 30))),
-                    style: TextStyle(color: i.isEven ? muted : subtle, fontSize: 11.5, fontWeight: FontWeight.w700),
+                    style: TextStyle(
+                      color: i.isEven ? muted : subtle,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
               ),
             ),
-          Positioned(left: 0, right: 0, bottom: 0, child: Divider(height: 1, color: line)),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: Divider(height: 1, color: line),
+          ),
         ],
       ),
     );
@@ -351,7 +449,12 @@ class _EpgGuideScreenState extends State<EpgGuideScreen>
       child: Container(
         height: _rowH,
         padding: const EdgeInsets.symmetric(horizontal: 12),
-        decoration: BoxDecoration(border: Border(bottom: BorderSide(color: line), right: BorderSide(color: line))),
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(color: line),
+            right: BorderSide(color: line),
+          ),
+        ),
         child: Row(
           children: [
             ClipRRect(
@@ -362,13 +465,30 @@ class _EpgGuideScreenState extends State<EpgGuideScreen>
                 color: surfaceHi,
                 padding: const EdgeInsets.all(4),
                 child: c.icon.isNotEmpty
-                    ? CachedNetworkImage(imageUrl: c.icon, fit: BoxFit.contain, errorWidget: (_, _, _) => Icon(Icons.live_tv_rounded, color: subtle, size: 20))
+                    ? CachedNetworkImage(
+                        imageUrl: c.icon,
+                        fit: BoxFit.contain,
+                        errorWidget: (_, _, _) => Icon(
+                          Icons.live_tv_rounded,
+                          color: subtle,
+                          size: 20,
+                        ),
+                      )
                     : Icon(Icons.live_tv_rounded, color: subtle, size: 20),
               ),
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: Text(c.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, height: 1.15)),
+              child: Text(
+                c.name,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12.5,
+                  height: 1.15,
+                ),
+              ),
             ),
           ],
         ),
@@ -403,9 +523,24 @@ class _EpgGuideScreenState extends State<EpgGuideScreen>
           final list = _clean(snap.data ?? const <EpgEntry>[]);
           return Stack(
             children: [
-              Positioned(left: 0, right: 0, bottom: 0, child: Divider(height: 1, color: line)),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: Divider(height: 1, color: line),
+              ),
               if (list.isEmpty && snap.connectionState == ConnectionState.done)
-                Positioned(left: 10, top: 0, bottom: 0, child: Center(child: Text('No guide data', style: TextStyle(color: subtle, fontSize: 12))))
+                Positioned(
+                  left: 10,
+                  top: 0,
+                  bottom: 0,
+                  child: Center(
+                    child: Text(
+                      'No guide data',
+                      style: TextStyle(color: subtle, fontSize: 12),
+                    ),
+                  ),
+                )
               else
                 for (final e in list) ..._maybeBlock(c, chIndex, e),
             ],
@@ -433,25 +568,39 @@ class _EpgGuideScreenState extends State<EpgGuideScreen>
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
             decoration: BoxDecoration(
-              color: e.isNow ? accent.withValues(alpha: 0.18) : surfaceHi.withValues(alpha: 0.45),
+              color: e.isNow
+                  ? accent.withValues(alpha: 0.18)
+                  : surfaceHi.withValues(alpha: 0.45),
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: e.isNow ? accent.withValues(alpha: 0.7) : line),
+              border: Border.all(
+                color: e.isNow ? accent.withValues(alpha: 0.7) : line,
+              ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(e.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 12,
-                        color: e.isPast && !e.isNow ? muted : textHi)),
+                Text(
+                  e.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                    color: e.isPast && !e.isNow ? muted : textHi,
+                  ),
+                ),
                 const SizedBox(height: 2),
                 Row(
                   children: [
-                    Text(_hhmm(e.start), style: TextStyle(color: e.isNow ? accent : subtle, fontSize: 10.5, fontWeight: FontWeight.w600)),
+                    Text(
+                      _hhmm(e.start),
+                      style: TextStyle(
+                        color: e.isNow ? accent : subtle,
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                     if (_canCatchUp(c, e)) ...[
                       const SizedBox(width: 5),
                       Icon(Icons.history_rounded, size: 11, color: subtle),

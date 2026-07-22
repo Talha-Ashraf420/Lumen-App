@@ -123,55 +123,200 @@ class LegalScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Legal & privacy')),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
+      backgroundColor: bg,
+      body: Stack(
         children: [
-          const _Section(
-            title: 'Independent player',
-            body:
-                'Lumen is a media player and catalog client. Lumen does not provide, sell, host, curate, or endorse any subscription, channel, playlist, stream, or media. You must use only content you own or are legally authorized to access.',
-          ),
-          const _Section(
-            title: 'Privacy on your device',
-            body:
-                'Provider credentials, saved profiles, favorites, watch progress, and download state are stored on your device. On Android and iOS, sensitive app data is kept in encrypted platform storage. Lumen sends requests only to services you configure and to optional metadata or subtitle services used by a feature. Lumen has no advertising or analytics SDK.',
-          ),
-          const _Section(
-            title: 'Downloads',
-            body:
-                'Downloads are intended only for media you have permission to copy for offline use. Deleting a download removes its local file. Removing a profile deletes its saved credentials from this device.',
-          ),
-          const _Section(
-            title: 'Third-party services',
-            body:
-                'This product uses the TMDB API but is not endorsed or certified by TMDB. Subtitle searches may use OpenSubtitles when that optional integration is configured. Those services have their own terms and privacy practices.',
-          ),
-          const _Section(
-            title: 'Your responsibility',
-            body:
-                'You are responsible for your configured services, the rights to media you access, and compliance with applicable laws. Do not use Lumen to infringe copyright or bypass access controls.',
-          ),
-          const SizedBox(height: 8),
-          _LinkTile(
-            icon: Icons.privacy_tip_outlined,
-            title: 'Privacy policy',
-            subtitle: privacyPolicyUrl,
-            onTap: () => _open(privacyPolicyUrl),
-          ),
-          const SizedBox(height: 10),
-          _LinkTile(
-            icon: Icons.movie_filter_outlined,
-            title: 'The Movie Database',
-            subtitle: 'themoviedb.org',
-            onTap: () => _open('https://www.themoviedb.org'),
-          ),
-          const SizedBox(height: 10),
-          _LinkTile(
-            icon: Icons.email_outlined,
-            title: 'Privacy & support contact',
-            subtitle: supportEmail,
-            onTap: () => _open('mailto:$supportEmail'),
+          const Aurora(),
+          SafeArea(
+            child: Column(
+              children: [
+                EditorialPageHeader(
+                  eyebrow: 'Trust centre',
+                  title: 'Clear terms, private by design',
+                  subtitle:
+                      'Plain-language details about what Lumen does, stores and connects to.',
+                  icon: Icons.shield_outlined,
+                  onBack: () => Navigator.of(context).pop(),
+                ),
+                Expanded(
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final twoColumn = constraints.maxWidth >= 820;
+                      final contentWidth = constraints.maxWidth > 1120
+                          ? 1120.0
+                          : constraints.maxWidth;
+                      final cardWidth = twoColumn
+                          ? (contentWidth - 14) / 2
+                          : double.infinity;
+                      return ListView(
+                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 48),
+                        children: [
+                          Center(
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 1120),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Glass(
+                                    radius: 26,
+                                    tint: accent.withValues(
+                                      alpha: isDark ? 0.13 : 0.08,
+                                    ),
+                                    padding: const EdgeInsets.all(24),
+                                    child: Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Container(
+                                          width: 52,
+                                          height: 52,
+                                          decoration: BoxDecoration(
+                                            color: accent,
+                                            borderRadius: BorderRadius.circular(
+                                              17,
+                                            ),
+                                          ),
+                                          child: Icon(
+                                            Icons.lock_person_outlined,
+                                            color: onAccent,
+                                            size: 25,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 17),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              const Text(
+                                                'Your media. Your providers. Your responsibility.',
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.w800,
+                                                  fontSize: 19,
+                                                  letterSpacing: -0.3,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 7),
+                                              Text(
+                                                'Lumen is an independent player—it supplies no content, runs no ads and includes no analytics SDK.',
+                                                style: TextStyle(
+                                                  color: muted,
+                                                  height: 1.5,
+                                                  fontSize: 13.5,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 22),
+                                  Text(
+                                    'THE IMPORTANT PARTS',
+                                    style: kSection(color: accent),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Wrap(
+                                    spacing: 14,
+                                    runSpacing: 14,
+                                    children: [
+                                      _Section(
+                                        width: cardWidth,
+                                        index: '01',
+                                        title: 'Independent player',
+                                        body:
+                                            'Lumen is a media player and catalog client. It does not provide, sell, host, curate, or endorse subscriptions, channels, playlists, streams, or media. Use only content you own or are authorized to access.',
+                                      ),
+                                      _Section(
+                                        width: cardWidth,
+                                        index: '02',
+                                        title: 'Private on your device',
+                                        body:
+                                            'Profiles, favorites, progress and download state stay on your device. Sensitive mobile data uses encrypted platform storage. Lumen has no advertising or analytics SDK.',
+                                      ),
+                                      _Section(
+                                        width: cardWidth,
+                                        index: '03',
+                                        title: 'Responsible downloads',
+                                        body:
+                                            'Download only media you have permission to copy. Deleting a download removes its local file; removing a profile removes its saved credentials from this device.',
+                                      ),
+                                      _Section(
+                                        width: cardWidth,
+                                        index: '04',
+                                        title: 'Third-party services',
+                                        body:
+                                            'Metadata may come from TMDB and optional subtitle searches may use OpenSubtitles. Those independent services have their own terms and privacy practices.',
+                                      ),
+                                      _Section(
+                                        width: cardWidth,
+                                        index: '05',
+                                        title: 'Your responsibility',
+                                        body:
+                                            'You are responsible for configured services, media rights and applicable laws. Do not use Lumen to infringe copyright or bypass access controls.',
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 24),
+                                  Text(
+                                    'POLICIES & CONTACT',
+                                    style: kSection(color: accent),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Wrap(
+                                    spacing: 10,
+                                    runSpacing: 10,
+                                    children: [
+                                      SizedBox(
+                                        width: twoColumn
+                                            ? (contentWidth - 20) / 3
+                                            : double.infinity,
+                                        child: _LinkTile(
+                                          icon: Icons.privacy_tip_outlined,
+                                          title: 'Privacy policy',
+                                          subtitle: privacyPolicyUrl,
+                                          onTap: () => _open(privacyPolicyUrl),
+                                        ),
+                                      ),
+                                      SizedBox(
+                                        width: twoColumn
+                                            ? (contentWidth - 20) / 3
+                                            : double.infinity,
+                                        child: _LinkTile(
+                                          icon: Icons.movie_filter_outlined,
+                                          title: 'The Movie Database',
+                                          subtitle: 'themoviedb.org',
+                                          onTap: () => _open(
+                                            'https://www.themoviedb.org',
+                                          ),
+                                        ),
+                                      ),
+                                      SizedBox(
+                                        width: twoColumn
+                                            ? (contentWidth - 20) / 3
+                                            : double.infinity,
+                                        child: _LinkTile(
+                                          icon: Icons.email_outlined,
+                                          title: 'Privacy & support',
+                                          subtitle: supportEmail,
+                                          onTap: () =>
+                                              _open('mailto:$supportEmail'),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -199,23 +344,53 @@ class _Point extends StatelessWidget {
 }
 
 class _Section extends StatelessWidget {
+  final double width;
+  final String index;
   final String title;
   final String body;
-  const _Section({required this.title, required this.body});
+  const _Section({
+    required this.width,
+    required this.index,
+    required this.title,
+    required this.body,
+  });
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: 24),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
-        ),
-        const SizedBox(height: 8),
-        Text(body, style: TextStyle(color: muted, height: 1.55)),
-      ],
+  Widget build(BuildContext context) => SizedBox(
+    width: width,
+    child: Glass(
+      radius: 20,
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                index,
+                style: TextStyle(
+                  color: accent,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 11,
+                  letterSpacing: 1.2,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(body, style: TextStyle(color: muted, height: 1.5, fontSize: 13)),
+        ],
+      ),
     ),
   );
 }

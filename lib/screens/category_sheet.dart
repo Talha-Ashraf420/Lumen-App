@@ -37,6 +37,10 @@ class _CategorySheetState extends State<_CategorySheet> {
         : widget.categories
               .where((c) => c.name.toLowerCase().contains(q))
               .toList();
+    final options = <(String, String)>[
+      ('all', 'All categories'),
+      for (final category in filtered) (category.id, category.name),
+    ];
 
     return DraggableScrollableSheet(
       initialChildSize: 0.7,
@@ -60,14 +64,62 @@ class _CategorySheetState extends State<_CategorySheet> {
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
-              const Padding(
-                padding: EdgeInsets.fromLTRB(20, 14, 20, 10),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'Categories',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
-                  ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 14, 20, 12),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: accent.withValues(alpha: 0.13),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        Icons.category_outlined,
+                        color: accent,
+                        size: 19,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Choose a collection',
+                            style: TextStyle(
+                              fontSize: 19,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          SizedBox(height: 2),
+                          Text(
+                            'Focus the catalog around what you want now.',
+                            style: TextStyle(fontSize: 12, color: Colors.grey),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: surfaceHi,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        '${widget.categories.length}',
+                        style: TextStyle(
+                          color: muted,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
               // search categories (unified field — single border)
@@ -79,24 +131,41 @@ class _CategorySheetState extends State<_CategorySheet> {
                 ),
               ),
               Expanded(
-                child: ListView(
-                  controller: scroll,
-                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 24),
-                  children: [
-                    _row('all', 'All categories'),
-                    for (final c in filtered) _row(c.id, c.name),
-                    if (filtered.isEmpty)
-                      Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Center(
-                          child: Text(
-                            'No matches',
-                            style: TextStyle(color: subtle),
-                          ),
-                        ),
+                child: filtered.isEmpty && q.isNotEmpty
+                    ? const LumenEmptyState(
+                        icon: Icons.search_off_rounded,
+                        eyebrow: 'No match',
+                        title: 'Try another category name',
+                        message:
+                            'The current provider has no collection matching that search.',
+                      )
+                    : LayoutBuilder(
+                        builder: (context, constraints) {
+                          if (constraints.maxWidth >= 700) {
+                            return GridView.builder(
+                              controller: scroll,
+                              padding: const EdgeInsets.fromLTRB(14, 2, 14, 24),
+                              gridDelegate:
+                                  const SliverGridDelegateWithMaxCrossAxisExtent(
+                                    maxCrossAxisExtent: 300,
+                                    mainAxisExtent: 60,
+                                    crossAxisSpacing: 8,
+                                    mainAxisSpacing: 8,
+                                  ),
+                              itemCount: options.length,
+                              itemBuilder: (_, index) =>
+                                  _row(options[index].$1, options[index].$2),
+                            );
+                          }
+                          return ListView.builder(
+                            controller: scroll,
+                            padding: const EdgeInsets.fromLTRB(12, 0, 12, 24),
+                            itemCount: options.length,
+                            itemBuilder: (_, index) =>
+                                _row(options[index].$1, options[index].$2),
+                          );
+                        },
                       ),
-                  ],
-                ),
               ),
             ],
           ),
@@ -111,25 +180,43 @@ class _CategorySheetState extends State<_CategorySheet> {
       autofocus: id == 'all',
       onTap: () => Navigator.of(context).pop(id),
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 3),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        margin: const EdgeInsets.symmetric(vertical: 2),
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
         decoration: BoxDecoration(
-          color: sel ? accent : surfaceHi.withValues(alpha: 0.5),
+          color: sel
+              ? accent.withValues(alpha: 0.15)
+              : surfaceHi.withValues(alpha: 0.45),
           borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: sel ? accent.withValues(alpha: 0.48) : line,
+          ),
         ),
         child: Row(
           children: [
+            Container(
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(
+                color: sel ? accent : surface,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                id == 'all' ? Icons.apps_rounded : Icons.folder_outlined,
+                color: sel ? onAccent : muted,
+                size: 16,
+              ),
+            ),
+            const SizedBox(width: 10),
             Expanded(
               child: Text(
                 name,
                 style: TextStyle(
                   fontWeight: FontWeight.w700,
-                  color: sel ? Colors.white : cream,
+                  color: sel ? textHi : cream,
                 ),
               ),
             ),
-            if (sel)
-              const Icon(Icons.check_rounded, color: Colors.white, size: 18),
+            if (sel) Icon(Icons.check_rounded, color: accent, size: 18),
           ],
         ),
       ),

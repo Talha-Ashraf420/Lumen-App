@@ -12,7 +12,11 @@ class Discovery {
   /// sequential batches with retry (providers reject big concurrent bursts),
   /// accumulating de-duplicated items until [target] is reached or categories
   /// run out.
-  static Future<List<VodStream>> pool(XtreamClient c, {int target = 250, String? categoryId}) async {
+  static Future<List<VodStream>> pool(
+    XtreamClient c, {
+    int target = 250,
+    String? categoryId,
+  }) async {
     // A specific genre/category was chosen — just that one.
     if (categoryId != null) {
       final r = await _fetch(c, categoryId);
@@ -25,12 +29,19 @@ class Discovery {
 
     // Preferred categories (from the user's movie taste) first, then the rest shuffled.
     final freq = <String, int>{};
-    for (final m in [...Library.instance.favourites, ...Library.instance.recent]) {
-      if (m.kind == 'movie' && m.cat.isNotEmpty) freq[m.cat] = (freq[m.cat] ?? 0) + 1;
+    for (final m in [
+      ...Library.instance.favourites,
+      ...Library.instance.recent,
+    ]) {
+      if (m.kind == 'movie' && m.cat.isNotEmpty)
+        freq[m.cat] = (freq[m.cat] ?? 0) + 1;
     }
-    final pref = freq.keys.where((id) => allCats.any((c) => c.id == id)).toList()
-      ..sort((a, b) => freq[b]!.compareTo(freq[a]!));
-    final rest = allCats.map((e) => e.id).where((id) => !pref.contains(id)).toList()..shuffle();
+    final pref =
+        freq.keys.where((id) => allCats.any((c) => c.id == id)).toList()
+          ..sort((a, b) => freq[b]!.compareTo(freq[a]!));
+    final rest =
+        allCats.map((e) => e.id).where((id) => !pref.contains(id)).toList()
+          ..shuffle();
     final ordered = [...pref, ...rest];
 
     final out = <VodStream>[];
@@ -52,7 +63,7 @@ class Discovery {
   static Future<List<VodStream>> _fetch(XtreamClient c, String id) async {
     for (var attempt = 0; attempt < 2; attempt++) {
       try {
-        final r = await c.vodStreams(id);
+        final r = await CatalogCache.instance.vodStreams(c, id);
         if (r.isNotEmpty) return r;
       } catch (_) {}
       await Future.delayed(Duration(milliseconds: 250 * (attempt + 1)));

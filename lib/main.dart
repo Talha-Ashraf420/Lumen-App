@@ -155,13 +155,16 @@ class _GateState extends State<_Gate> {
   XtreamClient? _client; // cached so theme rebuilds don't recreate it
 
   /// Make these credentials active: rebuild the client and drop cached catalogs.
-  void _activate(XtreamCredentials c) => setState(() {
-    _creds = c;
-    _client = null;
-    PlaybackController.instance.stop();
-    CatalogCache.instance.clear();
-    EpgCache.instance.clear();
-  });
+  void _activate(XtreamCredentials c) {
+    _client?.close();
+    setState(() {
+      _creds = c;
+      _client = null;
+      PlaybackController.instance.stop();
+      CatalogCache.instance.clear();
+      EpgCache.instance.clear();
+    });
+  }
 
   void _onLogin(XtreamCredentials c) => _activate(c);
 
@@ -170,13 +173,24 @@ class _GateState extends State<_Gate> {
     if (mounted) _activate(c);
   }
 
-  void _onLogout() => setState(() {
-    _creds = null;
-    _client = null;
-    PlaybackController.instance.stop();
-    CatalogCache.instance.clear();
-    EpgCache.instance.clear();
-  });
+  void _onLogout() {
+    _client?.close();
+    activeClient = null;
+    setState(() {
+      _creds = null;
+      _client = null;
+      PlaybackController.instance.stop();
+      CatalogCache.instance.clear();
+      EpgCache.instance.clear();
+    });
+  }
+
+  @override
+  void dispose() {
+    _client?.close();
+    if (identical(activeClient, _client)) activeClient = null;
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {

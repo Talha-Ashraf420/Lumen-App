@@ -68,6 +68,9 @@ class SearchScreenState extends State<SearchScreen>
   final Set<String> _inFlight = {};
 
   List<Category> _movieCats = [], _seriesCats = [], _liveCats = [];
+  bool _movieCatsReady = false;
+  bool _seriesCatsReady = false;
+  bool _liveCatsReady = false;
 
   @override
   bool get wantKeepAlive => true;
@@ -81,15 +84,48 @@ class SearchScreenState extends State<SearchScreen>
 
   void _loadCats() {
     final c = widget.client;
-    CatalogCache.instance
-        .vod(c)
-        .then((v) => mounted ? setState(() => _movieCats = v) : null);
-    CatalogCache.instance
-        .series(c)
-        .then((v) => mounted ? setState(() => _seriesCats = v) : null);
-    CatalogCache.instance
-        .live(c)
-        .then((v) => mounted ? setState(() => _liveCats = v) : null);
+    final wanted = widget.initialSection;
+    if (wanted == null || wanted == 'movie') {
+      CatalogCache.instance
+          .vod(c, priority: true)
+          .then((categories) => _storeCategories('movie', categories));
+    }
+    if (wanted == null || wanted == 'series') {
+      CatalogCache.instance
+          .series(c, priority: true)
+          .then((categories) => _storeCategories('series', categories));
+    }
+    if (wanted == null || wanted == 'live') {
+      CatalogCache.instance
+          .live(c, priority: true)
+          .then((categories) => _storeCategories('live', categories));
+    }
+  }
+
+  void _storeCategories(String section, List<Category> categories) {
+    if (!mounted) return;
+    setState(() {
+      switch (section) {
+        case 'movie':
+          _movieCats = categories;
+          _movieCatsReady = true;
+        case 'series':
+          _seriesCats = categories;
+          _seriesCatsReady = true;
+        case 'live':
+          _liveCats = categories;
+          _liveCatsReady = true;
+      }
+      // Dedicated browse pages open on a focused category instead of issuing
+      // an expensive whole-catalog request. “All categories” remains selectable.
+      if (_browse &&
+          _section == section &&
+          widget.initialCategory == null &&
+          _cat == 'all' &&
+          categories.isNotEmpty) {
+        _cat = categories.first.id;
+      }
+    });
   }
 
   void _onRefresh() {
@@ -98,6 +134,10 @@ class SearchScreenState extends State<SearchScreen>
       _movieByCat.clear();
       _seriesByCat.clear();
       _liveByCat.clear();
+      _movieCatsReady = false;
+      _seriesCatsReady = false;
+      _liveCatsReady = false;
+      _cat = widget.initialCategory ?? 'all';
     });
     _loadCats();
   }
@@ -153,28 +193,57 @@ class SearchScreenState extends State<SearchScreen>
   }
 
   Future<List<VodStream>> _loadMovies(String cat) async {
-    if (cat != 'all') return widget.client.vodStreams(cat);
-    final all = await widget.client
-        .vodStreams(null)
+    if (cat != 'all') {
+      return CatalogCache.instance.vodStreams(
+        widget.client,
+        cat,
+        priority: true,
+      );
+    }
+    final all = await CatalogCache.instance
+        .vodStreams(widget.client, null, priority: true)
         .catchError((_) => <VodStream>[]);
     if (all.isNotEmpty || _movieCats.isEmpty) return all;
-    return _aggregate(_movieCats, (id) => widget.client.vodStreams(id));
+    return _aggregate(
+      _movieCats,
+      (id) => CatalogCache.instance.vodStreams(widget.client, id),
+    );
   }
 
   Future<List<Series>> _loadSeries(String cat) async {
-    if (cat != 'all') return widget.client.series(cat);
-    final all = await widget.client.series(null).catchError((_) => <Series>[]);
+    if (cat != 'all') {
+      return CatalogCache.instance.seriesItems(
+        widget.client,
+        cat,
+        priority: true,
+      );
+    }
+    final all = await CatalogCache.instance
+        .seriesItems(widget.client, null, priority: true)
+        .catchError((_) => <Series>[]);
     if (all.isNotEmpty || _seriesCats.isEmpty) return all;
-    return _aggregate(_seriesCats, (id) => widget.client.series(id));
+    return _aggregate(
+      _seriesCats,
+      (id) => CatalogCache.instance.seriesItems(widget.client, id),
+    );
   }
 
   Future<List<LiveStream>> _loadLive(String cat) async {
-    if (cat != 'all') return widget.client.liveStreams(cat);
-    final all = await widget.client
-        .liveStreams(null)
+    if (cat != 'all') {
+      return CatalogCache.instance.liveStreams(
+        widget.client,
+        cat,
+        priority: true,
+      );
+    }
+    final all = await CatalogCache.instance
+        .liveStreams(widget.client, null, priority: true)
         .catchError((_) => <LiveStream>[]);
     if (all.isNotEmpty || _liveCats.isEmpty) return all;
-    return _aggregate(_liveCats, (id) => widget.client.liveStreams(id));
+    return _aggregate(
+      _liveCats,
+      (id) => CatalogCache.instance.liveStreams(widget.client, id),
+    );
   }
 
   /// Concatenate streams across all categories in gentle batches (fallback when
@@ -217,6 +286,7 @@ class SearchScreenState extends State<SearchScreen>
         client: widget.client,
         seriesId: s.seriesId,
         title: s.name,
+        preview: s,
       ),
     ),
   );
@@ -256,6 +326,13 @@ class SearchScreenState extends State<SearchScreen>
     'series' => _seriesCats,
     'live' => _liveCats,
     _ => const [],
+  };
+
+  bool get _curCatsReady => switch (_section) {
+    'movie' => _movieCatsReady,
+    'series' => _seriesCatsReady,
+    'live' => _liveCatsReady,
+    _ => true,
   };
 
   String get _catLabel {
@@ -826,6 +903,7 @@ class SearchScreenState extends State<SearchScreen>
 
     // specific section — fetch the selected category directly
     final live = _section == 'live';
+    if (_browse && !_curCatsReady) return GridLoading(channel: live);
     final catId = _cat;
     _ensure(_section, catId);
     final loaded = _has(_section, catId);
