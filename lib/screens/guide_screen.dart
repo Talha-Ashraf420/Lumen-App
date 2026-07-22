@@ -68,6 +68,7 @@ class _GuideScreenState extends State<GuideScreen> with AutomaticKeepAliveClient
     return PlayerItem(url, s.name,
         isLive: true,
         poster: s.icon,
+        httpHeaders: widget.client.streamHeaders(s.streamId),
         favRef: MediaRef(kind: 'live', id: s.streamId, name: s.name, image: s.icon, url: url),
         epg: () => EpgCache.instance.nowNext(widget.client, s.streamId));
   }
@@ -152,9 +153,17 @@ class _GuideScreenState extends State<GuideScreen> with AutomaticKeepAliveClient
         channel: channel,
         onWatch: (entry) {
           Navigator.pop(context);
-          final url = widget.client.timeshiftUrl(channel.streamId, entry.timeshiftStart, entry.durationMinutes);
+          final url = widget.client.timeshiftUrl(
+            channel.streamId,
+            entry.timeshiftStart,
+            entry.durationMinutes,
+            startTime: entry.start,
+          );
           PlaybackController.instance.open([
-            PlayerItem(url, '${channel.name} · ${entry.title}', ext: 'ts', poster: channel.icon),
+            PlayerItem(url, '${channel.name} · ${entry.title}',
+                ext: 'ts',
+                poster: channel.icon,
+                httpHeaders: widget.client.streamHeaders(channel.streamId)),
           ], 0);
         },
       ),

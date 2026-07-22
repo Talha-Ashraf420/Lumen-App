@@ -148,7 +148,10 @@ class DownloadsScreen extends StatelessWidget {
                   if (ready)
                     Text('Ready · ${_bytes(d.received)}', style: TextStyle(color: accent, fontSize: 12, fontWeight: FontWeight.w600))
                   else if (failed)
-                    Text('Failed — tap remove and retry', style: TextStyle(color: const Color(0xFFFF6B6B), fontSize: 12))
+                    Text(d.errorMessage ?? 'Download failed — resume to retry',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: Color(0xFFFF6B6B), fontSize: 12))
                   else if (d.status == DlStatus.queued)
                     Row(children: [
                       Icon(Icons.schedule_rounded, color: muted, size: 14),

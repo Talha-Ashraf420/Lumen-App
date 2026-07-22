@@ -60,8 +60,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _delete(XtreamCredentials p) async {
+    final wasActive = _isActive(p);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: surface,
+        title: const Text('Remove account?'),
+        content: Text('“${p.username}” will be removed from this device.'
+            '${wasActive ? '\n\nYou’re currently signed in to it — you’ll be switched out.' : ''}'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Cancel', style: TextStyle(color: muted))),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFFF5277), foregroundColor: Colors.white),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
     final left = await Store.removeProfile(p);
-    if (mounted) setState(() => _profiles = left);
+    if (!mounted) return;
+    if (wasActive) {
+      // Active account removed: hop to another saved one, or drop to login.
+      if (left.isNotEmpty) {
+        widget.onSwitch(left.first);
+      } else {
+        widget.onLogout();
+      }
+      return;
+    }
+    setState(() => _profiles = left);
   }
 
   Future<void> _clearHistory() async {
@@ -93,15 +122,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _checkForUpdates() async {
     if (_checkingUpdate) return;
     setState(() => _checkingUpdate = true);
-    final info = await Updater.instance.check();
+    final result = await Updater.instance.check();
     if (!mounted) return;
     setState(() => _checkingUpdate = false);
-    if (info != null) {
-      showUpdateFlow(context, info);
-    } else {
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text('You’re on the latest (${Updater.instance.currentLabel}).'), duration: const Duration(seconds: 2)));
+    switch (result.status) {
+      case UpdateCheckStatus.available:
+        showUpdateFlow(context, result.info!);
+      case UpdateCheckStatus.upToDate:
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(content: Text('You’re on the latest (${Updater.instance.currentLabel}).'), duration: const Duration(seconds: 2)));
+      case UpdateCheckStatus.failed:
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(content: Text(result.error ?? 'Could not check for updates.'), duration: const Duration(seconds: 3)));
     }
   }
 

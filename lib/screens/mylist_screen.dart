@@ -16,7 +16,12 @@ class MyListScreen extends StatelessWidget {
   void _open(BuildContext context, MediaRef r) {
     if (r.kind == 'live') {
       PlaybackController.instance.open([
-        PlayerItem(r.url, r.name, isLive: true, poster: r.image, favRef: r, epg: () => client.shortEpg(r.id))
+        PlayerItem(r.url, r.name,
+            isLive: true,
+            poster: r.image,
+            httpHeaders: client.streamHeaders(r.id),
+            favRef: r,
+            epg: () => client.shortEpg(r.id))
       ], 0);
       return;
     }

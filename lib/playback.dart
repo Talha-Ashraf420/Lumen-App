@@ -42,10 +42,12 @@ class PlayerItem {
   final String? progressKey; // continue-watching key, e.g. 'movie:123' / 'ep:456'
   final String poster; // thumbnail for continue-watching / recents
   final String ext;
+  final Map<String, String> httpHeaders;
   final MediaRef? favRef; // what the heart toggles (movie/series/channel)
   final Future<List<EpgEntry>> Function()? epg; // now/next for live channels (lazy)
   const PlayerItem(this.url, this.title,
-      {this.isLive = false, this.progressKey, this.poster = '', this.ext = '', this.favRef, this.epg});
+      {this.isLive = false, this.progressKey, this.poster = '', this.ext = '',
+       this.httpHeaders = const {}, this.favRef, this.epg});
 }
 
 /// App-level playback so the video keeps running while you browse. The full
@@ -71,8 +73,14 @@ class PlaybackController extends ChangeNotifier {
   StreamSubscription<Duration>? _posSub;
   StreamSubscription<bool>? _completedSub;
   StreamSubscription<String>? _errorSub;
-  StreamSubscription<bool>? _playingSub;
   Timer? _statsTimer;
+  Timer? _watchdog; // live stall detector (drives auto-reconnect)
+  Duration _lastPos = Duration.zero;
+  int _lastProgressMs =
+      0; // last time playback was healthy (advancing / not buffering)
+  int _openedAtMs = 0;
+  int _lastStatsTickMs = 0;
+  bool _wantsPlayback = false;
 
   // ---- auto-reconnect state ----
   /// Active reconnect configuration (can be overridden by the user).
@@ -84,6 +92,7 @@ class PlaybackController extends ChangeNotifier {
   /// Human-readable reconnect status shown in the UI, e.g. "Reconnecting (2/3)…".
   /// Null when idle.
   String? reconnectStatus;
+  String? playbackError;
 
   Timer? _reconnectTimer;
 
@@ -102,17 +111,18 @@ class PlaybackController extends ChangeNotifier {
       _completedSub = player!.stream.completed.listen((done) {
         if (done && !isLive && hasNext && autoAdvance) go(index + 1);
       });
-      _errorSub = player!.stream.error.listen(_onError);
-      // Recovery path: the moment the stream is actually playing again, clear any
-      // reconnect state. Without this the overlay stuck on "Reconnecting (n/max)"
-      // forever, because errors set it but nothing ever reset it on success.
-      _playingSub = player!.stream.playing.listen((playing) {
-        if (playing && (reconnectAttempt != 0 || reconnectStatus != null)) {
-          _cancelReconnect();
-          notifyListeners();
-        }
-      });
-      _statsTimer = Timer.periodic(const Duration(seconds: 15), (_) => _tickStats());
+      _errorSub = player!.stream.error.listen(_onPlayerError);
+      _statsTimer = Timer.periodic(
+        const Duration(seconds: 15),
+        (_) => _tickStats(),
+      );
+      // Reconnect is driven by a stall watchdog (below), NOT by libmpv error
+      // events — those fire spuriously during normal startup/buffering and were
+      // both slowing loads (reopening mid-load) and failing real drops.
+      _watchdog = Timer.periodic(
+        const Duration(seconds: 3),
+        (_) => _checkStall(),
+      );
     }
     items = newItems;
     index = i.clamp(0, newItems.length - 1);
@@ -139,27 +149,75 @@ class PlaybackController extends ChangeNotifier {
     autoAdvance = true;
     epg = const [];
     _cancelReconnect();
-    player!.open(Media(item.url, httpHeaders: const {'User-Agent': 'VLC/3.0.20 LibVLC/3.0.20'}));
+    playbackError = null;
+    _wantsPlayback = true;
+    _openedAtMs = DateTime.now().millisecondsSinceEpoch;
+    _lastProgressMs = _openedAtMs;
+    _lastStatsTickMs = _openedAtMs;
+    _lastPos = Duration.zero;
+    player!.open(_mediaForCurrent());
     if (item.favRef != null) Library.instance.addRecent(item.favRef!);
     _loadEpg();
   }
 
   // ---- reconnect logic ----
 
-  void _onError(String error) {
-    // Only reconnect if the feature is enabled for this stream type.
+  Media _mediaForCurrent() => Media(
+    item.url,
+    httpHeaders: {
+      'User-Agent': 'VLC/3.0.20 LibVLC/3.0.20',
+      ...item.httpHeaders,
+    },
+  );
+
+  void _onPlayerError(String error) {
+    if (!_wantsPlayback || !isLive) return;
+    playbackError = error.trim().isEmpty
+        ? 'The stream stopped unexpectedly.'
+        : error.trim();
+    // The watchdog decides whether to reopen. libmpv may report recoverable
+    // segment errors, so reacting immediately here causes reconnect loops.
+  }
+
+  /// Runs every few seconds. A live stream that is *playing* (not user-paused)
+  /// but has been *buffering with no progress* for a sustained period is a real
+  /// connection drop → schedule a reconnect. Anything healthy resets the clock,
+  /// so this never fires during normal startup or short re-buffers.
+  void _checkStall() {
+    if (player == null || items.isEmpty) return;
     if (reconnectConfig.liveOnly && !isLive) return;
-    // libmpv emits non-fatal errors during normal playback/startup (transient
-    // network blips, recoverable HLS segment errors). If the stream is still
-    // actually playing, it's NOT a drop — ignore, or we'd flash a bogus
-    // "Reconnecting (n/max)" over a perfectly fine video.
-    if (player?.state.playing ?? false) return;
-    if (reconnectAttempt >= reconnectConfig.maxAttempts) {
-      // All retries exhausted — surface the error to the UI.
-      reconnectStatus = null;
-      notifyListeners();
+    if (!_wantsPlayback) return;
+    if (_reconnectTimer != null) return; // a reconnect is already pending
+    final s = player!.state;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    // Give initial loads and retries enough time for DNS, manifests and a
+    // first buffer before judging them as stalled.
+    if (now - _openedAtMs < 15000) return;
+    if (s.playing && !s.buffering) {
+      _lastProgressMs = now;
+      if (reconnectStatus != null || reconnectAttempt != 0) {
+        _cancelReconnect();
+        playbackError = null;
+        notifyListeners();
+      }
       return;
     }
+    if (now - _lastProgressMs <= 12000) return;
+    if (reconnectAttempt >= reconnectConfig.maxAttempts) {
+      if (reconnectStatus != null) {
+        reconnectStatus = null;
+        playbackError ??=
+            'Stream unavailable after ${reconnectConfig.maxAttempts} retries.';
+        notifyListeners();
+      }
+      return;
+    }
+    // Both prolonged buffering and an unexpected playing=false state are
+    // treated as drops. User pauses are excluded by _wantsPlayback.
+    _scheduleReconnect();
+  }
+
+  void _scheduleReconnect() {
     reconnectAttempt++;
     // Exponential back-off: 2s, 4s, 8s … capped at maxDelay.
     final rawMs = reconnectConfig.baseDelay.inMilliseconds * (1 << (reconnectAttempt - 1));
@@ -170,10 +228,13 @@ class PlaybackController extends ChangeNotifier {
   }
 
   void _doReconnect() {
+    _reconnectTimer = null;
     if (player == null || items.isEmpty) return;
-    // Re-open the same URL without resetting reconnectAttempt so the counter
-    // keeps incrementing on repeated failures.
-    player!.open(Media(item.url, httpHeaders: const {'User-Agent': 'VLC/3.0.20 LibVLC/3.0.20'}));
+    // Give the reopened stream a fresh grace window before the watchdog judges it.
+    _openedAtMs = DateTime.now().millisecondsSinceEpoch;
+    _lastProgressMs = _openedAtMs;
+    _lastPos = Duration.zero;
+    player!.open(_mediaForCurrent());
   }
 
   void _cancelReconnect() {
@@ -187,8 +248,35 @@ class PlaybackController extends ChangeNotifier {
   void retryNow() {
     _cancelReconnect();
     if (player == null || items.isEmpty) return;
-    player!.open(Media(item.url, httpHeaders: const {'User-Agent': 'VLC/3.0.20 LibVLC/3.0.20'}));
+    playbackError = null;
+    _wantsPlayback = true;
+    _openedAtMs = DateTime.now().millisecondsSinceEpoch;
+    _lastProgressMs = _openedAtMs;
+    player!.open(_mediaForCurrent());
     notifyListeners();
+  }
+
+  void play() {
+    if (player == null) return;
+    _wantsPlayback = true;
+    _openedAtMs = DateTime.now().millisecondsSinceEpoch;
+    _lastProgressMs = _openedAtMs;
+    player!.play();
+  }
+
+  void pause() {
+    _wantsPlayback = false;
+    _cancelReconnect();
+    player?.pause();
+    notifyListeners();
+  }
+
+  void togglePlayPause() {
+    if (player?.state.playing ?? false) {
+      pause();
+    } else {
+      play();
+    }
   }
 
   void _loadEpg() {
@@ -218,7 +306,19 @@ class PlaybackController extends ChangeNotifier {
   }
 
   void _onPosition(Duration pos) {
-    if (player == null || isLive || item.progressKey == null) return;
+    if (player == null) return;
+    // Watchdog health signal for ALL stream types: playback advanced → healthy,
+    // so refresh the clock and clear any in-progress reconnect (recovery).
+    if (pos > _lastPos) {
+      _lastPos = pos;
+      _lastProgressMs = DateTime.now().millisecondsSinceEpoch;
+      if (reconnectStatus != null || reconnectAttempt != 0) {
+        _cancelReconnect();
+        playbackError = null;
+        notifyListeners();
+      }
+    }
+    if (isLive || item.progressKey == null) return;
     final dur = player!.state.duration;
     if (dur.inSeconds <= 0) return;
     if (!_resumed) {
@@ -237,13 +337,24 @@ class PlaybackController extends ChangeNotifier {
   }
 
   void _tickStats() {
-    if (player == null || items.isEmpty || !(player!.state.playing)) return;
-    final kind = isLive ? 'live' : ((item.progressKey?.startsWith('ep:') ?? false) ? 'series' : 'movie');
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final elapsed = ((nowMs - _lastStatsTickMs) ~/ 1000).clamp(0, 15);
+    _lastStatsTickMs = nowMs;
+    if (player == null ||
+        items.isEmpty ||
+        !player!.state.playing ||
+        player!.state.buffering ||
+        elapsed == 0) {
+      return;
+    }
+    final kind = isLive
+        ? 'live'
+        : ((item.progressKey?.startsWith('ep:') ?? false) ? 'series' : 'movie');
     final now = DateTime.now();
     String two(int n) => n.toString().padLeft(2, '0');
     final day = '${now.year}-${two(now.month)}-${two(now.day)}';
     WatchStats.instance.add(
-      seconds: 15,
+      seconds: elapsed,
       kind: kind,
       cat: item.favRef?.cat ?? '',
       titleKey: item.favRef?.key ?? item.progressKey ?? '',
@@ -287,10 +398,11 @@ class PlaybackController extends ChangeNotifier {
     _completedSub = null;
     _errorSub?.cancel();
     _errorSub = null;
-    _playingSub?.cancel();
-    _playingSub = null;
     _statsTimer?.cancel();
     _statsTimer = null;
+    _watchdog?.cancel();
+    _watchdog = null;
+    _wantsPlayback = false;
     player?.dispose();
     player = null;
     controller = null;

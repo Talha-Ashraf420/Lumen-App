@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:linked_scroll_controller/linked_scroll_controller.dart';
@@ -23,7 +24,8 @@ class EpgGuideScreen extends StatefulWidget {
   State<EpgGuideScreen> createState() => _EpgGuideScreenState();
 }
 
-class _EpgGuideScreenState extends State<EpgGuideScreen> with AutomaticKeepAliveClientMixin {
+class _EpgGuideScreenState extends State<EpgGuideScreen>
+    with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
   static const double _pxPerMin = 3.0;
   static const double _rowH = 66;
   static const double _headerH = 44;
@@ -37,7 +39,8 @@ class _EpgGuideScreenState extends State<EpgGuideScreen> with AutomaticKeepAlive
   late final ScrollController _vCol = _vGroup.addAndGet();
   late final ScrollController _vBody = _vGroup.addAndGet();
 
-  late final DateTime _windowStart; // today 00:00 local
+  late DateTime _windowStart; // today 00:00 local
+  Timer? _dayTimer;
   List<Category> _cats = [];
   String? _cat;
   List<LiveStream> _channels = [];
@@ -49,13 +52,31 @@ class _EpgGuideScreenState extends State<EpgGuideScreen> with AutomaticKeepAlive
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     final n = DateTime.now();
     _windowStart = DateTime(n.year, n.month, n.day);
+    _dayTimer = Timer.periodic(const Duration(minutes: 1), (_) => _rollGuideDay());
     _init();
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _rollGuideDay();
+  }
+
+  void _rollGuideDay() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    if (today == _windowStart || !mounted) return;
+    EpgCache.instance.clear();
+    setState(() => _windowStart = today);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _jumpToNow());
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _dayTimer?.cancel();
     _hHead.dispose();
     _hBody.dispose();
     _vCol.dispose();
@@ -113,6 +134,7 @@ class _EpgGuideScreenState extends State<EpgGuideScreen> with AutomaticKeepAlive
     return PlayerItem(url, s.name,
         isLive: true,
         poster: s.icon,
+        httpHeaders: widget.client.streamHeaders(s.streamId),
         favRef: MediaRef(kind: 'live', id: s.streamId, name: s.name, image: s.icon, url: url),
         epg: () => EpgCache.instance.nowNext(widget.client, s.streamId));
   }
@@ -139,8 +161,18 @@ class _EpgGuideScreenState extends State<EpgGuideScreen> with AutomaticKeepAlive
     }
     if (e.isPast) {
       if (_canCatchUp(c, e)) {
-        final url = widget.client.timeshiftUrl(c.streamId, e.timeshiftStart, e.durationMinutes);
-        PlaybackController.instance.open([PlayerItem(url, '${c.name} · ${e.title}', ext: 'ts', poster: c.icon)], 0);
+        final url = widget.client.timeshiftUrl(
+          c.streamId,
+          e.timeshiftStart,
+          e.durationMinutes,
+          startTime: e.start,
+        );
+        PlaybackController.instance.open([
+          PlayerItem(url, '${c.name} · ${e.title}',
+              ext: 'ts',
+              poster: c.icon,
+              httpHeaders: widget.client.streamHeaders(c.streamId)),
+        ], 0);
       } else {
         _toast('Not available for catch-up');
       }

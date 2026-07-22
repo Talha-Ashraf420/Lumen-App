@@ -18,6 +18,7 @@ class DownloadItem {
   DlStatus status;
   int received;
   int total;
+  String? errorMessage;
 
   DownloadItem({
     required this.id,
@@ -30,35 +31,41 @@ class DownloadItem {
     this.status = DlStatus.downloading,
     this.received = 0,
     this.total = 0,
+    this.errorMessage,
   });
 
   double get progress => total > 0 ? (received / total).clamp(0.0, 1.0) : 0;
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'title': title,
-        'poster': poster,
-        'kind': kind,
-        'remoteUrl': remoteUrl,
-        'fileName': fileName,
-        'progressKey': progressKey,
-        'status': status.name,
-        'received': received,
+    'id': id,
+    'title': title,
+    'poster': poster,
+    'kind': kind,
+    'remoteUrl': remoteUrl,
+    'fileName': fileName,
+    'progressKey': progressKey,
+    'status': status.name,
+    'received': received,
         'total': total,
-      };
+        if (errorMessage != null) 'errorMessage': errorMessage,
+  };
 
   factory DownloadItem.fromJson(Map<String, dynamic> j) => DownloadItem(
-        id: j['id'],
-        title: j['title'] ?? '',
-        poster: j['poster'] ?? '',
-        kind: j['kind'] ?? 'movie',
-        remoteUrl: j['remoteUrl'] ?? '',
-        fileName: j['fileName'] ?? '',
-        progressKey: j['progressKey'],
-        status: DlStatus.values.firstWhere((s) => s.name == j['status'], orElse: () => DlStatus.completed),
-        received: j['received'] ?? 0,
+    id: j['id'],
+    title: j['title'] ?? '',
+    poster: j['poster'] ?? '',
+    kind: j['kind'] ?? 'movie',
+    remoteUrl: j['remoteUrl'] ?? '',
+    fileName: j['fileName'] ?? '',
+    progressKey: j['progressKey'],
+    status: DlStatus.values.firstWhere(
+      (s) => s.name == j['status'],
+      orElse: () => DlStatus.completed,
+    ),
+    received: j['received'] ?? 0,
         total: j['total'] ?? 0,
-      );
+        errorMessage: j['errorMessage'],
+  );
 }
 
 /// Offline downloads of the user's own VOD (movies / series episodes). Streams
@@ -73,7 +80,11 @@ class Downloads extends ChangeNotifier {
   Directory? _dir;
   final Map<String, http.Client> _active = {};
   final Set<String> _pausing = {}; // ids being paused (keep the partial file)
+  final Set<String> _cancelling = {};
   int _lastNotify = 0;
+  Future<void>? _loadFuture;
+  bool _persisting = false;
+  bool _persistAgain = false;
 
   // Most IPTV/Xtream accounts allow only one connection at a time, so a second
   // simultaneous download makes the provider drop the first. Run downloads
@@ -82,7 +93,9 @@ class Downloads extends ChangeNotifier {
 
   String? get folderPath => _dir?.path;
 
-  Future<void> load() async {
+  Future<void> load() => _loadFuture ??= _load();
+
+  Future<void> _load() async {
     // Prefer the user's real Downloads folder so files are browsable in Finder /
     // Explorer; fall back to the app documents dir (e.g. iOS) where it's null.
     Directory? base;
@@ -92,35 +105,66 @@ class Downloads extends ChangeNotifier {
     base ??= await getApplicationDocumentsDirectory();
     _dir = Directory('${base.path}/Lumen');
     if (!await _dir!.exists()) await _dir!.create(recursive: true);
+    items.clear();
     try {
       final index = File('${_dir!.path}/index.json');
       if (await index.exists()) {
         final list = (jsonDecode(await index.readAsString()) as List)
-            .map((e) => DownloadItem.fromJson((e as Map).cast<String, dynamic>()))
+            .map(
+              (e) => DownloadItem.fromJson((e as Map).cast<String, dynamic>()),
+            )
             .toList();
-        // Restore completed files, and paused downloads (resync received from the
-        // partial file on disk); drop anything whose file vanished.
+        // Active work cannot survive process termination. Restore it as paused
+        // so the user can deliberately resume without losing partial bytes.
         for (final d in list) {
           final f = File(pathOf(d));
-          if (!await f.exists()) continue;
+          final exists = await f.exists();
           if (d.status == DlStatus.completed) {
-            items.add(d);
-          } else if (d.status == DlStatus.paused) {
-            d.received = await f.length();
-            items.add(d);
+            if (exists) items.add(d);
+            continue;
           }
+          if (d.status == DlStatus.downloading || d.status == DlStatus.queued) {
+            d.status = DlStatus.paused;
+          }
+          d.received = exists ? await f.length() : 0;
+          items.add(d);
         }
       }
     } catch (_) {}
+    await _persist();
     notifyListeners();
   }
 
   String pathOf(DownloadItem d) => '${_dir!.path}/${d.fileName}';
 
   static String _sanitize(String s) {
-    var t = s.replaceAll(RegExp(r'[\\/:*?"<>|]'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+    var t = s
+        .replaceAll(RegExp(r'[\\/:*?"<>|]'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
     if (t.length > 120) t = t.substring(0, 120).trim();
     return t.isEmpty ? 'file' : t;
+  }
+
+  static String _idSuffix(String id) {
+    final safe = id.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+    return safe.length <= 36 ? safe : safe.substring(safe.length - 36);
+  }
+
+  static String relativePathFor({
+    required String id,
+    required String title,
+    required String kind,
+    required String ext,
+  }) {
+    final safeExt = ext.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '');
+    final extension = safeExt.isEmpty ? 'mp4' : safeExt;
+    final parts = title.split(' · ');
+    if (kind == 'episode' && parts.length > 1) {
+      return 'Series/${_sanitize(parts.first)}/'
+          '${_sanitize(parts.sublist(1).join(' · '))}-${_idSuffix(id)}.$extension';
+    }
+    return 'Movies/${_sanitize(title)}-${_idSuffix(id)}.$extension';
   }
 
   DownloadItem? find(String id) {
@@ -140,12 +184,26 @@ class Downloads extends ChangeNotifier {
 
   Future<void> _persist() async {
     if (_dir == null) return;
+    if (_persisting) {
+      _persistAgain = true;
+      return;
+    }
+    _persisting = true;
     try {
-      await File('${_dir!.path}/index.json').writeAsString(jsonEncode(items
-          .where((d) => d.status == DlStatus.completed || d.status == DlStatus.paused)
-          .map((d) => d.toJson())
-          .toList()));
-    } catch (_) {}
+      do {
+        _persistAgain = false;
+        final payload = jsonEncode(items.map((d) => d.toJson()).toList());
+        final index = File('${_dir!.path}/index.json');
+        final temp = File('${index.path}.tmp');
+        await temp.writeAsString(payload, flush: true);
+        if (await index.exists()) await index.delete();
+        await temp.rename(index.path);
+      } while (_persistAgain);
+    } catch (_) {
+      // A later state transition will retry persistence.
+    } finally {
+      _persisting = false;
+    }
   }
 
   void _maybeNotify({bool force = false}) {
@@ -167,17 +225,15 @@ class Downloads extends ChangeNotifier {
   }) async {
     if (_dir == null) await load();
     final existing = find(id);
-    if (existing != null && existing.status != DlStatus.failed) return; // already downloaded/queued/active
-    final safeExt = ext.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '');
-    final e = safeExt.isEmpty ? 'mp4' : safeExt;
-    // Organize into Movies/ and Series/<show>/ with human-readable filenames.
-    final parts = title.split(' · ');
-    final String rel;
-    if (kind == 'episode' && parts.length > 1) {
-      rel = 'Series/${_sanitize(parts.first)}/${_sanitize(parts.sublist(1).join(' · '))}.$e';
-    } else {
-      rel = 'Movies/${_sanitize(title)}.$e';
-    }
+    if (existing != null && existing.status != DlStatus.failed)
+      return; // already downloaded/queued/active
+    if (existing != null) await _deleteFile(existing);
+    final rel = relativePathFor(
+      id: id,
+      title: title,
+      kind: kind,
+      ext: ext,
+    );
     final d = DownloadItem(
       id: id,
       title: title,
@@ -188,8 +244,11 @@ class Downloads extends ChangeNotifier {
       progressKey: progressKey,
       status: DlStatus.queued,
     );
-    items.removeWhere((x) => x.id == id && x.status == DlStatus.failed); // clear a prior failed entry
+    items.removeWhere(
+      (x) => x.id == id && x.status == DlStatus.failed,
+    ); // clear a prior failed entry
     items.insert(0, d);
+    await _persist();
     notifyListeners();
     _pump();
   }
@@ -214,26 +273,39 @@ class Downloads extends ChangeNotifier {
     final client = http.Client();
     _active[d.id] = client;
     d.status = DlStatus.downloading;
+    d.errorMessage = null;
+    await _persist();
     _maybeNotify(force: true);
     IOSink? sink;
     final file = File(pathOf(d));
     try {
-      await file.parent.create(recursive: true); // ensure Movies//Series/<show>/ exists
+      await file.parent.create(
+        recursive: true,
+      ); // ensure Movies//Series/<show>/ exists
       // Resume: if a partial file exists, continue from its current size.
       var startAt = 0;
       if (await file.exists()) {
         final len = await file.length();
         if (len > 0 && (d.total == 0 || len < d.total)) startAt = len;
       }
-      final req = http.Request('GET', Uri.parse(d.remoteUrl))..headers['User-Agent'] = 'VLC/3.0.20 LibVLC/3.0.20';
+      final req = http.Request('GET', Uri.parse(d.remoteUrl))
+        ..headers['User-Agent'] = 'VLC/3.0.20 LibVLC/3.0.20';
       if (startAt > 0) req.headers['range'] = 'bytes=$startAt-';
       final resp = await client.send(req);
-      if (resp.statusCode >= 400) throw Exception('HTTP ${resp.statusCode}');
+      if (resp.statusCode != 200 && resp.statusCode != 206) {
+        throw Exception('HTTP ${resp.statusCode}');
+      }
       if (startAt > 0 && resp.statusCode == 206) {
         // Server honored the range — append to the partial file.
         d.received = startAt;
         final cl = resp.contentLength ?? 0;
-        d.total = cl > 0 ? startAt + cl : d.total;
+        final rangeTotal = int.tryParse(
+          RegExp(
+                r'/([0-9]+)$',
+              ).firstMatch(resp.headers['content-range'] ?? '')?.group(1) ??
+              '',
+        );
+        d.total = rangeTotal ?? (cl > 0 ? startAt + cl : d.total);
         sink = file.openWrite(mode: FileMode.append);
       } else {
         // No range support (or fresh) — (re)start from the beginning.
@@ -247,13 +319,7 @@ class Downloads extends ChangeNotifier {
           await sink!.flush();
           await sink.close();
           sink = null;
-          if (_pausing.remove(d.id)) {
-            d.status = DlStatus.paused;
-            await _persist();
-          } else {
-            await file.delete().catchError((_) => file);
-            items.remove(d);
-          }
+          await _finishRequestedStop(d, file);
           notifyListeners();
           return;
         }
@@ -264,21 +330,56 @@ class Downloads extends ChangeNotifier {
       await sink!.flush();
       await sink.close();
       sink = null;
+      if (d.total > 0 && d.received != d.total) {
+        throw Exception(
+          'Download ended early (${d.received}/${d.total} bytes).',
+        );
+      }
       d.status = DlStatus.completed;
       await _persist();
-    } catch (_) {
+    } catch (error) {
       try {
         await sink?.close();
       } catch (_) {}
-      // Keep the partial on failure so it can be resumed; mark failed.
-      d.status = DlStatus.failed;
+      if (_pausing.contains(d.id) || _cancelling.contains(d.id)) {
+        await _finishRequestedStop(d, file);
+      } else {
+        // Keep the partial on failure so it can be resumed.
+        d.status = DlStatus.failed;
+        d.errorMessage = _friendlyError(error);
+        if (await file.exists()) d.received = await file.length();
+        await _persist();
+      }
     } finally {
       _active.remove(d.id);
       _pausing.remove(d.id);
+      _cancelling.remove(d.id);
       client.close();
       _maybeNotify(force: true);
       _pump(); // start the next queued download
     }
+  }
+
+  String _friendlyError(Object error) {
+    final message = error.toString();
+    final httpStatus = RegExp(r'HTTP ([0-9]{3})').firstMatch(message)?.group(1);
+    if (httpStatus != null) return 'Provider returned HTTP $httpStatus.';
+    if (message.contains('ended early')) return 'Connection ended before the file was complete.';
+    if (error is FormatException) return 'The download URL is invalid.';
+    return 'Connection interrupted. Resume to try again.';
+  }
+
+  Future<void> _finishRequestedStop(DownloadItem d, File file) async {
+    if (_pausing.remove(d.id)) {
+      d.status = DlStatus.paused;
+      if (await file.exists()) d.received = await file.length();
+    } else if (_cancelling.remove(d.id)) {
+      try {
+        if (await file.exists()) await file.delete();
+      } catch (_) {}
+      items.remove(d);
+    }
+    await _persist();
   }
 
   /// Pause an active or queued download, keeping any partial bytes.
@@ -287,20 +388,26 @@ class Downloads extends ChangeNotifier {
     if (d == null) return;
     if (_active.containsKey(id)) {
       _pausing.add(id);
-      _active.remove(id); // loop stops, keeps the partial, marks paused
+      d.status = DlStatus.paused;
+      _active.remove(id)?.close();
     } else if (d.status == DlStatus.queued) {
       d.status = DlStatus.paused;
     }
     notifyListeners();
+    unawaited(_persist());
     _pump();
   }
 
   /// Resume a paused or failed download (re-queues; _run continues via Range).
   void resume(String id) {
     final d = find(id);
-    if (d == null || (d.status != DlStatus.paused && d.status != DlStatus.failed)) return;
+    if (d == null ||
+        (d.status != DlStatus.paused && d.status != DlStatus.failed))
+      return;
     d.status = DlStatus.queued;
+    d.errorMessage = null;
     notifyListeners();
+    unawaited(_persist());
     _pump();
   }
 
@@ -309,7 +416,9 @@ class Downloads extends ChangeNotifier {
     if (d == null) return;
     if (_active.containsKey(id)) {
       _pausing.remove(id); // ensure the loop treats this as a cancel (delete)
-      _active.remove(id);
+      _cancelling.add(id);
+      items.remove(d);
+      _active.remove(id)?.close();
     } else {
       _deleteFile(d);
       items.remove(d);
@@ -327,7 +436,16 @@ class Downloads extends ChangeNotifier {
   }
 
   Future<void> delete(DownloadItem d) async {
-    _active.remove(d.id);
+    if (_active.containsKey(d.id)) {
+      _pausing.remove(d.id);
+      _cancelling.add(d.id);
+      items.remove(d);
+      _active.remove(d.id)?.close();
+      notifyListeners();
+      await _persist();
+      _pump();
+      return;
+    }
     try {
       final f = File(pathOf(d));
       if (await f.exists()) await f.delete();
@@ -338,5 +456,6 @@ class Downloads extends ChangeNotifier {
     _pump();
   }
 
-  int get completedCount => items.where((d) => d.status == DlStatus.completed).length;
+  int get completedCount =>
+      items.where((d) => d.status == DlStatus.completed).length;
 }

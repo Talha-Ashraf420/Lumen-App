@@ -171,6 +171,7 @@ class SearchScreenState extends State<SearchScreen> with AutomaticKeepAliveClien
     return PlayerItem(url, s.name,
         isLive: true,
         poster: s.icon,
+        httpHeaders: widget.client.streamHeaders(s.streamId),
         favRef: MediaRef(kind: 'live', id: s.streamId, name: s.name, image: s.icon, url: url),
         epg: () => widget.client.shortEpg(s.streamId));
   }

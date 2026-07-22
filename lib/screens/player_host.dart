@@ -9,6 +9,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 import 'package:window_manager/window_manager.dart';
 import '../library.dart';
+import '../opensubtitles.dart';
 import '../pip.dart';
 import '../playback.dart';
 import '../session.dart';
@@ -38,6 +39,7 @@ class _PlayerHostState extends State<PlayerHost> {
   double _rate = 1.0;
   double _zoomScale = 1.0, _zoomStart = 1.0;
   bool _hadMedia = false;
+  String? _lastItemUrl;
   bool _introDismissed = false; // hides the Skip-intro pill once used/dismissed
 
   // split-screen: whether the MAIN (big, audio) slot is the primary player (pc).
@@ -48,6 +50,7 @@ class _PlayerHostState extends State<PlayerHost> {
   // gesture state
   String? _gMode;
   double _curVol = 100, _curBri = 0.5, _gAccum = 0;
+  bool _brightnessChanged = false;
   Duration _gStartPos = Duration.zero, _gSeekTarget = Duration.zero;
   double _doubleTapX = 0;
 
@@ -69,6 +72,15 @@ class _PlayerHostState extends State<PlayerHost> {
   double _subScale = 1.0;
   bool _subBg = false;
   double _subDelay = 0;
+
+  // online subtitle search (OpenSubtitles)
+  bool _subsOnline = false;
+  bool _subBusy = false;
+  String _subLang = 'en';
+  String? _subError;
+  String? _appliedSubName; // label of an applied external subtitle
+  List<SubResult> _subResults = [];
+  final TextEditingController _subQueryCtrl = TextEditingController();
 
   // hold-to-speed
   double _savedRate = 1.0;
@@ -93,7 +105,9 @@ class _PlayerHostState extends State<PlayerHost> {
     sc.addListener(_onSplit);
     Pip.instance.init();
     Pip.instance.active.addListener(_onPip);
-    ScreenBrightness.instance.current.then((b) => _curBri = b).catchError((_) => _curBri = 0.5);
+    ScreenBrightness.instance.application
+        .then((b) => _curBri = b)
+        .catchError((_) => _curBri = 0.5);
   }
 
   @override
@@ -106,6 +120,12 @@ class _PlayerHostState extends State<PlayerHost> {
     _hideTimer?.cancel();
     _hudTimer?.cancel();
     _sleepTimer?.cancel();
+    _restoreBrightness();
+    if (!_isDesktop) {
+      SystemChrome.setPreferredOrientations([]);
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    }
+    _subQueryCtrl.dispose();
     _focus.dispose();
     super.dispose();
   }
@@ -354,7 +374,11 @@ class _PlayerHostState extends State<PlayerHost> {
               cursor: SystemMouseCursors.click,
               child: GestureDetector(
                 onTap: () {
-                  _mainPlayer.playOrPause();
+                  if (_splitMainIsPc) {
+                    pc.togglePlayPause();
+                  } else {
+                    _mainPlayer.playOrPause();
+                  }
                   _scheduleHide();
                 },
                 child: Container(
@@ -410,30 +434,53 @@ class _PlayerHostState extends State<PlayerHost> {
 
   void _onPc() {
     final has = pc.hasMedia;
+    final itemUrl = has
+        ? '${pc.item.url}\n${pc.item.progressKey ?? ''}\n${pc.item.title}'
+        : null;
     // Only allow the OS to enter PiP when a video is actually loaded.
     Pip.instance.setAllowed(has);
-    if (has && !_hadMedia) {
-      // fresh playback
-      _controls = true;
-      _zoomScale = 1.0;
-      _fit = BoxFit.contain;
-      _rate = 1.0;
-      _panelKind = null;
-      _introDismissed = false;
+    if (has && itemUrl != _lastItemUrl) {
+      _resetForItem();
       _scheduleHide();
     } else if (!has && _hadMedia) {
       _exitFullscreen();
+      _restoreBrightness();
       if (sc.active) sc.close();
     }
+    _lastItemUrl = itemUrl;
     _hadMedia = has;
     if (mounted) setState(() {});
+  }
+
+  void _resetForItem() {
+    _controls = true;
+    _zoomScale = 1.0;
+    _fit = BoxFit.contain;
+    _rate = 1.0;
+    _panelKind = null;
+    _introDismissed = false;
+    _subsOnline = false;
+    _subBusy = false;
+    _subError = null;
+    _appliedSubName = null;
+    _subResults = [];
+    _subQueryCtrl.text = _subCleanTitle(pc.item.title);
+    pc.player?.setRate(1.0);
+  }
+
+  void _restoreBrightness() {
+    if (!_brightnessChanged) return;
+    _brightnessChanged = false;
+    ScreenBrightness.instance.resetApplicationScreenBrightness().catchError(
+      (_) {},
+    );
   }
 
   void _exitFullscreen() {
     if (_isDesktop) {
       if (_fullscreen) windowManager.setFullScreen(false);
     } else {
-      SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+      SystemChrome.setPreferredOrientations([]);
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     }
     _fullscreen = false;
@@ -441,9 +488,9 @@ class _PlayerHostState extends State<PlayerHost> {
 
   void _minimize() {
     if (sc.active) _exitSplit();
-    if (_isDesktop && _fullscreen) windowManager.setFullScreen(false);
-    _fullscreen = false;
+    if (_fullscreen) _exitFullscreen();
     _panelKind = null;
+    _restoreBrightness();
     pc.minimize();
   }
 
@@ -492,7 +539,7 @@ class _PlayerHostState extends State<PlayerHost> {
       await SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
       await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     } else {
-      await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+      await SystemChrome.setPreferredOrientations([]);
       await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     }
     if (mounted) setState(() {});
@@ -663,8 +710,13 @@ class _PlayerHostState extends State<PlayerHost> {
               child: StreamBuilder<bool>(
                 stream: pc.player!.stream.playing,
                 initialData: pc.player!.state.playing,
-                builder: (_, s) => _miniBtn((s.data ?? false) ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                    () => pc.player!.playOrPause(), 28),
+                builder: (_, s) => _miniBtn(
+                  (s.data ?? false)
+                      ? Icons.pause_rounded
+                      : Icons.play_arrow_rounded,
+                  pc.togglePlayPause,
+                  28,
+                ),
               ),
             ),
             Positioned(right: 2, top: 2, child: _miniBtn(Icons.close_rounded, _close, 18)),
@@ -703,11 +755,11 @@ class _PlayerHostState extends State<PlayerHost> {
       if (!_controls) {
         setState(() => _controls = true);
       } else {
-        pc.player!.playOrPause();
+        pc.togglePlayPause();
       }
       _scheduleHide();
     } else if (k == LogicalKeyboardKey.mediaPlayPause) {
-      pc.player!.playOrPause();
+      pc.togglePlayPause();
       setState(() => _controls = true);
       _scheduleHide();
     } else if (k == LogicalKeyboardKey.arrowRight || k == LogicalKeyboardKey.mediaTrackNext) {
@@ -758,7 +810,7 @@ class _PlayerHostState extends State<PlayerHost> {
       _seekBy(10);
       _flashHud('+10s', Icons.forward_10_rounded);
     } else {
-      pc.player!.playOrPause();
+      pc.togglePlayPause();
       _scheduleHide();
     }
   }
@@ -802,8 +854,16 @@ class _PlayerHostState extends State<PlayerHost> {
             value: _curVol / 100, persist: true);
       case 'bri':
         _curBri = (_curBri - dy * 0.003).clamp(0.0, 1.0);
-        ScreenBrightness.instance.setApplicationScreenBrightness(_curBri).catchError((_) {});
-        _flashHud('${(_curBri * 100).round()}%', Icons.brightness_6_rounded, value: _curBri, persist: true);
+        _brightnessChanged = true;
+        ScreenBrightness.instance
+            .setApplicationScreenBrightness(_curBri)
+            .catchError((_) {});
+        _flashHud(
+          '${(_curBri * 100).round()}%',
+          Icons.brightness_6_rounded,
+          value: _curBri,
+          persist: true,
+        );
     }
   }
 
@@ -889,6 +949,19 @@ class _PlayerHostState extends State<PlayerHost> {
                 'Stream unavailable',
                 style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
               ),
+              if ((pc.playbackError ?? '').isNotEmpty) ...[
+                const SizedBox(height: 6),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 300),
+                  child: Text(
+                    pc.playbackError!,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.white54, fontSize: 12),
+                  ),
+                ),
+              ],
               const SizedBox(height: 14),
               FilledButton.icon(
                 style: FilledButton.styleFrom(backgroundColor: accent, foregroundColor: Colors.white),
@@ -944,7 +1017,7 @@ class _PlayerHostState extends State<PlayerHost> {
     _sleepTimer?.cancel();
     if (minutes > 0) {
       _sleepTimer = Timer(Duration(minutes: minutes), () {
-        pc.player?.pause();
+        pc.pause();
         if (mounted) setState(() => _sleepMin = 0);
       });
     }
@@ -981,27 +1054,25 @@ class _PlayerHostState extends State<PlayerHost> {
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
         child: GestureDetector(
-        onTap: () {
-          final pos = pc.player!.state.position.inSeconds;
-          final target = pos < 80 ? 90 : pos + 80;
-          pc.player!.seek(Duration(seconds: target));
-          setState(() => _introDismissed = true);
-          _scheduleHide();
-        },
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.65),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.white24),
+          onTap: () {
+            pc.player!.seek(const Duration(seconds: 90));
+            setState(() => _introDismissed = true);
+            _scheduleHide();
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.65),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.white24),
+            ),
+            child: const Row(mainAxisSize: MainAxisSize.min, children: [
+              Text('Skip to 1:30', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+              SizedBox(width: 6),
+              Icon(Icons.fast_forward_rounded, color: Colors.white, size: 18),
+            ]),
           ),
-          child: const Row(mainAxisSize: MainAxisSize.min, children: [
-            Text('Skip intro', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
-            SizedBox(width: 6),
-            Icon(Icons.fast_forward_rounded, color: Colors.white, size: 18),
-          ]),
         ),
-      ),
       ),
     );
   }
@@ -1168,17 +1239,25 @@ class _PlayerHostState extends State<PlayerHost> {
             return MouseRegion(
               cursor: SystemMouseCursors.click,
               child: GestureDetector(
-              onTap: () {
-                pc.player!.playOrPause();
-                _scheduleHide();
-              },
-              child: Container(
-                width: 74,
-                height: 74,
-                decoration: BoxDecoration(color: accent, shape: BoxShape.circle, boxShadow: glow(accent, a: 0.5)),
-                child: Icon(playing ? Icons.pause_rounded : Icons.play_arrow_rounded, color: Colors.white, size: 42),
+                onTap: () {
+                  pc.togglePlayPause();
+                  _scheduleHide();
+                },
+                child: Container(
+                  width: 74,
+                  height: 74,
+                  decoration: BoxDecoration(
+                    color: accent,
+                    shape: BoxShape.circle,
+                    boxShadow: glow(accent, a: 0.5),
+                  ),
+                  child: Icon(
+                    playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                    color: Colors.white,
+                    size: 42,
+                  ),
+                ),
               ),
-            ),
             );
           },
         ),
@@ -1307,10 +1386,92 @@ class _PlayerHostState extends State<PlayerHost> {
   // ---- in-player panels (no Navigator available, so not bottom sheets) ----
   void _pickSubtitles() {
     _hideTimer?.cancel();
+    // Seed the online search box with the (cleaned) current title.
+    if (_subQueryCtrl.text.isEmpty)
+      _subQueryCtrl.text = _subCleanTitle(pc.item.title);
     setState(() {
       _controls = true;
       _panelKind = 'subs';
     });
+  }
+
+  // Strip year / quality / episode cruft so OpenSubtitles matches better.
+  String _subCleanTitle(String s) {
+    var t = s;
+    t = t.replaceAll(RegExp(r'\((?:19|20)\d{2}\)'), '');
+    t = t.replaceAll(
+      RegExp(
+        r'\b(?:4K|UHD|FHD|HD|SD|HQ|1080p|720p|2160p|HEVC|x26[45]|DV|HDR)\b',
+        caseSensitive: false,
+      ),
+      '',
+    );
+    t = t.replaceAll(RegExp(r'[._]+'), ' ');
+    t = t.replaceAll(RegExp(r'\(\s*\)|\[\s*\]'), '');
+    t = t.replaceAll(RegExp(r'\s{2,}'), ' ').trim();
+    return t.isEmpty ? s : t;
+  }
+
+  Future<void> _searchSubs() async {
+    final q = _subQueryCtrl.text.trim();
+    if (q.isEmpty || _subBusy) return;
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _subBusy = true;
+      _subError = null;
+      _subResults = [];
+    });
+    try {
+      final r = await OpenSubs.search(q, lang: _subLang);
+      if (!mounted) return;
+      setState(() {
+        _subResults = r;
+        _subBusy = false;
+        if (r.isEmpty) _subError = 'No subtitles found.';
+      });
+    } catch (e) {
+      if (mounted)
+        setState(() {
+          _subBusy = false;
+          _subError = e is OpenSubtitlesException
+              ? e.message
+              : 'Search failed. Check your connection.';
+        });
+    }
+  }
+
+  Future<void> _applyOnlineSub(SubResult s) async {
+    if (_subBusy) return;
+    setState(() {
+      _subBusy = true;
+      _subError = null;
+    });
+    try {
+      final srt = await OpenSubs.download(s);
+      await pc.player!.setSubtitleTrack(
+        SubtitleTrack.data(
+          srt,
+          title: s.name,
+          language: s.iso.isEmpty ? null : s.iso,
+        ),
+      );
+      if (!mounted) return;
+      setState(() {
+        _appliedSubName = s.langName.isEmpty
+            ? s.name
+            : '${s.langName} · ${s.name}';
+        _subBusy = false;
+      });
+      _closePanel();
+    } catch (e) {
+      if (mounted)
+        setState(() {
+          _subBusy = false;
+          _subError = e is OpenSubtitlesException
+              ? e.message
+              : 'Couldn’t load that subtitle. Try another.';
+        });
+    }
   }
 
   void _openSettings() {
@@ -1392,6 +1553,7 @@ class _PlayerHostState extends State<PlayerHost> {
     final real = pc.player!.state.tracks.subtitle.where((t) => t.id != 'auto' && t.id != 'no').toList();
     return Column(
       mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const SizedBox(height: 10),
         const Padding(
@@ -1402,6 +1564,12 @@ class _PlayerHostState extends State<PlayerHost> {
           pc.player!.setSubtitleTrack(SubtitleTrack.no());
           _closePanel();
         }),
+        if (_appliedSubName != null)
+          _subRow(
+            '$_appliedSubName  (online)',
+            current.id != 'no',
+            () => _closePanel(),
+          ),
         ...real.map((t) {
           final label = [t.title, t.language].whereType<String>().where((e) => e.isNotEmpty).join(' · ');
           return _subRow(label.isEmpty ? 'Track ${t.id}' : label, current.id == t.id, () {
@@ -1409,12 +1577,183 @@ class _PlayerHostState extends State<PlayerHost> {
             _closePanel();
           });
         }),
-        if (real.isEmpty)
-          const Padding(padding: EdgeInsets.all(20), child: Text('No subtitles available in this stream.', style: TextStyle(color: Colors.white54))),
+        if (real.isEmpty && _appliedSubName == null)
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 8, 20, 4),
+            child: Text(
+              'No subtitles in this stream.',
+              style: TextStyle(color: Colors.white54),
+            ),
+          ),
+        const Divider(
+          color: Colors.white12,
+          height: 24,
+          indent: 20,
+          endIndent: 20,
+        ),
+        // Online search (OpenSubtitles)
+        ListTile(
+          onTap: () => setState(() => _subsOnline = !_subsOnline),
+          leading: Icon(Icons.travel_explore_rounded, color: accent),
+          title: const Text(
+            'Search online',
+            style: TextStyle(fontWeight: FontWeight.w700),
+          ),
+          trailing: Icon(
+            _subsOnline ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+            color: Colors.white54,
+          ),
+        ),
+        if (_subsOnline) _subsOnlinePanel(),
         const SizedBox(height: 12),
       ],
     );
   }
+
+  Widget _subsOnlinePanel() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 4, 16, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // query field
+          TextField(
+            controller: _subQueryCtrl,
+            style: const TextStyle(color: Colors.white, fontSize: 14),
+            textInputAction: TextInputAction.search,
+            onSubmitted: (_) => _searchSubs(),
+            decoration: InputDecoration(
+              isDense: true,
+              hintText: 'Movie or show title…',
+              hintStyle: const TextStyle(color: Colors.white38),
+              filled: true,
+              fillColor: Colors.white.withValues(alpha: 0.08),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 10,
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Colors.white24),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: accent),
+              ),
+              suffixIcon: IconButton(
+                icon: Icon(Icons.search_rounded, color: accent),
+                onPressed: _searchSubs,
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          // language pills
+          SizedBox(
+            height: 32,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: OpenSubs.langs.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 6),
+              itemBuilder: (_, i) {
+                final (label, code) = OpenSubs.langs[i];
+                final sel = code == _subLang;
+                return GestureDetector(
+                  onTap: () {
+                    setState(() => _subLang = code);
+                    _searchSubs();
+                  },
+                  child: Container(
+                    alignment: Alignment.center,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: sel
+                          ? accent
+                          : Colors.white.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: sel ? accent : Colors.white24),
+                    ),
+                    child: Text(
+                      label,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12.5,
+                        fontWeight: sel ? FontWeight.w800 : FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (_subBusy)
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Center(
+                child: SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(
+                    color: accent,
+                    strokeWidth: 2.4,
+                  ),
+                ),
+              ),
+            )
+          else if (_subError != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              child: Text(
+                _subError!,
+                style: const TextStyle(color: Colors.white54, fontSize: 13),
+              ),
+            )
+          else
+            for (final s in _subResults.take(20))
+              ListTile(
+                dense: true,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                onTap: () => _applyOnlineSub(s),
+                leading: Icon(
+                  Icons.download_rounded,
+                  color: Colors.white54,
+                  size: 20,
+                ),
+                title: Text(
+                  s.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                subtitle: Text(
+                  [
+                    s.langName,
+                    if (s.downloads > 0) '${_compact(s.downloads)} downloads',
+                  ].where((e) => e.isNotEmpty).join(' · '),
+                  style: const TextStyle(color: Colors.white38, fontSize: 11.5),
+                ),
+              ),
+          Padding(
+            padding: const EdgeInsets.only(top: 8, bottom: 4),
+            child: Text(
+              'Powered by OpenSubtitles',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.28),
+                fontSize: 10.5,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _compact(int n) =>
+      n >= 1000 ? '${(n / 1000).toStringAsFixed(n >= 10000 ? 0 : 1)}k' : '$n';
 
   Widget _subRow(String label, bool sel, VoidCallback onTap) => ListTile(
         onTap: onTap,
