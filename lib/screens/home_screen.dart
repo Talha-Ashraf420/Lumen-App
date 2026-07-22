@@ -110,6 +110,7 @@ class _HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMi
               s.name,
               isLive: true,
               poster: s.icon,
+              httpHeaders: widget.client.streamHeaders(s.streamId),
               favRef: MediaRef(
                 kind: 'live',
                 id: s.streamId,
@@ -171,7 +172,12 @@ class _HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMi
         _push(SeriesDetailScreen(client: widget.client, seriesId: r.id, title: r.name));
       case 'live':
         PlaybackController.instance.open([
-          PlayerItem(r.url, r.name, isLive: true, poster: r.image, favRef: r, epg: () => widget.client.shortEpg(r.id)),
+          PlayerItem(r.url, r.name,
+              isLive: true,
+              poster: r.image,
+              httpHeaders: widget.client.streamHeaders(r.id),
+              favRef: r,
+              epg: () => widget.client.shortEpg(r.id)),
         ], 0);
     }
   }
@@ -505,7 +511,7 @@ class _HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMi
             final heroFuture = newest.isNotEmpty
                 ? Future.value(newest.take(8).toList())
                 : (custom && heroCat != null
-                    ? c.vodStreams(heroCat!).then((l) => l.where((m) => m.icon.isNotEmpty).take(8).toList()).catchError((_) => <VodStream>[])
+                    ? c.vodStreams(heroCat).then((l) => l.where((m) => m.icon.isNotEmpty).take(8).toList()).catchError((_) => <VodStream>[])
                     : _heroPool(c, d.vodCats));
             final trendFuture = topRated.isNotEmpty
                 ? Future.value(topRated.take(10).toList())

@@ -101,6 +101,7 @@ class _SplitPickerState extends State<SplitPicker> {
         s.name,
         isLive: true,
         poster: s.icon,
+        httpHeaders: widget.client.streamHeaders(s.streamId),
       ));
 
   void _pickMovie(VodStream m) => widget.onPick(PlayerItem(

@@ -22,7 +22,10 @@ class SplitController extends ChangeNotifier {
     player ??= Player();
     controller ??= VideoController(player!);
     item = it;
-    await player!.open(Media(it.url, httpHeaders: const {'User-Agent': 'VLC/3.0.20 LibVLC/3.0.20'}));
+    await player!.open(Media(it.url, httpHeaders: {
+      'User-Agent': 'VLC/3.0.20 LibVLC/3.0.20',
+      ...it.httpHeaders,
+    }));
     await player!.setVolume(0); // secondary is muted
     notifyListeners();
   }

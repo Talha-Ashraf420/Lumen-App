@@ -4,7 +4,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../downloads.dart';
 import '../models.dart';
+import '../playback.dart';
 import '../refresh.dart';
+import '../split.dart';
 import '../updater.dart';
 import '../responsive.dart';
 import '../theme.dart';
@@ -57,8 +59,10 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     // Quietly check for a newer build once per launch (skip dev builds).
     if (kBuildNumber > 0) {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
-        final info = await Updater.instance.check();
-        if (info != null && mounted) showUpdateFlow(context, info);
+        final result = await Updater.instance.check();
+        if (result.status == UpdateCheckStatus.available && mounted) {
+          showUpdateFlow(context, result.info!);
+        }
       });
     }
   }
@@ -71,6 +75,18 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // App is being torn down: dispose the mpv players BEFORE the Flutter engine
+    // shuts down, otherwise the still-running video render thread frees its
+    // platform-view/texture out from under the compositor → SIGABRT on quit.
+    if (state == AppLifecycleState.detached) {
+      try {
+        SplitController.instance.close();
+      } catch (_) {}
+      try {
+        PlaybackController.instance.stop();
+      } catch (_) {}
+      return;
+    }
     if (state != AppLifecycleState.resumed) return;
     final now = DateTime.now();
     // Throttle: only re-fetch if it's been a few minutes since the last refresh.

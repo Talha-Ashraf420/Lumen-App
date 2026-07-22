@@ -82,6 +82,12 @@ class Store {
     final profiles = await savedProfiles();
     profiles.removeWhere((x) => x.baseUrl == c.baseUrl && x.username == c.username);
     await _write(_kProfiles, jsonEncode(profiles.map((e) => e.toJson()).toList()));
+    // If we removed the currently-active account, clear the active session too —
+    // otherwise it silently persists and signs back in on the next launch.
+    final act = await active();
+    if (act != null && act.baseUrl == c.baseUrl && act.username == c.username) {
+      await _delete(_kActive);
+    }
     return profiles;
   }
 

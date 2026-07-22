@@ -17,7 +17,23 @@ env:
   FLUTTER_VERSION: 3.38.9 # matches local dev SDK (Dart 3.10.x)
 
 jobs:
+  quality:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze --no-fatal-infos
+      - run: flutter test
+
   android:
+    needs: quality
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -39,6 +55,7 @@ jobs:
           if-no-files-found: error
 
   windows:
+    needs: quality
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -59,6 +76,7 @@ jobs:
           if-no-files-found: error
 
   macos:
+    needs: quality
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -79,6 +97,7 @@ jobs:
           if-no-files-found: error
 
   linux:
+    needs: quality
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -103,6 +122,7 @@ jobs:
           if-no-files-found: error
 
   ios:
+    needs: quality
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -143,6 +163,7 @@ jobs:
           cp dist/Lumen-macOS/Lumen-macOS.zip out/Lumen-macOS.zip || echo "skip macos"
           cp dist/Lumen-Linux/Lumen-Linux-x64.tar.gz out/Lumen-Linux-x64.tar.gz || echo "skip linux"
           cp dist/Lumen-iOS-unsigned/Lumen-iOS-unsigned.zip out/Lumen-iOS-unsigned.zip || echo "skip ios"
+          if [ -f out/Lumen-Android.apk ]; then sha256sum out/Lumen-Android.apk > out/Lumen-Android.apk.sha256; fi
           ls -la out
       - name: Publish to "latest" release
         uses: softprops/action-gh-release@v2
