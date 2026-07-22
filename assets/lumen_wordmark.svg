@@ -1,9 +1,21 @@
-<svg width="100%" viewBox="0 0 690 310" role="img" xmlns="http://www.w3.org/2000/svg" style="">
-<title style="fill:rgb(0, 0, 0);stroke:none;color:rgb(0, 0, 0);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto">Lumen wordmark</title>
-<desc style="fill:rgb(0, 0, 0);stroke:none;color:rgb(0, 0, 0);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto">The word Lumen in a bold geometric off-white sans-serif on a deep charcoal-violet background, with a small violet play-beam accent built into the L.</desc>
-
-<rect x="0" y="0" width="680" height="300" rx="20" fill="#0C0A12" style="fill:rgb(12, 10, 18);stroke:none;color:rgb(0, 0, 0);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto"/>
-<polygon points="171,108 171,176 205,142" fill="#7C6BFF" style="fill:rgb(124, 107, 255);stroke:none;color:rgb(0, 0, 0);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto"/>
-<text x="208" y="178" style="fill:rgb(244, 242, 248);stroke:none;color:rgb(0, 0, 0);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:Manrope, sans-serif;font-size:96px;font-weight:800;text-anchor:start;dominant-baseline:auto">umen</text>
-<rect x="171" y="186" width="34" height="9" rx="2" fill="#7C6BFF" style="fill:rgb(124, 107, 255);stroke:none;color:rgb(0, 0, 0);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 280" role="img">
+  <title>Lumen TV wordmark</title>
+  <desc>Lumen wordmark with a television play-beam symbol and the descriptor Live, Films, Series.</desc>
+  <g transform="translate(48 54) scale(.21)">
+    <g fill="#F4F1E8">
+      <rect x="205" y="220" width="110" height="584" rx="55"/>
+      <rect x="205" y="220" width="380" height="100" rx="50"/>
+      <rect x="205" y="704" width="380" height="100" rx="50"/>
+    </g>
+    <g fill="#C7F36B">
+      <path d="M370 376v272l260-136z"/>
+      <rect x="620" y="330" width="165" height="72" rx="36"/>
+      <rect x="630" y="476" width="235" height="72" rx="36"/>
+      <rect x="620" y="622" width="165" height="72" rx="36"/>
+    </g>
+  </g>
+  <text x="265" y="170" fill="#F4F1E8" font-family="Space Grotesk, Arial, sans-serif" font-size="112" font-weight="600" letter-spacing="-4">LUMEN</text>
+  <rect x="690" y="91" width="82" height="72" rx="18" fill="#C7F36B"/>
+  <text x="711" y="141" fill="#11130F" font-family="Space Grotesk, Arial, sans-serif" font-size="35" font-weight="700">TV</text>
+  <text x="272" y="222" fill="#A2A6A3" font-family="Space Grotesk, Arial, sans-serif" font-size="21" font-weight="600" letter-spacing="8">LIVE  •  FILMS  •  SERIES</text>
 </svg>

@@ -1124,7 +1124,7 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
                 final it = _items[i];
                 final p = _meta[it.streamId]?.poster;
                 final img = (p != null && p.isNotEmpty) ? p : it.icon;
-                return _RailThumb(image: img, selected: i == _index, onTap: () => _select(i));
+                return _RailThumb(image: img, number: i + 1, selected: i == _index, onTap: () => _select(i));
               },
             ),
           ),
@@ -1154,165 +1154,131 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
 
     if (!isWide(context)) return _narrowHero(m, poster, rating, year, genre, overview);
 
-    // Size the hero to its content so there's no big empty blurred void below.
-    final h = (MediaQuery.sizeOf(context).height * 0.62).clamp(540.0, 660.0);
-    return SizedBox(
-      height: h,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          // No custom background — the hero sits on the same page canvas as
-          // every other screen (the shell's Aurora), for a consistent look.
-          // content — sharp poster card + text, top-aligned
-          Positioned(
-            left: 64,
-            right: 40,
-            top: 44,
-            child: Align(
-              alignment: Alignment.topLeft,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  // sharp poster card
-                  AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 450),
-                    transitionBuilder: (c, a) => FadeTransition(
-                      opacity: a,
-                      child: ScaleTransition(scale: Tween(begin: 0.97, end: 1.0).animate(a), child: c),
-                    ),
-                    child: Container(
-                      key: ValueKey('card$poster'),
-                      width: 208,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.6), blurRadius: 50, offset: const Offset(0, 24))],
-                      ),
-                      child: AspectRatio(
-                        aspectRatio: 2 / 3,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(20),
-                          child: Stack(
-                            fit: StackFit.expand,
-                            children: [
-                              ColoredBox(color: surfaceHi),
-                              if (poster.isNotEmpty)
-                                CachedNetworkImage(imageUrl: poster, fit: BoxFit.cover, filterQuality: FilterQuality.high, errorWidget: (_, _, _) => const SizedBox.shrink()),
-                              DecoratedBox(
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(20),
-                                  border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
+    final h = (MediaQuery.sizeOf(context).height * 0.63).clamp(500.0, 610.0);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 6, 18, 0),
+      child: SizedBox(
+        height: h,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(22),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              ColoredBox(color: surface),
+              if (poster.isNotEmpty)
+                Positioned(
+                  left: MediaQuery.sizeOf(context).width * 0.42,
+                  right: 0,
+                  top: 0,
+                  bottom: 0,
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 550),
+                    child: CachedNetworkImage(
+                      key: ValueKey('focus$poster'),
+                      imageUrl: poster,
+                      fit: BoxFit.cover,
+                      alignment: Alignment.topCenter,
+                      filterQuality: FilterQuality.high,
+                      errorWidget: (_, _, _) => ColoredBox(color: surfaceHi),
                     ),
                   ),
-                  const SizedBox(width: 44),
-                  // text column
-                  Flexible(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 580),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('FEATURED',
-                              style: TextStyle(color: accent, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 3)),
-                          const SizedBox(height: 12),
-                          Text(_clean(m.name), maxLines: 2, overflow: TextOverflow.ellipsis, style: kHero())
-                              .animate(key: ValueKey('t${m.streamId}'))
-                              .fadeIn(duration: 400.ms)
-                              .slideY(begin: 0.12, end: 0),
-                          const SizedBox(height: 16),
-                          Wrap(spacing: 10, runSpacing: 8, children: [
-                            if (rating > 0)
-                              _chip(Row(mainAxisSize: MainAxisSize.min, children: [
-                                Icon(Icons.star_rounded, color: gold, size: 15),
-                                const SizedBox(width: 4),
-                                Text(rating.toStringAsFixed(1), style: TextStyle(color: gold, fontWeight: FontWeight.w800, fontSize: 13)),
-                              ])),
-                            if (year.isNotEmpty) _chip(Text(year, style: TextStyle(color: textHi, fontWeight: FontWeight.w700, fontSize: 13))),
-                            if (genre.isNotEmpty) _chip(Text(genre, style: TextStyle(color: muted, fontSize: 13))),
-                          ]),
-                          if (overview.isNotEmpty) ...[
-                            const SizedBox(height: 16),
-                            Text(overview, maxLines: 2, overflow: TextOverflow.ellipsis, style: kBody()),
-                          ],
-                          const SizedBox(height: 26),
-                          Row(children: [
-                            PillButton(icon: Icons.play_arrow_rounded, label: 'Play', onTap: () => _play(m)),
-                            const SizedBox(width: 12),
-                            HoverScale(
-                              child: GestureDetector(
-                                onTap: () => widget.onOpen(m),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                                  decoration: BoxDecoration(
-                                    color: surfaceHi,
-                                    borderRadius: BorderRadius.circular(30),
-                                    border: Border.all(color: line),
-                                  ),
-                                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                                    Icon(Icons.info_outline_rounded, color: textHi, size: 20),
-                                    const SizedBox(width: 8),
-                                    Text('Details', style: TextStyle(color: textHi, fontWeight: FontWeight.w800, fontSize: 15)),
-                                  ]),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            AnimatedBuilder(
-                              animation: Library.instance,
-                              builder: (_, __) {
-                                final fav = Library.instance.isFav(_ref(m).key);
-                                return HoverScale(
-                                  child: GestureDetector(
-                                    onTap: () => Library.instance.toggleFav(_ref(m)),
-                                    child: Container(
-                                      padding: const EdgeInsets.all(14),
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        color: surfaceHi,
-                                        border: Border.all(color: line),
-                                      ),
-                                      child: Icon(fav ? Icons.favorite_rounded : Icons.favorite_border_rounded, color: fav ? accent : textHi, size: 22),
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                          ]),
-                        ],
-                      ),
-                    ),
+                ),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                    stops: const [0, 0.48, 0.82, 1],
+                    colors: [surface, surface, surface.withValues(alpha: 0.60), surface.withValues(alpha: 0.08)],
                   ),
-                ],
+                ),
               ),
-            ),
+              Positioned(
+                left: 46,
+                top: 42,
+                width: 610,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(children: [
+                      Container(width: 28, height: 2, color: accent),
+                      const SizedBox(width: 10),
+                      Text('NOW IN FOCUS', style: kSection(color: accent)),
+                      const SizedBox(width: 12),
+                      Text('${(_index + 1).toString().padLeft(2, '0')} / ${_items.length.toString().padLeft(2, '0')}',
+                          style: TextStyle(color: subtle, fontSize: 11, fontWeight: FontWeight.w600, letterSpacing: 1.2)),
+                    ]),
+                    const SizedBox(height: 20),
+                    Text(_clean(m.name), maxLines: 2, overflow: TextOverflow.ellipsis, style: kHero())
+                        .animate(key: ValueKey('t${m.streamId}'))
+                        .fadeIn(duration: 400.ms)
+                        .slideY(begin: 0.08, end: 0),
+                    const SizedBox(height: 16),
+                    Wrap(spacing: 16, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                      if (rating > 0)
+                        Row(mainAxisSize: MainAxisSize.min, children: [
+                          Icon(Icons.star_rounded, color: gold, size: 15),
+                          const SizedBox(width: 5),
+                          Text(rating.toStringAsFixed(1), style: TextStyle(color: textHi, fontWeight: FontWeight.w700, fontSize: 13)),
+                        ]),
+                      if (year.isNotEmpty) Text(year, style: TextStyle(color: muted, fontWeight: FontWeight.w600, fontSize: 13)),
+                      if (genre.isNotEmpty) Text(genre, style: TextStyle(color: muted, fontSize: 13)),
+                    ]),
+                    if (overview.isNotEmpty) ...[
+                      const SizedBox(height: 15),
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 500),
+                        child: Text(overview, maxLines: 3, overflow: TextOverflow.ellipsis, style: kBody()),
+                      ),
+                    ],
+                    const SizedBox(height: 23),
+                    Row(children: [
+                      PillButton(icon: Icons.play_arrow_rounded, label: 'Watch now', onTap: () => _play(m)),
+                      const SizedBox(width: 10),
+                      PillButton(icon: Icons.arrow_outward_rounded, label: 'Details', filled: false, onTap: () => widget.onOpen(m)),
+                      const SizedBox(width: 10),
+                      AnimatedBuilder(
+                        animation: Library.instance,
+                        builder: (_, __) {
+                          final fav = Library.instance.isFav(_ref(m).key);
+                          return FocusableTap(
+                            onTap: () => Library.instance.toggleFav(_ref(m)),
+                            builder: (_, active) => AnimatedContainer(
+                              duration: const Duration(milliseconds: 160),
+                              width: 47,
+                              height: 47,
+                              decoration: BoxDecoration(color: active ? surfaceHi : surface, borderRadius: BorderRadius.circular(14), border: Border.all(color: active ? accent : line)),
+                              child: Icon(fav ? Icons.favorite_rounded : Icons.favorite_border_rounded, color: fav ? accent : textHi, size: 20),
+                            ),
+                          );
+                        },
+                      ),
+                    ]),
+                  ],
+                ),
+              ),
+              Positioned(
+                left: 46,
+                right: 30,
+                bottom: 24,
+                height: 70,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  clipBehavior: Clip.none,
+                  itemCount: _items.length,
+                  separatorBuilder: (_, _) => const SizedBox(width: 10),
+                  itemBuilder: (_, i) {
+                    final it = _items[i];
+                    final p = _meta[it.streamId]?.poster;
+                    final img = (p != null && p.isNotEmpty) ? p : it.icon;
+                    return _RailThumb(image: img, number: i + 1, selected: i == _index, onTap: () => _select(i));
+                  },
+                ),
+              ),
+              Positioned.fill(child: IgnorePointer(child: DecoratedBox(decoration: BoxDecoration(border: Border.all(color: line), borderRadius: BorderRadius.circular(22))))),
+            ],
           ),
-          // 3) featured rail — dot-thumbnail selector
-          Positioned(
-            left: 64,
-            right: 24,
-            bottom: 28,
-            height: 116,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              clipBehavior: Clip.none,
-              itemCount: _items.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 16),
-              itemBuilder: (_, i) {
-                final it = _items[i];
-                final p = _meta[it.streamId]?.poster;
-                final img = (p != null && p.isNotEmpty) ? p : it.icon;
-                return _RailThumb(image: img, selected: i == _index, onTap: () => _select(i));
-              },
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -1322,9 +1288,10 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
 /// when inactive, accent-ringed + glowing + scaled-up when active or hovered.
 class _RailThumb extends StatelessWidget {
   final String image;
+  final int number;
   final bool selected;
   final VoidCallback onTap;
-  const _RailThumb({required this.image, required this.selected, required this.onTap});
+  const _RailThumb({required this.image, required this.number, required this.selected, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -1332,27 +1299,31 @@ class _RailThumb extends StatelessWidget {
       onTap: onTap,
       builder: (context, active) {
         return AnimatedScale(
-          scale: selected ? 1.06 : (active ? 1.03 : 1.0),
+          scale: active ? 1.025 : 1.0,
           duration: const Duration(milliseconds: 200),
           curve: Curves.easeOut,
           alignment: Alignment.bottomCenter,
           child: AnimatedOpacity(
-            opacity: selected ? 1 : (active ? 0.92 : 0.5),
+            opacity: selected ? 1 : (active ? 0.92 : 0.58),
             duration: const Duration(milliseconds: 200),
-            child: AspectRatio(
-              aspectRatio: 2 / 3,
+            child: SizedBox(
+              width: 112,
               child: Container(
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: selected ? accent : Colors.white.withValues(alpha: 0.22), width: selected ? 3 : 1),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: selected ? accent : line, width: selected ? 2 : 1),
                   boxShadow: selected
                       ? [BoxShadow(color: accent.withValues(alpha: 0.5), blurRadius: 24, spreadRadius: -2, offset: const Offset(0, 8))]
                       : [BoxShadow(color: Colors.black.withValues(alpha: 0.45), blurRadius: 12, offset: const Offset(0, 5))],
                 ),
                 clipBehavior: Clip.antiAlias,
-                child: image.isNotEmpty
-                    ? CachedNetworkImage(imageUrl: image, fit: BoxFit.cover, filterQuality: FilterQuality.high, errorWidget: (_, _, _) => ColoredBox(color: surfaceHi))
-                    : ColoredBox(color: surfaceHi),
+                child: Stack(fit: StackFit.expand, children: [
+                  image.isNotEmpty
+                      ? CachedNetworkImage(imageUrl: image, fit: BoxFit.cover, alignment: Alignment.topCenter, filterQuality: FilterQuality.high, errorWidget: (_, _, _) => ColoredBox(color: surfaceHi))
+                      : ColoredBox(color: surfaceHi),
+                  DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.bottomCenter, end: Alignment.topCenter, colors: [Colors.black.withValues(alpha: 0.72), Colors.transparent]))),
+                  Positioned(left: 8, bottom: 6, child: Text(number.toString().padLeft(2, '0'), style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1))),
+                ]),
               ),
             ),
           ),
