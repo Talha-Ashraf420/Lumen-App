@@ -58,6 +58,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     _capabilities = _CatalogCapabilities(live: widget.client.creds.isM3u);
     _loadCapabilities();
     contentRefresh.addListener(_loadCapabilities);
+    CatalogCache.instance.revision.addListener(_loadCapabilities);
     WidgetsBinding.instance.addObserver(this);
     // Quietly check for a newer build once per launch (skip dev builds).
     if (Updater.instance.isEnabled && kBuildNumber > 0) {
@@ -80,36 +81,26 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         _setCapabilities(_CatalogCapabilities(live: live.isNotEmpty));
         return;
       }
-      // Probe progressively instead of opening all provider endpoints at once.
-      // Home shares these cached futures, so its movie-first loading order stays
-      // fast and connection-limited while the dock gains confirmed sections.
-      final movies = await cache.vod(widget.client, priority: true);
-      if (!mounted || generation != _capabilityLoad) return;
-      _setCapabilities(
-        _CatalogCapabilities(
-          movies: movies.isNotEmpty,
-          series: _capabilities.series,
-          live: _capabilities.live,
-        ),
-      );
-      final series = await cache.series(widget.client, priority: true);
-      if (!mounted || generation != _capabilityLoad) return;
-      _setCapabilities(
-        _CatalogCapabilities(
-          movies: _capabilities.movies,
-          series: series.isNotEmpty,
-          live: _capabilities.live,
-        ),
-      );
-      final live = await cache.live(widget.client, priority: true);
-      if (!mounted || generation != _capabilityLoad) return;
-      _setCapabilities(
-        _CatalogCapabilities(
-          movies: _capabilities.movies,
-          series: _capabilities.series,
-          live: live.isNotEmpty,
-        ),
-      );
+      // Start the three light category requests together. CatalogCache keeps
+      // concurrency bounded, while each completion progressively unlocks its
+      // destination instead of waiting for the slowest provider endpoint.
+      Future<void> reveal(String kind, Future<List<Category>> request) async {
+        final values = await request;
+        if (!mounted || generation != _capabilityLoad) return;
+        _setCapabilities(
+          _CatalogCapabilities(
+            movies: kind == 'movie' ? values.isNotEmpty : _capabilities.movies,
+            series: kind == 'series' ? values.isNotEmpty : _capabilities.series,
+            live: kind == 'live' ? values.isNotEmpty : _capabilities.live,
+          ),
+        );
+      }
+
+      await Future.wait([
+        reveal('movie', cache.vod(widget.client, priority: true)),
+        reveal('series', cache.series(widget.client, priority: true)),
+        reveal('live', cache.live(widget.client, priority: true)),
+      ]);
     } catch (_) {
       // A provider may be temporarily unavailable. Keep the conservative
       // destinations already shown; content refresh can retry the catalogs.
@@ -129,6 +120,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   @override
   void dispose() {
     contentRefresh.removeListener(_loadCapabilities);
+    CatalogCache.instance.revision.removeListener(_loadCapabilities);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }

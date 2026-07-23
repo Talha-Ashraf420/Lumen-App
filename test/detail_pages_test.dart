@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen_tv/catalog_cache.dart';
+import 'package:lumen_tv/catalog_store.dart';
 import 'package:lumen_tv/models.dart';
 import 'package:lumen_tv/screens/home_screen.dart';
 import 'package:lumen_tv/screens/movie_detail_screen.dart';
@@ -133,9 +134,12 @@ class _HomeClient extends XtreamClient {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  setUp(() {
+  setUp(() async {
     SharedPreferences.setMockInitialValues({});
     activePalette = darkPalette;
+    // SQLite persistence has focused CatalogStore tests. Widget tests run on a
+    // fake clock that is incompatible with sqflite's transaction lock timer.
+    await CatalogStore.instance.disableForWidgetTests();
     CatalogCache.instance.clear();
   });
 
@@ -160,6 +164,23 @@ void main() {
   Future<void> disposeUi(WidgetTester tester) async {
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(seconds: 1));
+  }
+
+  Future<void> waitFor(
+    WidgetTester tester,
+    bool Function() condition, {
+    Duration timeout = const Duration(seconds: 2),
+  }) async {
+    final stopwatch = Stopwatch()..start();
+    while (!condition() && stopwatch.elapsed < timeout) {
+      // SQLite FFI completes on the real event loop; advancing only Flutter's
+      // fake frame clock can otherwise assert before the cached read returns.
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 10)),
+      );
+      await tester.pump();
+    }
+    expect(condition(), isTrue, reason: 'Timed out waiting for async catalog');
   }
 
   testWidgets('movie detail is useful before provider metadata arrives', (
@@ -323,27 +344,28 @@ void main() {
     expect(client.streamCalls, 1);
   });
 
-  testWidgets('Home paints before secondary catalogs and skips whole VOD', (
-    tester,
-  ) async {
+  testWidgets('Home warms catalogs once and skips whole VOD', (tester) async {
     final client = _HomeClient();
     await pumpAt(
       tester,
       HomeScreen(client: client, onBrowse: () {}),
       const Size(390, 844),
     );
-    await tester.pump(const Duration(milliseconds: 120));
+    await waitFor(tester, () => client.vodCategoryCalls == 1);
 
     expect(client.vodCategoryCalls, 1);
-    expect(client.seriesCategoryCalls, 0);
-    expect(client.liveCategoryCalls, 0);
+    await waitFor(tester, () => find.text('START HERE').evaluate().isNotEmpty);
     expect(client.vodStreamCategories, isNot(contains(null)));
     expect(client.vodStreamCategories.toSet().length, lessThanOrEqualTo(2));
     expect(find.text('START HERE'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
-    await tester.pump(const Duration(milliseconds: 180));
+    await waitFor(
+      tester,
+      () => client.seriesCategoryCalls == 1 && client.liveCategoryCalls == 1,
+    );
     expect(client.seriesCategoryCalls, 1);
+    expect(client.liveCategoryCalls, 1);
     await disposeUi(tester);
   });
 
@@ -358,8 +380,12 @@ void main() {
       SearchScreen(client: client, initialSection: 'movie'),
       const Size(1280, 800),
     );
-    await tester.pump(const Duration(milliseconds: 80));
-    await tester.pump();
+    await waitFor(tester, () => client.vodCategoryCalls == 1);
+    await waitFor(tester, () => client.vodStreamCategories.contains('1'));
+    await waitFor(
+      tester,
+      () => find.text('The Last Signal').evaluate().isNotEmpty,
+    );
 
     expect(client.vodCategoryCalls, 1);
     expect(client.seriesCategoryCalls, 0);

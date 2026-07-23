@@ -80,6 +80,7 @@ class SearchScreenState extends State<SearchScreen>
     super.initState();
     _loadCats();
     contentRefresh.addListener(_onRefresh);
+    CatalogCache.instance.revision.addListener(_onCatalogRevision);
   }
 
   void _loadCats() {
@@ -145,9 +146,20 @@ class SearchScreenState extends State<SearchScreen>
   @override
   void dispose() {
     contentRefresh.removeListener(_onRefresh);
+    CatalogCache.instance.revision.removeListener(_onCatalogRevision);
     _ctrl.dispose();
     _searchFocus.dispose();
     super.dispose();
+  }
+
+  void _onCatalogRevision() {
+    if (!mounted) return;
+    setState(() {
+      _movieByCat.clear();
+      _seriesByCat.clear();
+      _liveByCat.clear();
+    });
+    _loadCats();
   }
 
   void focusSearch() {

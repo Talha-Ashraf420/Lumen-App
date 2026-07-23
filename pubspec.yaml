@@ -67,6 +67,11 @@ dependencies:
   window_manager: ^0.4.2
   linked_scroll_controller: ^0.2.0
   path_provider: ^2.1.4
+  # Durable, indexed catalog cache. Mobile/macOS use the platform SQLite
+  # plugin; Windows/Linux and unit tests use the FFI implementation.
+  sqflite: 2.4.2+1
+  # 2.4.0 is the newest FFI release compatible with the pinned Dart 3.10 SDK.
+  sqflite_common_ffi: 2.4.0
   flutter_colorpicker: ^1.1.0
 
 dev_dependencies:
