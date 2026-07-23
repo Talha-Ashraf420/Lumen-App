@@ -51,13 +51,23 @@ Looking to list Lumen on a store? See **[STORE_LISTING.md](STORE_LISTING.md)**.
 
 ## 📸 Screenshots
 
-| Home | Movie detail | Discover |
-|------|--------------|----------|
-| ![Home](docs/screenshots/home.png) | ![Detail](docs/screenshots/detail.png) | ![Discover](docs/screenshots/discover.png) |
+The gallery uses a fictional demo library to showcase Lumen without bundling or
+advertising third-party channels, provider credentials, or copyrighted catalogs.
 
-| Movies | Live TV |
-|--------|---------|
-| ![Movies](docs/screenshots/movies.png) | ![Live TV](docs/screenshots/live.png) |
+| Movies | Home |
+|--------|------|
+| ![Lumen Movies library](store_assets/play_store/tv/01_movies.jpg) | ![Lumen Home and continue watching](store_assets/play_store/tv/02_home.jpg) |
+
+| Live TV | Series detail |
+|---------|---------------|
+| ![Lumen Live TV categories](store_assets/play_store/tv/03_live_tv.jpg) | ![Lumen series and episodes](store_assets/play_store/tv/04_series_detail.jpg) |
+
+| Discover | Personalization |
+|----------|-----------------|
+| ![Lumen Discover](store_assets/play_store/tv/05_discover.jpg) | ![Lumen appearance and personalization](store_assets/play_store/tv/06_profile.jpg) |
+
+The complete 1920×1080 Android TV upload set and specifications are available in
+**[store_assets/play_store/tv](store_assets/play_store/tv/README.md)**.
 
 ---
 
