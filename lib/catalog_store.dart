@@ -50,7 +50,7 @@ class CatalogStore {
       return override.openDatabase(
         _pathOverride ?? inMemoryDatabasePath,
         options: OpenDatabaseOptions(
-          version: 2,
+          version: 3,
           onCreate: _create,
           onUpgrade: _upgrade,
         ),
@@ -78,7 +78,7 @@ class CatalogStore {
     return factory.openDatabase(
       '${databases.path}/lumen_catalog.sqlite',
       options: OpenDatabaseOptions(
-        version: 2,
+        version: 3,
         onCreate: _create,
         onUpgrade: _upgrade,
       ),
@@ -109,6 +109,10 @@ class CatalogStore {
         sort_name TEXT NOT NULL,
         image TEXT NOT NULL,
         payload TEXT NOT NULL,
+        rating_value REAL NOT NULL,
+        recent_value INTEGER NOT NULL,
+        year_value INTEGER NOT NULL,
+        source_position INTEGER NOT NULL,
         generation INTEGER NOT NULL,
         updated_at INTEGER NOT NULL,
         PRIMARY KEY (profile_scope, media_kind, bucket, item_id)
@@ -137,10 +141,30 @@ class CatalogStore {
       CREATE INDEX catalog_item_search
       ON catalog_items(profile_scope, media_kind, sort_name)
     ''');
+    await _createOrderIndex(db);
   }
 
   Future<void> _upgrade(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) await _createProfileGenerations(db);
+    if (oldVersion < 3) {
+      await db.execute(
+        'ALTER TABLE catalog_items '
+        'ADD COLUMN rating_value REAL NOT NULL DEFAULT 0',
+      );
+      await db.execute(
+        'ALTER TABLE catalog_items '
+        'ADD COLUMN recent_value INTEGER NOT NULL DEFAULT 0',
+      );
+      await db.execute(
+        'ALTER TABLE catalog_items '
+        'ADD COLUMN year_value INTEGER NOT NULL DEFAULT 0',
+      );
+      await db.execute(
+        'ALTER TABLE catalog_items '
+        'ADD COLUMN source_position INTEGER NOT NULL DEFAULT 0',
+      );
+      await _createOrderIndex(db);
+    }
   }
 
   Future<void> _createProfileGenerations(Database db) => db.execute('''
@@ -151,7 +175,22 @@ class CatalogStore {
     )
   ''');
 
+  Future<void> _createOrderIndex(Database db) => db.execute('''
+    CREATE INDEX IF NOT EXISTS catalog_item_order
+    ON catalog_items(
+      profile_scope,
+      media_kind,
+      bucket,
+      source_position,
+      item_id
+    )
+  ''');
+
   static String _sortName(String value) => value.trim().toLowerCase();
+
+  static int _yearValue(String value) =>
+      int.tryParse(RegExp(r'(19|20)\d{2}').firstMatch(value)?.group(0) ?? '') ??
+      0;
 
   Future<List<Category>> categories(String scope, String kind) async {
     if (_disabledForWidgetTests) return const [];
@@ -219,6 +258,7 @@ class CatalogStore {
     int offset = 0,
     int limit = defaultPageSize,
     String query = '',
+    String sort = 'default',
   }) => _page(
     scope,
     'movie',
@@ -226,6 +266,7 @@ class CatalogStore {
     offset: offset,
     limit: limit,
     query: query,
+    sort: sort,
     decode: _decodeVod,
   );
 
@@ -235,6 +276,7 @@ class CatalogStore {
     int offset = 0,
     int limit = defaultPageSize,
     String query = '',
+    String sort = 'default',
   }) => _page(
     scope,
     'series',
@@ -242,6 +284,7 @@ class CatalogStore {
     offset: offset,
     limit: limit,
     query: query,
+    sort: sort,
     decode: _decodeSeries,
   );
 
@@ -251,6 +294,7 @@ class CatalogStore {
     int offset = 0,
     int limit = defaultPageSize,
     String query = '',
+    String sort = 'default',
   }) => _page(
     scope,
     'live',
@@ -258,6 +302,7 @@ class CatalogStore {
     offset: offset,
     limit: limit,
     query: query,
+    sort: sort,
     decode: _decodeLive,
   );
 
@@ -268,6 +313,7 @@ class CatalogStore {
     required int offset,
     required int limit,
     required String query,
+    required String sort,
     required T Function(Map<String, dynamic>) decode,
   }) async {
     if (_disabledForWidgetTests) {
@@ -288,7 +334,14 @@ class CatalogStore {
             'profile_scope = ? AND media_kind = ? AND bucket = ?'
             '${normalized.isEmpty ? '' : ' AND instr(sort_name, ?) > 0'}',
         whereArgs: [scope, kind, bucket, if (normalized.isNotEmpty) normalized],
-        orderBy: 'sort_name ASC, item_id ASC',
+        orderBy: switch (sort) {
+          'az' => 'sort_name ASC, item_id ASC',
+          'za' => 'sort_name DESC, item_id DESC',
+          'rating' => 'rating_value DESC, sort_name ASC, item_id ASC',
+          'recent' => 'recent_value DESC, sort_name ASC, item_id ASC',
+          'year' => 'year_value DESC, sort_name ASC, item_id ASC',
+          _ => 'source_position ASC, item_id ASC',
+        },
         limit: limit + 1,
         offset: offset,
       );
@@ -331,6 +384,9 @@ class CatalogStore {
     category: (item) => item.categoryId,
     name: (item) => item.name,
     image: (item) => item.icon,
+    rating: (item) => item.rating,
+    recent: (item) => int.tryParse(item.added) ?? 0,
+    year: (item) => _yearValue(item.name),
     encode: _encodeVod,
   );
 
@@ -349,6 +405,11 @@ class CatalogStore {
     category: (item) => item.categoryId,
     name: (item) => item.name,
     image: (item) => item.cover,
+    rating: (item) => item.rating,
+    recent: (item) =>
+        _yearValue(item.releaseDate.isEmpty ? item.name : item.releaseDate),
+    year: (item) =>
+        _yearValue(item.releaseDate.isEmpty ? item.name : item.releaseDate),
     encode: _encodeSeries,
   );
 
@@ -367,6 +428,9 @@ class CatalogStore {
     category: (item) => item.categoryId,
     name: (item) => item.name,
     image: (item) => item.icon,
+    rating: (_) => 0,
+    recent: (_) => 0,
+    year: (_) => 0,
     encode: _encodeLive,
   );
 
@@ -380,6 +444,9 @@ class CatalogStore {
     required String Function(T) category,
     required String Function(T) name,
     required String Function(T) image,
+    required double Function(T) rating,
+    required int Function(T) recent,
+    required int Function(T) year,
     required Map<String, dynamic> Function(T) encode,
   }) async {
     if (_disabledForWidgetTests) return true;
@@ -396,7 +463,8 @@ class CatalogStore {
         );
         final batch = txn.batch();
         final now = DateTime.now().millisecondsSinceEpoch;
-        for (final item in items) {
+        for (var position = 0; position < items.length; position++) {
+          final item = items[position];
           final title = name(item);
           batch.insert('catalog_items', {
             'profile_scope': scope,
@@ -408,6 +476,10 @@ class CatalogStore {
             'sort_name': _sortName(title),
             'image': image(item),
             'payload': jsonEncode(encode(item)),
+            'rating_value': rating(item),
+            'recent_value': recent(item),
+            'year_value': year(item),
+            'source_position': position,
             'generation': generation,
             'updated_at': now,
           });

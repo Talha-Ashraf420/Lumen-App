@@ -22,7 +22,7 @@ import 'stats_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final XtreamClient client;
-  final VoidCallback onLogout;
+  final Future<void> Function() onLogout;
   final void Function(XtreamCredentials) onSwitch;
   const ProfileScreen({
     super.key,
@@ -38,6 +38,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Map<String, dynamic>? _info;
   List<XtreamCredentials> _profiles = [];
   bool _accountInfoLoading = true;
+  bool _signingOut = false;
 
   @override
   void initState() {
@@ -159,6 +160,55 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const SnackBar(
             content: Text('Watch history cleared'),
             duration: Duration(seconds: 2),
+          ),
+        );
+    }
+  }
+
+  Future<void> _requestLogout() async {
+    if (_signingOut) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: surface,
+        title: const Text('Sign out of Lumen?'),
+        content: const Text(
+          'This account stays saved on this device, but playback and its '
+          'library will close now.',
+        ),
+        actions: [
+          TextButton(
+            autofocus: true,
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Stay signed in', style: TextStyle(color: muted)),
+          ),
+          FilledButton.icon(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFFF5277),
+              foregroundColor: foregroundFor(const Color(0xFFFF5277)),
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            icon: const Icon(Icons.logout_rounded, size: 18),
+            label: const Text('Sign out'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _signingOut = true);
+    try {
+      await widget.onLogout();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _signingOut = false);
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Lumen could not finish signing out. Please try again.',
+            ),
+            duration: Duration(seconds: 3),
           ),
         );
     }
@@ -739,7 +789,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _signOutButton() => RemoteTap(
-    onTap: widget.onLogout,
+    onTap: _signingOut ? null : _requestLogout,
     semanticLabel: 'Sign out of Lumen',
     focusRadius: 18,
     child: Container(
@@ -749,20 +799,39 @@ class _ProfileScreenState extends State<ProfileScreen> {
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: const Color(0x30FF5277)),
       ),
-      child: const Row(
+      child: Row(
         children: [
-          Icon(Icons.logout_rounded, color: Color(0xFFFF7A9A), size: 20),
-          SizedBox(width: 11),
+          if (_signingOut)
+            const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Color(0xFFFF7A9A),
+              ),
+            )
+          else
+            const Icon(
+              Icons.logout_rounded,
+              color: Color(0xFFFF7A9A),
+              size: 20,
+            ),
+          const SizedBox(width: 11),
           Expanded(
             child: Text(
-              'Sign out of Lumen',
-              style: TextStyle(
+              _signingOut ? 'Signing out…' : 'Sign out of Lumen',
+              style: const TextStyle(
                 color: Color(0xFFFF7A9A),
                 fontWeight: FontWeight.w800,
               ),
             ),
           ),
-          Icon(Icons.chevron_right_rounded, color: Color(0x99FF7A9A), size: 21),
+          if (!_signingOut)
+            const Icon(
+              Icons.chevron_right_rounded,
+              color: Color(0x99FF7A9A),
+              size: 21,
+            ),
         ],
       ),
     ),

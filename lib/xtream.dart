@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
@@ -10,6 +11,31 @@ class XtreamException implements Exception {
   XtreamException(this.message);
   @override
   String toString() => message;
+}
+
+/// Convert transport failures into short, actionable copy without ever
+/// rendering a request URI. Xtream URLs contain the username and password in
+/// their query string, and `ClientException.toString()` may include that URI.
+String safeProviderError(Object error) {
+  if (error is XtreamException) return error.message;
+  if (error is TimeoutException) {
+    return 'The provider took too long to respond. Check the server address '
+        'and try again.';
+  }
+  if (error is HandshakeException) {
+    return 'The provider’s secure connection could not be verified. Check '
+        'the server address or ask the provider to fix its certificate.';
+  }
+  if (error is SocketException) {
+    return 'Lumen could not reach the provider. Check the server address, '
+        'internet connection, or provider status.';
+  }
+  if (error is http.ClientException) {
+    return 'The provider closed the connection before login completed. '
+        'Please try again.';
+  }
+  return 'Lumen could not connect to this provider. Check the details and '
+      'try again.';
 }
 
 /// Normalize a user-entered base URL: ensure scheme, strip trailing slash/path.
@@ -451,8 +477,29 @@ class XtreamClient {
           _timeout,
           onTimeout: () => throw XtreamException('Provider timed out.'),
         );
-    if (res.statusCode != 200)
-      throw XtreamException('Provider returned ${res.statusCode}');
+    if (res.statusCode == 401 || res.statusCode == 403) {
+      throw XtreamException(
+        'The provider rejected these credentials. Check the username and '
+        'password.',
+      );
+    }
+    if (res.statusCode == 404) {
+      throw XtreamException(
+        'The server was reached, but its Xtream API was not found. Check the '
+        'server address.',
+      );
+    }
+    if (res.statusCode >= 500) {
+      throw XtreamException(
+        'The provider is temporarily unavailable (${res.statusCode}). '
+        'Please try again shortly.',
+      );
+    }
+    if (res.statusCode != 200) {
+      throw XtreamException(
+        'The provider could not complete login (${res.statusCode}).',
+      );
+    }
     if (res.body.isEmpty) return [];
     try {
       final body = res.body;

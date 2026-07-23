@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -199,8 +200,35 @@ class _GateState extends State<_Gate> {
   }
 
   Future<void> _onLogout() async {
-    await Store.logout();
-    if (mounted) await _activate(null);
+    final change = ++_sessionChange;
+    if (mounted) setState(() => _loading = true);
+    try {
+      await Store.logout().timeout(const Duration(seconds: 6));
+    } catch (_) {
+      if (mounted && change == _sessionChange) {
+        setState(() => _loading = false);
+      }
+      rethrow;
+    }
+
+    _client?.close();
+    activeClient = null;
+    PlaybackController.instance.stop();
+    SplitController.instance.close();
+    CatalogCache.instance.clear();
+    EpgCache.instance.clear();
+    if (!mounted || change != _sessionChange) return;
+
+    // Every account-bound controller clears its in-memory view synchronously,
+    // then completes any slower download persistence in the background. Move
+    // to Login immediately so sign-out never appears stuck behind that work.
+    final clearProfileState = _activateProfileState(null);
+    setState(() {
+      _creds = null;
+      _client = null;
+      _loading = false;
+    });
+    unawaited(clearProfileState);
   }
 
   @override

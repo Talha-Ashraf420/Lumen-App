@@ -23,7 +23,7 @@ import 'search_screen.dart';
 
 class HomeShell extends StatefulWidget {
   final XtreamClient client;
-  final VoidCallback onLogout;
+  final Future<void> Function() onLogout;
   final void Function(XtreamCredentials) onSwitch;
   const HomeShell({
     super.key,

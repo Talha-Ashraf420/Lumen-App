@@ -70,6 +70,23 @@ void main() {
   );
 
   test(
+    'logout clears the active session but keeps the saved account',
+    () async {
+      await Store.setActive(_accountA);
+      expect(await Store.active(), isNotNull);
+
+      await Store.logout();
+
+      expect(await Store.active(), isNull);
+      expect(await Store.savedProfiles(), hasLength(1));
+      expect(
+        Store.sameProfile((await Store.savedProfiles()).single, _accountA),
+        isTrue,
+      );
+    },
+  );
+
+  test(
     'library, Home shelves, and playback stats stay with their account',
     () async {
       await Library.instance.activate(_accountA);
@@ -148,7 +165,7 @@ void main() {
         theme: buildTheme(darkPalette),
         home: HomeShell(
           client: _LiveOnlyClient(),
-          onLogout: () {},
+          onLogout: () async {},
           onSwitch: (_) {},
         ),
       ),

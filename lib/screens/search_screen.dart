@@ -4,6 +4,7 @@ import '../library.dart';
 import '../refresh.dart';
 import '../responsive.dart';
 import '../models.dart';
+import '../store.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import '../xtream.dart';
@@ -66,6 +67,9 @@ class SearchScreenState extends State<SearchScreen>
   final Map<String, List<Series>> _seriesByCat = {};
   final Map<String, List<LiveStream>> _liveByCat = {};
   final Set<String> _inFlight = {};
+  final Map<String, bool> _hasMore = {};
+  int _resultGeneration = 0;
+  static const _pageSize = 48;
 
   List<Category> _movieCats = [], _seriesCats = [], _liveCats = [];
   bool _movieCatsReady = false;
@@ -74,6 +78,16 @@ class SearchScreenState extends State<SearchScreen>
 
   @override
   bool get wantKeepAlive => true;
+
+  int get debugLoadedResultCount => switch (_section) {
+    'movie' => _movieByCat[_cat]?.length ?? 0,
+    'series' => _seriesByCat[_cat]?.length ?? 0,
+    'live' => _liveByCat[_cat]?.length ?? 0,
+    _ =>
+      (_movieByCat['all']?.length ?? 0) +
+          (_seriesByCat['all']?.length ?? 0) +
+          (_liveByCat['all']?.length ?? 0),
+  };
 
   @override
   void initState() {
@@ -132,9 +146,7 @@ class SearchScreenState extends State<SearchScreen>
   void _onRefresh() {
     if (!mounted) return;
     setState(() {
-      _movieByCat.clear();
-      _seriesByCat.clear();
-      _liveByCat.clear();
+      _clearResults();
       _movieCatsReady = false;
       _seriesCatsReady = false;
       _liveCatsReady = false;
@@ -154,11 +166,7 @@ class SearchScreenState extends State<SearchScreen>
 
   void _onCatalogRevision() {
     if (!mounted) return;
-    setState(() {
-      _movieByCat.clear();
-      _seriesByCat.clear();
-      _liveByCat.clear();
-    });
+    setState(_clearResults);
     _loadCats();
   }
 
@@ -172,110 +180,149 @@ class SearchScreenState extends State<SearchScreen>
     _ => _liveByCat.containsKey(cat),
   };
 
-  /// Ensure the streams for (section, cat) are loaded. Safe to call from build.
-  void _ensure(String section, String cat) {
-    final key = '$section:$cat';
-    if (_has(section, cat) || _inFlight.contains(key)) return;
-    _inFlight.add(key);
-    Future<void> store(Future<void> Function() run) => run()
-        .catchError((_) => _store(section, cat, const []))
-        .whenComplete(() => _inFlight.remove(key));
-    switch (section) {
-      case 'movie':
-        store(() => _loadMovies(cat).then((v) => _store(section, cat, v)));
-      case 'series':
-        store(() => _loadSeries(cat).then((v) => _store(section, cat, v)));
-      default:
-        store(() => _loadLive(cat).then((v) => _store(section, cat, v)));
-    }
+  String _pageKey(String section, String cat) => '$section:$cat';
+
+  void _clearResults() {
+    _resultGeneration++;
+    _movieByCat.clear();
+    _seriesByCat.clear();
+    _liveByCat.clear();
+    _hasMore.clear();
+    _inFlight.clear();
   }
 
-  void _store(String section, String cat, List<dynamic> v) {
-    if (!mounted) return;
+  void _changeResults(VoidCallback change) {
     setState(() {
-      switch (section) {
-        case 'movie':
-          _movieByCat[cat] = v.cast<VodStream>();
-        case 'series':
-          _seriesByCat[cat] = v.cast<Series>();
-        default:
-          _liveByCat[cat] = v.cast<LiveStream>();
-      }
+      change();
+      _clearResults();
     });
   }
 
-  Future<List<VodStream>> _loadMovies(String cat) async {
-    if (cat != 'all') {
-      return CatalogCache.instance.vodStreams(
-        widget.client,
-        cat,
-        priority: true,
-      );
-    }
-    final all = await CatalogCache.instance
-        .vodStreams(widget.client, null, priority: true)
-        .catchError((_) => <VodStream>[]);
-    if (all.isNotEmpty || _movieCats.isEmpty) return all;
-    return _aggregate(
-      _movieCats,
-      (id) => CatalogCache.instance.vodStreams(widget.client, id),
-    );
+  /// Ensure the first page for (section, category) is loaded. Safe from build.
+  void _ensure(String section, String cat) {
+    if (_has(section, cat)) return;
+    _loadNext(section, cat);
   }
 
-  Future<List<Series>> _loadSeries(String cat) async {
-    if (cat != 'all') {
-      return CatalogCache.instance.seriesItems(
-        widget.client,
-        cat,
-        priority: true,
-      );
+  void _loadNext(String section, String cat) {
+    final pageKey = _pageKey(section, cat);
+    if (_has(section, cat) && !(_hasMore[pageKey] ?? false)) return;
+    final generation = _resultGeneration;
+    final requestKey = '$generation:$pageKey';
+    if (_inFlight.contains(requestKey)) return;
+    _inFlight.add(requestKey);
+    final offset = switch (section) {
+      'movie' => _movieByCat[cat]?.length ?? 0,
+      'series' => _seriesByCat[cat]?.length ?? 0,
+      _ => _liveByCat[cat]?.length ?? 0,
+    };
+
+    Future<void> finish(Future<void> Function() run) => run()
+        .catchError(
+          (_) => _storePage(section, cat, const [], false, generation, offset),
+        )
+        .whenComplete(() => _inFlight.remove(requestKey));
+
+    final categoryId = cat == 'all' ? null : cat;
+    switch (section) {
+      case 'movie':
+        finish(
+          () => CatalogCache.instance
+              .vodPage(
+                widget.client,
+                categoryId: categoryId,
+                offset: offset,
+                limit: _pageSize,
+                query: _q.trim(),
+                sort: _sort,
+              )
+              .then(
+                (page) => _storePage(
+                  section,
+                  cat,
+                  page.items,
+                  page.hasMore,
+                  generation,
+                  offset,
+                ),
+              ),
+        );
+      case 'series':
+        finish(
+          () => CatalogCache.instance
+              .seriesPage(
+                widget.client,
+                categoryId: categoryId,
+                offset: offset,
+                limit: _pageSize,
+                query: _q.trim(),
+                sort: _sort,
+              )
+              .then(
+                (page) => _storePage(
+                  section,
+                  cat,
+                  page.items,
+                  page.hasMore,
+                  generation,
+                  offset,
+                ),
+              ),
+        );
+      default:
+        finish(
+          () => CatalogCache.instance
+              .livePage(
+                widget.client,
+                categoryId: categoryId,
+                offset: offset,
+                limit: _pageSize,
+                query: _q.trim(),
+                sort: _sort,
+              )
+              .then(
+                (page) => _storePage(
+                  section,
+                  cat,
+                  page.items,
+                  page.hasMore,
+                  generation,
+                  offset,
+                ),
+              ),
+        );
     }
-    final all = await CatalogCache.instance
-        .seriesItems(widget.client, null, priority: true)
-        .catchError((_) => <Series>[]);
-    if (all.isNotEmpty || _seriesCats.isEmpty) return all;
-    return _aggregate(
-      _seriesCats,
-      (id) => CatalogCache.instance.seriesItems(widget.client, id),
-    );
   }
 
-  Future<List<LiveStream>> _loadLive(String cat) async {
-    if (cat != 'all') {
-      return CatalogCache.instance.liveStreams(
-        widget.client,
-        cat,
-        priority: true,
-      );
-    }
-    final all = await CatalogCache.instance
-        .liveStreams(widget.client, null, priority: true)
-        .catchError((_) => <LiveStream>[]);
-    if (all.isNotEmpty || _liveCats.isEmpty) return all;
-    return _aggregate(
-      _liveCats,
-      (id) => CatalogCache.instance.liveStreams(widget.client, id),
-    );
-  }
-
-  /// Concatenate streams across all categories in gentle batches (fallback when
-  /// the provider doesn't support the "list all" call).
-  Future<List<T>> _aggregate<T>(
-    List<Category> cats,
-    Future<List<T>> Function(String) fetch,
-  ) async {
-    final out = <T>[];
-    const batch = 4;
-    for (var i = 0; i < cats.length; i += batch) {
-      final slice = cats.skip(i).take(batch);
-      final res = await Future.wait(
-        slice.map((c) => fetch(c.id).catchError((_) => <T>[])),
-      );
-      for (final r in res) {
-        out.addAll(r);
+  void _storePage(
+    String section,
+    String cat,
+    List<dynamic> values,
+    bool hasMore,
+    int generation,
+    int offset,
+  ) {
+    if (!mounted || generation != _resultGeneration) return;
+    setState(() {
+      switch (section) {
+        case 'movie':
+          _movieByCat[cat] = [
+            if (offset > 0) ...?_movieByCat[cat],
+            ...values.cast<VodStream>(),
+          ];
+        case 'series':
+          _seriesByCat[cat] = [
+            if (offset > 0) ...?_seriesByCat[cat],
+            ...values.cast<Series>(),
+          ];
+        default:
+          _liveByCat[cat] = [
+            if (offset > 0) ...?_liveByCat[cat],
+            ...values.cast<LiveStream>(),
+          ];
       }
-    }
-    return out;
+      _hasMore[_pageKey(section, cat)] = hasMore;
+    });
   }
 
   // builders → result items
@@ -470,12 +517,12 @@ class SearchScreenState extends State<SearchScreen>
     hint: 'Search movies, series, channels…',
     controller: _ctrl,
     focusNode: _searchFocus,
-    onChanged: (v) => setState(() => _q = v),
+    onChanged: (v) => _changeResults(() => _q = v),
     trailing: _q.isNotEmpty
         ? RemoteTap(
             semanticLabel: 'Clear search',
             focusRadius: 18,
-            onTap: () => setState(() {
+            onTap: () => _changeResults(() {
               _q = '';
               _ctrl.clear();
               _searchFocus.requestFocus();
@@ -570,7 +617,7 @@ class SearchScreenState extends State<SearchScreen>
         itemBuilder: (_, i) {
           final sel = _section == items[i].id;
           return RemoteTap(
-            onTap: () => setState(() {
+            onTap: () => _changeResults(() {
               _section = items[i].id;
               _cat = 'all';
               _sort = 'default';
@@ -624,7 +671,7 @@ class SearchScreenState extends State<SearchScreen>
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(color: line),
       ),
-      onSelected: (v) => setState(() => _sort = v),
+      onSelected: (v) => _changeResults(() => _sort = v),
       itemBuilder: (_) => [
         for (final e in entries)
           PopupMenuItem(
@@ -690,7 +737,7 @@ class SearchScreenState extends State<SearchScreen>
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(color: line),
       ),
-      onSelected: (v) => setState(() => _cat = v),
+      onSelected: (v) => _changeResults(() => _cat = v),
       itemBuilder: (_) => [
         _catItem('all', 'All categories'),
         for (final c in _curCats) _catItem(c.id, c.name),
@@ -778,7 +825,7 @@ class SearchScreenState extends State<SearchScreen>
   Widget _catTile(String id, String name) {
     final sel = _cat == id;
     return FocusableTap(
-      onTap: () => setState(() => _cat = id),
+      onTap: () => _changeResults(() => _cat = id),
       builder: (context, active) => AnimatedContainer(
         duration: const Duration(milliseconds: 140),
         margin: const EdgeInsets.symmetric(vertical: 2),
@@ -821,62 +868,14 @@ class SearchScreenState extends State<SearchScreen>
     );
   }
 
-  int _yr(String s) =>
-      int.tryParse(RegExp(r'(19|20)\d{2}').firstMatch(s)?.group(0) ?? '') ?? 0;
-
-  List<VodStream> _sortMovies(List<VodStream> l) {
-    final x = [...l];
-    switch (_sort) {
-      case 'az':
-        x.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
-      case 'za':
-        x.sort((a, b) => b.name.toLowerCase().compareTo(a.name.toLowerCase()));
-      case 'rating':
-        x.sort((a, b) => b.rating.compareTo(a.rating));
-      case 'recent':
-        x.sort(
-          (a, b) => (int.tryParse(b.added) ?? 0).compareTo(
-            int.tryParse(a.added) ?? 0,
-          ),
-        );
-      case 'year':
-        x.sort((a, b) => _yr(b.name).compareTo(_yr(a.name)));
-    }
-    return x;
-  }
-
-  List<Series> _sortSeries(List<Series> l) {
-    final x = [...l];
-    switch (_sort) {
-      case 'az':
-        x.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
-      case 'za':
-        x.sort((a, b) => b.name.toLowerCase().compareTo(a.name.toLowerCase()));
-      case 'rating':
-        x.sort((a, b) => b.rating.compareTo(a.rating));
-      case 'year':
-      case 'recent':
-        x.sort((a, b) => _yr(b.releaseDate).compareTo(_yr(a.releaseDate)));
-    }
-    return x;
-  }
-
-  List<LiveStream> _sortLive(List<LiveStream> l) {
-    final x = [...l];
-    if (_sort == 'az')
-      x.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
-    if (_sort == 'za')
-      x.sort((a, b) => b.name.toLowerCase().compareTo(a.name.toLowerCase()));
-    return x;
-  }
-
   Widget _body() {
-    final q = _q.trim().toLowerCase();
-    bool m(String s) => q.isEmpty || s.toLowerCase().contains(q);
+    final q = _q.trim();
 
     if (_section == 'all') {
       if (q.isEmpty) return _prompt();
-      // global search across everything (whole-catalog 'all' lists)
+      // Each media type queries only its first matching page. Providers that
+      // lack a whole-catalog endpoint are imported into SQLite once, then all
+      // subsequent searches stay local and paged.
       _ensure('movie', 'all');
       _ensure('series', 'all');
       _ensure('live', 'all');
@@ -884,25 +883,15 @@ class SearchScreenState extends State<SearchScreen>
       final series = _seriesByCat['all'];
       final live = _liveByCat['all'];
       final loading = movies == null || series == null || live == null;
-      final mr = (movies ?? [])
-          .where((x) => m(x.name))
-          .take(18)
-          .map(_movie)
-          .toList();
-      final sr = (series ?? [])
-          .where((x) => m(x.name))
-          .take(18)
-          .map(_ser)
-          .toList();
-      final lr = (live ?? [])
-          .where((x) => m(x.name))
-          .take(18)
-          .map(_liv)
-          .toList();
-      if (loading && mr.isEmpty && sr.isEmpty && lr.isEmpty)
+      final mr = (movies ?? []).take(18).map(_movie).toList();
+      final sr = (series ?? []).take(18).map(_ser).toList();
+      final lr = (live ?? []).take(18).map(_liv).toList();
+      if (loading && mr.isEmpty && sr.isEmpty && lr.isEmpty) {
         return const GridLoading();
-      if (mr.isEmpty && sr.isEmpty && lr.isEmpty)
+      }
+      if (mr.isEmpty && sr.isEmpty && lr.isEmpty) {
         return _empty('No results for “$_q”.');
+      }
       return ListView(
         padding: const EdgeInsets.only(top: 8, bottom: 120),
         children: [
@@ -919,20 +908,15 @@ class SearchScreenState extends State<SearchScreen>
     final catId = _cat;
     _ensure(_section, catId);
     final loaded = _has(_section, catId);
+    final pageKey = _pageKey(_section, catId);
     List<_Res> items;
     if (_section == 'movie') {
-      items = _sortMovies(
-        _movieByCat[catId] ?? const [],
-      ).where((x) => m(x.name)).map(_movie).toList();
+      items = (_movieByCat[catId] ?? const []).map(_movie).toList();
     } else if (_section == 'series') {
-      items = _sortSeries(
-        _seriesByCat[catId] ?? const [],
-      ).where((x) => m(x.name)).map(_ser).toList();
+      items = (_seriesByCat[catId] ?? const []).map(_ser).toList();
     } else {
       // build a shared channel playlist so the player can zap next/previous
-      final chans = _sortLive(
-        _liveByCat[catId] ?? const <LiveStream>[],
-      ).where((x) => m(x.name)).toList();
+      final chans = _liveByCat[catId] ?? const <LiveStream>[];
       final pl = chans.map(_liveItem).toList();
       items = chans
           .asMap()
@@ -951,38 +935,67 @@ class SearchScreenState extends State<SearchScreen>
     }
 
     if (!loaded) return GridLoading(channel: live);
-    if (items.isEmpty)
+    if (items.isEmpty) {
       return _empty(q.isEmpty ? 'Nothing here.' : 'No results for “$_q”.');
+    }
 
+    final more = _hasMore[pageKey] ?? false;
     return LayoutBuilder(
-      builder: (context, constraints) => GridView.builder(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
-        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: gridColumns(
-            constraints.maxWidth,
-            tile: live ? 150 : 136,
-          ),
-          childAspectRatio: live ? 0.82 : 0.66,
-          crossAxisSpacing: 13,
-          mainAxisSpacing: 20,
-        ),
-        itemCount: items.length,
-        itemBuilder: (_, i) => live
-            ? ChannelCard(
-                name: items[i].name,
-                logo: items[i].image,
-                index: i,
-                onTap: items[i].onTap,
-              )
-            : PosterCard(
-                name: items[i].name,
-                image: items[i].image,
-                rating: items[i].rating,
-                subtitle: items[i].subtitle,
-                index: i,
-                onTap: items[i].onTap,
+      builder: (context, constraints) =>
+          NotificationListener<ScrollNotification>(
+            onNotification: (notification) {
+              if (more && notification.metrics.extentAfter < 900) {
+                _loadNext(_section, catId);
+              }
+              return false;
+            },
+            child: GridView.builder(
+              key: PageStorageKey(
+                'catalog:${Store.profileScope(widget.client.creds)}:'
+                '$_section:$catId:$_sort:$q',
               ),
-      ),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: gridColumns(
+                  constraints.maxWidth,
+                  tile: live ? 150 : 136,
+                ),
+                childAspectRatio: live ? 0.82 : 0.66,
+                crossAxisSpacing: 13,
+                mainAxisSpacing: 20,
+              ),
+              itemCount: items.length + (more ? 1 : 0),
+              itemBuilder: (_, i) {
+                if (i == items.length) {
+                  return Center(
+                    child: SizedBox(
+                      width: 28,
+                      height: 28,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        color: accentInk,
+                      ),
+                    ),
+                  );
+                }
+                return live
+                    ? ChannelCard(
+                        name: items[i].name,
+                        logo: items[i].image,
+                        index: i,
+                        onTap: items[i].onTap,
+                      )
+                    : PosterCard(
+                        name: items[i].name,
+                        image: items[i].image,
+                        rating: items[i].rating,
+                        subtitle: items[i].subtitle,
+                        index: i,
+                        onTap: items[i].onTap,
+                      );
+              },
+            ),
+          ),
     );
   }
 

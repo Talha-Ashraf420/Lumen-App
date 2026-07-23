@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
@@ -20,6 +21,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -43,6 +45,9 @@ class Media3PlayerActivity : Activity() {
 
         private const val CONNECT_TIMEOUT_MS = 15_000
         private const val READ_TIMEOUT_MS = 60_000
+        private const val STARTUP_TIMEOUT_MS = 60_000L
+        private const val LIVE_STALL_TIMEOUT_MS = 20_000L
+        private const val WATCHDOG_INTERVAL_MS = 2_000L
         private val RETRY_DELAYS_MS = longArrayOf(1_000, 3_000, 5_000)
     }
 
@@ -54,8 +59,40 @@ class Media3PlayerActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
     private var retryAttempt = 0
     private var retryScheduled = false
+    private var terminalError = false
     private var url = ""
     private var isLive = false
+    private var openedAtMs = 0L
+    private var lastProgressAtMs = 0L
+    private var lastPositionMs = 0L
+    private var hasStarted = false
+
+    private val watchdog = object : Runnable {
+        override fun run() {
+            if (::player.isInitialized && !retryScheduled && !terminalError) {
+                val now = SystemClock.elapsedRealtime()
+                val position = player.currentPosition.coerceAtLeast(0L)
+                if (player.isPlaying && position > lastPositionMs) {
+                    markHealthy(now, position)
+                }
+                if (
+                    !hasStarted &&
+                    openedAtMs > 0L &&
+                    now - openedAtMs >= STARTUP_TIMEOUT_MS
+                ) {
+                    scheduleRetry("The provider took too long to start this stream.")
+                } else if (
+                    isLive &&
+                    hasStarted &&
+                    player.playbackState == Player.STATE_BUFFERING &&
+                    now - lastProgressAtMs >= LIVE_STALL_TIMEOUT_MS
+                ) {
+                    scheduleRetry("The live stream stopped sending data.")
+                }
+            }
+            handler.postDelayed(this, WATCHDOG_INTERVAL_MS)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -94,7 +131,6 @@ class Media3PlayerActivity : Activity() {
             override fun onPlaybackStateChanged(state: Int) {
                 when (state) {
                     Player.STATE_READY -> {
-                        retryAttempt = 0
                         retryScheduled = false
                         errorPanel.visibility = View.GONE
                     }
@@ -107,8 +143,18 @@ class Media3PlayerActivity : Activity() {
             override fun onPlayerError(error: PlaybackException) {
                 scheduleRetry(friendlyError(error))
             }
+
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                if (isPlaying) {
+                    markHealthy(
+                        SystemClock.elapsedRealtime(),
+                        player.currentPosition.coerceAtLeast(0L)
+                    )
+                }
+            }
         })
         open()
+        handler.post(watchdog)
     }
 
     private fun buildPlayer(): ExoPlayer {
@@ -189,10 +235,12 @@ class Media3PlayerActivity : Activity() {
             setPadding(dp(28), dp(24), dp(28), dp(24))
             setBackgroundColor(0xEE111315.toInt())
             layoutParams = FrameLayout.LayoutParams(
-                dp(390),
+                ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 Gravity.CENTER
-            )
+            ).apply {
+                setMargins(dp(24), dp(24), dp(24), dp(24))
+            }
         }
         errorText = TextView(this).apply {
             textSize = 15f
@@ -206,6 +254,7 @@ class Media3PlayerActivity : Activity() {
             setOnClickListener {
                 retryAttempt = 0
                 retryScheduled = false
+                terminalError = false
                 errorPanel.visibility = View.GONE
                 open()
             }
@@ -222,9 +271,25 @@ class Media3PlayerActivity : Activity() {
     }
 
     private fun open() {
+        terminalError = false
+        openedAtMs = SystemClock.elapsedRealtime()
+        lastProgressAtMs = openedAtMs
+        lastPositionMs = 0L
+        hasStarted = false
+        player.stop()
         player.setMediaItem(MediaItem.fromUri(Uri.parse(url)))
         player.playWhenReady = true
         player.prepare()
+    }
+
+    private fun markHealthy(now: Long, position: Long) {
+        hasStarted = true
+        lastProgressAtMs = now
+        lastPositionMs = position
+        retryAttempt = 0
+        retryScheduled = false
+        terminalError = false
+        errorPanel.visibility = View.GONE
     }
 
     private fun scheduleRetry(message: String) {
@@ -245,17 +310,38 @@ class Media3PlayerActivity : Activity() {
     }
 
     private fun showError(message: String) {
+        terminalError = true
         errorText.text = message
         errorPanel.visibility = View.VISIBLE
         retryButton.requestFocus()
     }
 
-    private fun friendlyError(error: PlaybackException): String = when {
+    private fun friendlyError(error: PlaybackException): String {
+        val status = responseCode(error)
+        return when {
+        status == 401 || status == 403 ->
+            "The provider rejected this stream. Check the account or device limit."
+        status == 404 ->
+            "The provider no longer has this stream."
         error.errorCodeName.contains("HTTP", ignoreCase = true) ->
-            "The provider rejected or could not serve this stream."
+            "The provider could not serve this stream (HTTP ${status ?: "error"})."
         error.errorCodeName.contains("DECOD", ignoreCase = true) ->
             "Android cannot decode this stream format."
+        error.errorCodeName.contains("NETWORK", ignoreCase = true) ->
+            "The provider could not be reached from this device."
         else -> "The stream did not start in the compatibility player."
+        }
+    }
+
+    private fun responseCode(error: Throwable): Int? {
+        var cause: Throwable? = error
+        while (cause != null) {
+            if (cause is HttpDataSource.InvalidResponseCodeException) {
+                return cause.responseCode
+            }
+            cause = cause.cause
+        }
+        return null
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
