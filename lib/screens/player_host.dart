@@ -196,10 +196,14 @@ class _PlayerHostState extends State<PlayerHost> {
 
   Future<void> _openSplitWith(PlayerItem it) async {
     _splitMainIsPc = true; // pc keeps audio; the new pick is the small one
-    await sc.open(it);
-    _applySplitAudio();
-    _watchSplitPlay();
-    setState(() {});
+    try {
+      await sc.open(it);
+      _applySplitAudio();
+      _watchSplitPlay();
+      setState(() {});
+    } catch (_) {
+      _flashHud('Unable to open the second stream', Icons.wifi_off_rounded);
+    }
   }
 
   Future<void> _exitSplit() async {
@@ -489,7 +493,7 @@ class _PlayerHostState extends State<PlayerHost> {
                         playing
                             ? Icons.pause_rounded
                             : Icons.play_arrow_rounded,
-                        color: Colors.white,
+                        color: onAccent,
                         size: 40,
                       ),
                     ),
@@ -1157,13 +1161,11 @@ class _PlayerHostState extends State<PlayerHost> {
     );
   }
 
-  /// Reconnect banner — shown while the player is auto-retrying a dropped stream.
-  /// Displays a spinner + "Reconnecting (n/max)…" message and a manual Retry
-  /// button once all automatic attempts have been exhausted.
+  /// Startup/reconnect banner for every media type. A manual Retry replaces the
+  /// spinner once the bounded automatic recovery attempts are exhausted.
   Widget _reconnectOverlay() {
     final status = pc.reconnectStatus;
-    final exhausted =
-        pc.reconnectAttempt >= pc.reconnectConfig.maxAttempts && status == null;
+    final exhausted = pc.retryExhausted;
 
     // Nothing to show while connected and not retrying.
     if (status == null && !exhausted) return const SizedBox.shrink();
@@ -1224,7 +1226,7 @@ class _PlayerHostState extends State<PlayerHost> {
               FilledButton.icon(
                 style: FilledButton.styleFrom(
                   backgroundColor: accent,
-                  foregroundColor: Colors.white,
+                  foregroundColor: onAccent,
                 ),
                 onPressed: () {
                   pc.retryNow();
@@ -1409,19 +1411,19 @@ class _PlayerHostState extends State<PlayerHost> {
                       color: accent,
                       borderRadius: BorderRadius.circular(20),
                     ),
-                    child: const Row(
+                    child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
                           Icons.play_arrow_rounded,
-                          color: Colors.white,
+                          color: onAccent,
                           size: 18,
                         ),
-                        SizedBox(width: 4),
+                        const SizedBox(width: 4),
                         Text(
                           'Play now',
                           style: TextStyle(
-                            color: Colors.white,
+                            color: onAccent,
                             fontWeight: FontWeight.w800,
                             fontSize: 13,
                           ),
@@ -1501,14 +1503,19 @@ class _PlayerHostState extends State<PlayerHost> {
                   color: const Color(0xFFFF3B5C),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Row(
+                child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.circle, color: Colors.white, size: 7),
-                    SizedBox(width: 5),
+                    Icon(
+                      Icons.circle,
+                      color: foregroundFor(const Color(0xFFFF3B5C)),
+                      size: 7,
+                    ),
+                    const SizedBox(width: 5),
                     Text(
                       'LIVE',
                       style: TextStyle(
+                        color: foregroundFor(const Color(0xFFFF3B5C)),
                         fontSize: 11,
                         fontWeight: FontWeight.w800,
                         letterSpacing: 0.5,
@@ -1636,7 +1643,7 @@ class _PlayerHostState extends State<PlayerHost> {
                   ),
                   child: Icon(
                     playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                    color: Colors.white,
+                    color: onAccent,
                     size: 42,
                   ),
                 ),
@@ -2156,7 +2163,7 @@ class _PlayerHostState extends State<PlayerHost> {
                     child: Text(
                       label,
                       style: TextStyle(
-                        color: Colors.white,
+                        color: sel ? onAccent : Colors.white,
                         fontSize: 12.5,
                         fontWeight: sel ? FontWeight.w800 : FontWeight.w600,
                       ),
@@ -2494,7 +2501,7 @@ class _PlayerHostState extends State<PlayerHost> {
                   style: TextStyle(
                     fontWeight: FontWeight.w700,
                     fontSize: 13,
-                    color: sel ? Colors.white : Colors.white70,
+                    color: sel ? onAccent : Colors.white70,
                   ),
                 ),
               ),

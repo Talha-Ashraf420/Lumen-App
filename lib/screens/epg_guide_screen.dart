@@ -336,7 +336,7 @@ class _EpgGuideScreenState extends State<EpgGuideScreen>
             ),
           ),
           const SizedBox(width: 12),
-          Icon(Icons.grid_view_rounded, color: accent, size: 22),
+          Icon(Icons.grid_view_rounded, color: accentInk, size: 22),
           const Spacer(),
           if (_cats.isNotEmpty)
             RemoteTap(
@@ -354,7 +354,7 @@ class _EpgGuideScreenState extends State<EpgGuideScreen>
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.category_rounded, size: 16, color: accent),
+                    Icon(Icons.category_rounded, size: 16, color: accentInk),
                     const SizedBox(width: 8),
                     ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 200),
@@ -382,15 +382,15 @@ class _EpgGuideScreenState extends State<EpgGuideScreen>
                 color: accent,
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Row(
+              child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.schedule_rounded, size: 16, color: Colors.white),
-                  SizedBox(width: 6),
+                  Icon(Icons.schedule_rounded, size: 16, color: onAccent),
+                  const SizedBox(width: 6),
                   Text(
                     'Now',
                     style: TextStyle(
-                      color: Colors.white,
+                      color: onAccent,
                       fontWeight: FontWeight.w800,
                       fontSize: 13,
                     ),

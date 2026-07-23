@@ -14,7 +14,8 @@ class CatalogCache {
   CatalogCache._();
   static final CatalogCache instance = CatalogCache._();
 
-  final _requests = _RequestScheduler(maxConcurrent: 3);
+  _RequestScheduler _requests = _RequestScheduler(maxConcurrent: 3);
+  XtreamClient? _owner;
 
   Future<List<Category>>? _vodCategories;
   Future<List<Category>>? _seriesCategories;
@@ -26,69 +27,113 @@ class CatalogCache {
   final Map<int, Future<VodInfo>> _vodInfo = {};
   final Map<int, Future<SeriesInfo>> _seriesInfo = {};
 
-  Future<List<Category>> vod(XtreamClient client, {bool priority = false}) =>
-      _vodCategories ??= _loadCategories(
-        client.vodCategories,
-        priority: priority,
-      );
+  Future<List<Category>> vod(XtreamClient client, {bool priority = false}) {
+    _ensureOwner(client);
+    return _vodCategories ??= _loadCategories(
+      client.vodCategories,
+      priority: priority,
+    );
+  }
 
-  Future<List<Category>> series(XtreamClient client, {bool priority = false}) =>
-      _seriesCategories ??= _loadCategories(
-        client.seriesCategories,
-        priority: priority,
-      );
+  Future<List<Category>> series(XtreamClient client, {bool priority = false}) {
+    _ensureOwner(client);
+    return _seriesCategories ??= _loadCategories(
+      client.seriesCategories,
+      priority: priority,
+    );
+  }
 
-  Future<List<Category>> live(XtreamClient client, {bool priority = false}) =>
-      _liveCategories ??= _loadCategories(
-        client.liveCategories,
-        priority: priority,
-      );
+  Future<List<Category>> live(XtreamClient client, {bool priority = false}) {
+    _ensureOwner(client);
+    return _liveCategories ??= _loadCategories(
+      client.liveCategories,
+      priority: priority,
+    );
+  }
 
   Future<List<VodStream>> vodStreams(
     XtreamClient client,
     String? categoryId, {
     bool priority = false,
-  }) => _memoized(
-    _vodStreams,
-    categoryId ?? '*',
-    () =>
-        _requests.run(() => client.vodStreams(categoryId), priority: priority),
-  );
+  }) {
+    _ensureOwner(client);
+    return _memoized(
+      _vodStreams,
+      categoryId ?? '*',
+      () => _requests.run(
+        () => client.vodStreams(categoryId),
+        priority: priority,
+      ),
+    );
+  }
 
   Future<List<Series>> seriesItems(
     XtreamClient client,
     String? categoryId, {
     bool priority = false,
-  }) => _memoized(
-    _series,
-    categoryId ?? '*',
-    () => _requests.run(() => client.series(categoryId), priority: priority),
-  );
+  }) {
+    _ensureOwner(client);
+    return _memoized(
+      _series,
+      categoryId ?? '*',
+      () => _requests.run(() => client.series(categoryId), priority: priority),
+    );
+  }
 
   Future<List<LiveStream>> liveStreams(
     XtreamClient client,
     String? categoryId, {
     bool priority = false,
-  }) => _memoized(
-    _liveStreams,
-    categoryId ?? '*',
-    () =>
-        _requests.run(() => client.liveStreams(categoryId), priority: priority),
-  );
+  }) {
+    _ensureOwner(client);
+    return _memoized(
+      _liveStreams,
+      categoryId ?? '*',
+      () => _requests.run(
+        () => client.liveStreams(categoryId),
+        priority: priority,
+      ),
+    );
+  }
 
-  Future<VodInfo> vodInfo(XtreamClient client, int id) => _memoized(
-    _vodInfo,
-    id,
-    () => _requests.run(() => client.vodInfo(id), priority: true),
-  );
+  Future<VodInfo> vodInfo(XtreamClient client, int id) {
+    _ensureOwner(client);
+    return _memoized(
+      _vodInfo,
+      id,
+      () => _requests.run(() => client.vodInfo(id), priority: true),
+    );
+  }
 
-  Future<SeriesInfo> seriesInfo(XtreamClient client, int id) => _memoized(
-    _seriesInfo,
-    id,
-    () => _requests.run(() => client.seriesInfo(id), priority: true),
-  );
+  Future<SeriesInfo> seriesInfo(XtreamClient client, int id) {
+    _ensureOwner(client);
+    return _memoized(
+      _seriesInfo,
+      id,
+      () => _requests.run(() => client.seriesInfo(id), priority: true),
+    );
+  }
 
   void clear() {
+    _owner = null;
+    _reset();
+  }
+
+  void _ensureOwner(XtreamClient client) {
+    if (_owner == null) {
+      _owner = client;
+      return;
+    }
+    if (identical(_owner, client)) return;
+    _reset();
+    _owner = client;
+  }
+
+  void _reset() {
+    // Give the new account a fresh queue as well as fresh maps. Requests that
+    // are already running may finish for their disposed screen, but cannot
+    // delay or populate the new profile's cache.
+    _requests = _RequestScheduler(maxConcurrent: 3);
     _vodCategories = null;
     _seriesCategories = null;
     _liveCategories = null;

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
+import 'models.dart';
 import 'store.dart';
 
 enum DlStatus { queued, downloading, paused, completed, failed }
@@ -47,8 +48,8 @@ class DownloadItem {
     'progressKey': progressKey,
     'status': status.name,
     'received': received,
-        'total': total,
-        if (errorMessage != null) 'errorMessage': errorMessage,
+    'total': total,
+    if (errorMessage != null) 'errorMessage': errorMessage,
   };
 
   factory DownloadItem.fromJson(Map<String, dynamic> j) => DownloadItem(
@@ -64,8 +65,8 @@ class DownloadItem {
       orElse: () => DlStatus.completed,
     ),
     received: j['received'] ?? 0,
-        total: j['total'] ?? 0,
-        errorMessage: j['errorMessage'],
+    total: j['total'] ?? 0,
+    errorMessage: j['errorMessage'],
   );
 }
 
@@ -85,8 +86,11 @@ class Downloads extends ChangeNotifier {
   final Set<String> _cancelling = {};
   int _lastNotify = 0;
   Future<void>? _loadFuture;
+  String? _scope;
+  int _activation = 0;
   bool _persisting = false;
   bool _persistAgain = false;
+  Completer<void>? _persistDrain;
 
   // Most IPTV/Xtream accounts allow only one connection at a time, so a second
   // simultaneous download makes the provider drop the first. Run downloads
@@ -95,9 +99,40 @@ class Downloads extends ChangeNotifier {
 
   String? get folderPath => _dir?.path;
 
-  Future<void> load() => _loadFuture ??= _load();
+  Future<void> activate(XtreamCredentials? credentials) async {
+    final activation = ++_activation;
 
-  Future<void> _load() async {
+    // Finish pausing work under the old namespace before changing it. This
+    // prevents a late download callback from writing account A's index into B.
+    for (final entry in _active.entries.toList()) {
+      _pausing.add(entry.key);
+      entry.value.close();
+    }
+    for (final item in items) {
+      if (item.status == DlStatus.queued) item.status = DlStatus.paused;
+    }
+    final deadline = DateTime.now().add(const Duration(seconds: 3));
+    while (_active.isNotEmpty && DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    }
+    if (_scope != null) await _persist();
+    if (activation != _activation) return;
+
+    _scope = credentials == null ? null : Store.profileScope(credentials);
+    _loadFuture = null;
+    items.clear();
+    notifyListeners();
+    if (_scope == null || activation != _activation) return;
+    await (_loadFuture ??= _load(activation));
+  }
+
+  @Deprecated('Use activate(credentials) so state cannot cross profiles.')
+  Future<void> load() async {
+    if (_scope == null) return;
+    await (_loadFuture ??= _load(_activation));
+  }
+
+  Future<void> _load(int activation) async {
     // Prefer the user's real Downloads folder so files are browsable in Finder /
     // Explorer; fall back to the app documents dir (e.g. iOS) where it's null.
     Directory? base;
@@ -107,13 +142,21 @@ class Downloads extends ChangeNotifier {
     base ??= await getApplicationDocumentsDirectory();
     _dir = Directory('${base.path}/Lumen');
     if (!await _dir!.exists()) await _dir!.create(recursive: true);
-    items.clear();
+    final scope = _scope;
+    if (scope == null || activation != _activation) return;
+    final loaded = <DownloadItem>[];
     try {
       final legacyIndex = File('${_dir!.path}/index.json');
-      var raw = await Store.readPrivate(_stateKey);
+      var raw = await Store.readPrivate('${_stateKey}_$scope');
+      final legacyPrivate = await Store.readPrivate(_stateKey);
+      if (raw == null && legacyPrivate != null) {
+        raw = legacyPrivate;
+        await Store.writePrivate('${_stateKey}_$scope', raw);
+        await Store.deletePrivate(_stateKey);
+      }
       if (raw == null && await legacyIndex.exists()) {
         raw = await legacyIndex.readAsString();
-        await Store.writePrivate(_stateKey, raw);
+        await Store.writePrivate('${_stateKey}_$scope', raw);
         await legacyIndex.delete();
       }
       if (raw != null) {
@@ -128,17 +171,21 @@ class Downloads extends ChangeNotifier {
           final f = File(pathOf(d));
           final exists = await f.exists();
           if (d.status == DlStatus.completed) {
-            if (exists) items.add(d);
+            if (exists) loaded.add(d);
             continue;
           }
           if (d.status == DlStatus.downloading || d.status == DlStatus.queued) {
             d.status = DlStatus.paused;
           }
           d.received = exists ? await f.length() : 0;
-          items.add(d);
+          loaded.add(d);
         }
       }
     } catch (_) {}
+    if (scope != _scope || activation != _activation) return;
+    items
+      ..clear()
+      ..addAll(loaded);
     await _persist();
     notifyListeners();
   }
@@ -191,22 +238,28 @@ class Downloads extends ChangeNotifier {
   }
 
   Future<void> _persist() async {
-    if (_dir == null) return;
+    final scope = _scope;
+    if (_dir == null || scope == null) return;
     if (_persisting) {
       _persistAgain = true;
+      await _persistDrain?.future;
       return;
     }
     _persisting = true;
+    final drain = Completer<void>();
+    _persistDrain = drain;
     try {
       do {
         _persistAgain = false;
         final payload = jsonEncode(items.map((d) => d.toJson()).toList());
-        await Store.writePrivate(_stateKey, payload);
+        await Store.writePrivate('${_stateKey}_$scope', payload);
       } while (_persistAgain);
     } catch (_) {
       // A later state transition will retry persistence.
     } finally {
       _persisting = false;
+      if (!drain.isCompleted) drain.complete();
+      if (identical(_persistDrain, drain)) _persistDrain = null;
     }
   }
 
@@ -227,17 +280,17 @@ class Downloads extends ChangeNotifier {
     required String ext,
     String? progressKey,
   }) async {
-    if (_dir == null) await load();
+    if (_dir == null && _scope != null) {
+      await (_loadFuture ??= _load(_activation));
+    }
+    final scope = _scope;
+    if (scope == null) return;
     final existing = find(id);
     if (existing != null && existing.status != DlStatus.failed)
       return; // already downloaded/queued/active
     if (existing != null) await _deleteFile(existing);
-    final rel = relativePathFor(
-      id: id,
-      title: title,
-      kind: kind,
-      ext: ext,
-    );
+    final rel =
+        '$scope/${relativePathFor(id: id, title: title, kind: kind, ext: ext)}';
     final d = DownloadItem(
       id: id,
       title: title,
@@ -368,7 +421,8 @@ class Downloads extends ChangeNotifier {
     final message = error.toString();
     final httpStatus = RegExp(r'HTTP ([0-9]{3})').firstMatch(message)?.group(1);
     if (httpStatus != null) return 'Provider returned HTTP $httpStatus.';
-    if (message.contains('ended early')) return 'Connection ended before the file was complete.';
+    if (message.contains('ended early'))
+      return 'Connection ended before the file was complete.';
     if (error is FormatException) return 'The download URL is invalid.';
     return 'Connection interrupted. Resume to try again.';
   }

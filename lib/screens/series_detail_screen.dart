@@ -66,16 +66,15 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
       final title = episode.title.isEmpty
           ? 'Episode ${episode.episodeNum}'
           : episode.title;
+      final ext = episode.containerExtension.isEmpty
+          ? 'mp4'
+          : episode.containerExtension;
       return PlayerItem(
-        widget.client.streamUrl(
-          'series',
-          episode.id,
-          ext: episode.containerExtension,
-        ),
+        widget.client.streamUrl('series', episode.id, ext: ext),
         '$_title · $title',
         progressKey: 'ep:${episode.id}',
         poster: episode.image.isNotEmpty ? episode.image : info.cover,
-        ext: episode.containerExtension,
+        ext: ext,
         favRef: reference,
       );
     }).toList();
@@ -99,17 +98,16 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
     final title = episode.title.isEmpty
         ? 'Episode ${episode.episodeNum}'
         : episode.title;
+    final ext = episode.containerExtension.isEmpty
+        ? 'mp4'
+        : episode.containerExtension;
     Downloads.instance.start(
       id: 'ep:${episode.id}',
       title: '$_title · $title',
       poster: episode.image.isNotEmpty ? episode.image : info.cover,
       kind: 'episode',
-      remoteUrl: widget.client.streamUrl(
-        'series',
-        episode.id,
-        ext: episode.containerExtension,
-      ),
-      ext: episode.containerExtension,
+      remoteUrl: widget.client.streamUrl('series', episode.id, ext: ext),
+      ext: ext,
       progressKey: 'ep:${episode.id}',
     );
   }
@@ -144,7 +142,7 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
               ? _tmdb!.backdrop
               : info?.backdrop.isNotEmpty == true
               ? info!.backdrop
-              : cover;
+              : '';
           final plot = _tmdb?.overview.isNotEmpty == true
               ? _tmdb!.overview
               : info?.plot.isNotEmpty == true
@@ -367,13 +365,22 @@ class _SeriesHero extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          ColoredBox(color: surfaceHi),
+          DetailBackdropPlaceholder(
+            icon: Icons.video_library_rounded,
+            loading: loading && backdrop.isEmpty,
+          ),
           if (backdrop.isNotEmpty)
             CachedNetworkImage(
               imageUrl: backdrop,
               fit: BoxFit.cover,
               memCacheWidth: wide ? 1800 : 900,
-              errorWidget: (_, _, _) => ColoredBox(color: surfaceHi),
+              placeholder: (_, _) => const DetailBackdropPlaceholder(
+                icon: Icons.video_library_rounded,
+                loading: true,
+              ),
+              errorWidget: (_, _, _) => const DetailBackdropPlaceholder(
+                icon: Icons.video_library_rounded,
+              ),
             ),
           DecoratedBox(
             decoration: BoxDecoration(
@@ -488,12 +495,15 @@ class _SeriesHero extends StatelessWidget {
                                   maxLines: wide ? 3 : 2,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
-                                    color: Colors.white.withValues(alpha: .76),
+                                    color: muted,
                                     height: 1.5,
                                     fontSize: wide ? 15.5 : 14,
                                   ),
                                 ),
                               ),
+                            ] else if (loading) ...[
+                              const SizedBox(height: 18),
+                              const DetailMetadataSkeleton(maxWidth: 680),
                             ],
                             const SizedBox(height: 20),
                             Wrap(
@@ -528,7 +538,7 @@ class _SeriesHero extends StatelessWidget {
                             width: 220,
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: Colors.white24),
+                              border: Border.all(color: line),
                               boxShadow: glow(
                                 Colors.black,
                                 blur: 44,
@@ -544,6 +554,15 @@ class _SeriesHero extends StatelessWidget {
                                   imageUrl: cover,
                                   fit: BoxFit.cover,
                                   memCacheWidth: 500,
+                                  placeholder: (_, _) =>
+                                      const DetailBackdropPlaceholder(
+                                        icon: Icons.tv_rounded,
+                                        loading: true,
+                                      ),
+                                  errorWidget: (_, _, _) =>
+                                      const DetailBackdropPlaceholder(
+                                        icon: Icons.tv_rounded,
+                                      ),
                                 ),
                               ),
                             ),
@@ -580,7 +599,7 @@ class _SeriesFact extends StatelessWidget {
       Text(
         label,
         style: TextStyle(
-          color: color ?? Colors.white.withValues(alpha: .78),
+          color: color ?? muted,
           fontSize: 13,
           fontWeight: FontWeight.w700,
         ),
@@ -605,46 +624,42 @@ class _SeriesAction extends StatelessWidget {
   final bool selected;
 
   @override
-  Widget build(BuildContext context) => Opacity(
-    opacity: onTap == null ? .55 : 1,
-    child: RemoteTap(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 17, vertical: 14),
-        decoration: BoxDecoration(
-          color: primary
-              ? accent
-              : selected
-              ? accent.withValues(alpha: .17)
-              : Colors.black.withValues(alpha: .30),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: primary
-                ? Colors.transparent
-                : selected
-                ? accent.withValues(alpha: .55)
-                : Colors.white24,
+  Widget build(BuildContext context) {
+    final filled = primary || selected;
+    final foreground = filled ? onAccent : textHi;
+    return Opacity(
+      opacity: onTap == null ? .55 : 1,
+      child: RemoteTap(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 17, vertical: 14),
+          decoration: BoxDecoration(
+            color: filled
+                ? accent
+                : surface.withValues(alpha: isDark ? .82 : .92),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: filled ? Colors.transparent : line),
+            boxShadow: primary ? glow(accent, blur: 22, y: 8, a: .38) : null,
           ),
-          boxShadow: primary ? glow(accent, blur: 22, y: 8, a: .38) : null,
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: selected ? accent : Colors.white, size: 21),
-            const SizedBox(width: 7),
-            Text(
-              label,
-              style: TextStyle(
-                color: selected ? accent : Colors.white,
-                fontWeight: FontWeight.w800,
-                fontSize: 13.5,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: foreground, size: 21),
+              const SizedBox(width: 7),
+              Text(
+                label,
+                style: TextStyle(
+                  color: foreground,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 13.5,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _SeasonNavigator extends StatelessWidget {
@@ -835,7 +850,7 @@ class _EpisodeChapter extends StatelessWidget {
                           const SizedBox(height: 7),
                           Text(
                             '${(progress.fraction * 100).round()}% watched',
-                            style: TextStyle(color: accent, fontSize: 11.5),
+                            style: TextStyle(color: accentInk, fontSize: 11.5),
                           ),
                         ],
                       ],

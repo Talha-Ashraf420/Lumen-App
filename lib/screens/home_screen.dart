@@ -97,6 +97,9 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Future<_HomeData> _loadHome() async {
+    // Plain M3U profiles are live-only. Do not spend multiple retry windows on
+    // movie/series endpoints they can never have before showing their channels.
+    if (widget.client.creds.isM3u) return _HomeData(const []);
     // Home's first paint only needs movie categories. Series and Live follow
     // progressively, so a slow provider cannot hold the entire landing page.
     final vod = await CatalogCache.instance.vod(widget.client);
@@ -115,6 +118,15 @@ class _HomeScreenState extends State<HomeScreen>
   ) async {
     try {
       await firstPaint;
+      if (widget.client.creds.isM3u) {
+        final live = await CatalogCache.instance.live(
+          widget.client,
+          priority: true,
+        );
+        if (!mounted || generation != _loadGeneration) return;
+        setState(() => _liveCats = live);
+        return;
+      }
       await Future<void>.delayed(const Duration(milliseconds: 220));
       final series = await CatalogCache.instance.series(widget.client);
       if (!mounted || generation != _loadGeneration) return;
@@ -765,7 +777,7 @@ class _HomeScreenState extends State<HomeScreen>
             if (isWide(context)) {
               return RefreshIndicator(
                 onRefresh: _pullRefresh,
-                color: accent,
+                color: accentInk,
                 child: CustomScrollView(
                   slivers: [
                     SliverToBoxAdapter(child: hero),
@@ -784,7 +796,7 @@ class _HomeScreenState extends State<HomeScreen>
             // Phone: same content, hero laid out compactly (poster on top).
             return RefreshIndicator(
               onRefresh: _pullRefresh,
-              color: accent,
+              color: accentInk,
               child: ListView(
                 padding: const EdgeInsets.only(bottom: 120),
                 children: [
@@ -959,7 +971,7 @@ class _HeroCarouselState extends State<_HeroCarousel> {
             child: snap.connectionState != ConnectionState.done
                 ? Center(
                     child: CircularProgressIndicator(
-                      color: accent,
+                      color: accentInk,
                       strokeWidth: 2,
                     ),
                   )
@@ -1062,19 +1074,19 @@ class _HeroCard extends StatelessWidget {
                           color: accent,
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        child: const Row(
+                        child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(
                               Icons.play_arrow_rounded,
-                              color: Colors.white,
+                              color: onAccent,
                               size: 20,
                             ),
-                            SizedBox(width: 4),
+                            const SizedBox(width: 4),
                             Text(
                               'Play',
                               style: TextStyle(
-                                color: Colors.white,
+                                color: onAccent,
                                 fontWeight: FontWeight.w800,
                               ),
                             ),
@@ -1314,7 +1326,7 @@ class _ShelfState extends State<_Shelf> {
                 child: items.isEmpty
                     ? Center(
                         child: CircularProgressIndicator(
-                          color: accent,
+                          color: accentInk,
                           strokeWidth: 2,
                         ),
                       )
@@ -1684,7 +1696,7 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
       return SizedBox(
         height: 360,
         child: Center(
-          child: CircularProgressIndicator(color: accent, strokeWidth: 2),
+          child: CircularProgressIndicator(color: accentInk, strokeWidth: 2),
         ),
       );
     }
@@ -2156,9 +2168,9 @@ class _RecentCard extends StatelessWidget {
                                   shape: BoxShape.circle,
                                   boxShadow: glow(accent),
                                 ),
-                                child: const Icon(
+                                child: Icon(
                                   Icons.play_arrow_rounded,
-                                  color: Colors.white,
+                                  color: onAccent,
                                   size: 26,
                                 ),
                               ),
@@ -2209,7 +2221,7 @@ class _TopTenShelf extends StatelessWidget {
                 child: items.isEmpty
                     ? Center(
                         child: CircularProgressIndicator(
-                          color: accent,
+                          color: accentInk,
                           strokeWidth: 2,
                         ),
                       )

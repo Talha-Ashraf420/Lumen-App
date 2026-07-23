@@ -9,6 +9,7 @@ import 'package:lumen_tv/screens/movie_detail_screen.dart';
 import 'package:lumen_tv/screens/search_screen.dart';
 import 'package:lumen_tv/screens/series_detail_screen.dart';
 import 'package:lumen_tv/theme.dart';
+import 'package:lumen_tv/widgets.dart';
 import 'package:lumen_tv/xtream.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -138,13 +139,20 @@ void main() {
     CatalogCache.instance.clear();
   });
 
-  Future<void> pumpAt(WidgetTester tester, Widget child, Size size) async {
+  Future<void> pumpAt(
+    WidgetTester tester,
+    Widget child,
+    Size size, {
+    Palette? palette,
+  }) async {
+    final resolvedPalette = palette ?? darkPalette;
+    activePalette = resolvedPalette;
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = size;
     addTearDown(tester.view.resetDevicePixelRatio);
     addTearDown(tester.view.resetPhysicalSize);
     await tester.pumpWidget(
-      MaterialApp(theme: buildTheme(darkPalette), home: child),
+      MaterialApp(theme: buildTheme(resolvedPalette), home: child),
     );
     await tester.pump();
   }
@@ -202,6 +210,57 @@ void main() {
 
     expect(find.text('THE STORY'), findsOneWidget);
     expect(find.text('THE CREDITS'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await disposeUi(tester);
+  });
+
+  testWidgets('movie detail loading state stays readable in light mode', (
+    tester,
+  ) async {
+    final client = _DetailClient();
+    final movie = VodStream(
+      43,
+      'A Patient Story (2026)',
+      '',
+      '7',
+      'mp4',
+      7.2,
+      '1720000000',
+    );
+
+    await pumpAt(
+      tester,
+      MovieDetailScreen(client: client, movie: movie),
+      const Size(1280, 800),
+      palette: lightPalette,
+    );
+
+    expect(find.byType(DetailMetadataSkeleton), findsOneWidget);
+    expect(find.byType(DetailBackdropPlaceholder), findsWidgets);
+    final playLabel = tester.widget<Text>(find.text('Play film'));
+    expect(playLabel.style?.color, onAccent);
+
+    const synopsis =
+        'A clear synopsis remains readable while the artwork finishes loading.';
+    client.movieInfo.complete(
+      VodInfo(
+        plot: synopsis,
+        cast: '',
+        director: '',
+        genre: '',
+        releaseDate: '',
+        rating: 0,
+        duration: '',
+        image: '',
+        backdrop: '',
+        containerExtension: 'mp4',
+      ),
+    );
+    await tester.pump();
+
+    final synopsisCopies = tester.widgetList<Text>(find.text(synopsis));
+    expect(synopsisCopies.any((text) => text.style?.color == muted), isTrue);
+    expect(contrastRatio(muted, bg), greaterThanOrEqualTo(4.5));
     expect(tester.takeException(), isNull);
     await disposeUi(tester);
   });
@@ -308,6 +367,25 @@ void main() {
     expect(client.vodStreamCategories, contains('1'));
     expect(client.vodStreamCategories, isNot(contains(null)));
     expect(find.text('The Last Signal'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await disposeUi(tester);
+  });
+
+  testWidgets('Search section chips use readable content on accent fills', (
+    tester,
+  ) async {
+    final client = _HomeClient();
+    addTearDown(client.close);
+
+    await pumpAt(tester, SearchScreen(client: client), const Size(1280, 800));
+
+    final selectedAllLabel = tester.widget<Text>(find.text('All'));
+    expect(selectedAllLabel.style?.color, onAccent);
+    expect(
+      contrastRatio(selectedAllLabel.style!.color!, accent),
+      greaterThanOrEqualTo(4.5),
+    );
     expect(tester.takeException(), isNull);
 
     await disposeUi(tester);

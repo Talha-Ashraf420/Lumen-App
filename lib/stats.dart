@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'models.dart';
+import 'store.dart';
 
 /// Accumulated watch statistics for the "Your Lumen" screen. Time is added in
 /// small increments by the playback controller while something is playing.
@@ -14,12 +15,27 @@ class WatchStats extends ChangeNotifier {
   final Map<String, int> byCategory = {}; // categoryId -> seconds
   final Map<String, int> byDay = {}; // 'yyyy-mm-dd' -> seconds
   final Set<String> _titles = {}; // distinct items watched
+  String? _scope;
+  int _activation = 0;
 
   int get titleCount => _titles.length;
 
-  Future<void> load() async {
-    final p = await SharedPreferences.getInstance();
-    final raw = p.getString(_k);
+  Future<void> activate(XtreamCredentials? credentials) async {
+    final activation = ++_activation;
+    _scope = credentials == null ? null : Store.profileScope(credentials);
+    _clear();
+    notifyListeners();
+    final scope = _scope;
+    if (scope == null) return;
+    var raw = await Store.readPrivate('${_k}_$scope');
+    if (raw == null) {
+      raw = await Store.readPrivate(_k);
+      if (raw != null) {
+        await Store.writePrivate('${_k}_$scope', raw);
+        await Store.deletePrivate(_k);
+      }
+    }
+    if (activation != _activation || scope != _scope) return;
     if (raw != null) {
       try {
         final j = jsonDecode(raw) as Map<String, dynamic>;
@@ -39,9 +55,18 @@ class WatchStats extends ChangeNotifier {
     notifyListeners();
   }
 
+  @Deprecated('Use activate(credentials) so state cannot cross profiles.')
+  Future<void> load() => activate(null);
+
   /// Add [seconds] of playback. [day] is the local 'yyyy-mm-dd' (passed in to
   /// keep this testable / time-source-free).
-  void add({required int seconds, required String kind, required String cat, required String titleKey, required String day}) {
+  void add({
+    required int seconds,
+    required String kind,
+    required String cat,
+    required String titleKey,
+    required String day,
+  }) {
     total += seconds;
     switch (kind) {
       case 'series':
@@ -66,18 +91,23 @@ class WatchStats extends ChangeNotifier {
   }
 
   void reset() {
-    total = movie = series = live = 0;
-    byCategory.clear();
-    byDay.clear();
-    _titles.clear();
+    _clear();
     notifyListeners();
     _save();
   }
 
+  void _clear() {
+    total = movie = series = live = 0;
+    byCategory.clear();
+    byDay.clear();
+    _titles.clear();
+  }
+
   Future<void> _save() async {
-    final p = await SharedPreferences.getInstance();
-    await p.setString(
-      _k,
+    final scope = _scope;
+    if (scope == null) return;
+    await Store.writePrivate(
+      '${_k}_$scope',
       jsonEncode({
         'total': total,
         'movie': movie,

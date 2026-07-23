@@ -142,7 +142,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
             onPressed: () => Navigator.pop(dialogContext, true),
             style: FilledButton.styleFrom(
               backgroundColor: accent,
-              foregroundColor: Colors.white,
+              foregroundColor: onAccent,
             ),
             child: const Text('Remove'),
           ),
@@ -163,7 +163,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
         ? tmdb!.backdrop
         : info?.backdrop.isNotEmpty == true
         ? info!.backdrop
-        : movie.icon;
+        : '';
     final poster = tmdb?.poster.isNotEmpty == true
         ? tmdb!.poster
         : info?.image.isNotEmpty == true
@@ -360,13 +360,22 @@ class _CinematicHero extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          ColoredBox(color: surfaceHi),
+          DetailBackdropPlaceholder(
+            icon: Icons.movie_filter_rounded,
+            loading: loadingDetails && backdrop.isEmpty,
+          ),
           if (backdrop.isNotEmpty)
             CachedNetworkImage(
               imageUrl: backdrop,
               fit: BoxFit.cover,
               memCacheWidth: wide ? 1800 : 900,
-              errorWidget: (_, _, _) => ColoredBox(color: surfaceHi),
+              placeholder: (_, _) => const DetailBackdropPlaceholder(
+                icon: Icons.movie_filter_rounded,
+                loading: true,
+              ),
+              errorWidget: (_, _, _) => const DetailBackdropPlaceholder(
+                icon: Icons.movie_filter_rounded,
+              ),
             ),
           DecoratedBox(
             decoration: BoxDecoration(
@@ -561,12 +570,15 @@ class _HeroCopy extends StatelessWidget {
               maxLines: wide ? 4 : 3,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                color: Colors.white.withValues(alpha: .76),
+                color: muted,
                 fontSize: wide ? 15.5 : 14,
                 height: 1.5,
               ),
             ),
           ),
+        ] else if (loadingDetails) ...[
+          const SizedBox(height: 19),
+          DetailMetadataSkeleton(maxWidth: wide ? 680 : 540),
         ],
         const SizedBox(height: 22),
         Wrap(
@@ -607,7 +619,7 @@ class _PosterArtifact extends StatelessWidget {
       width: width,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(7),
-        border: Border.all(color: Colors.white24, width: 1.5),
+        border: Border.all(color: line, width: 1.5),
         boxShadow: glow(Colors.black, blur: 44, y: 22, a: .65),
       ),
       child: ClipRRect(
@@ -618,7 +630,12 @@ class _PosterArtifact extends StatelessWidget {
             imageUrl: url,
             fit: BoxFit.cover,
             memCacheWidth: 520,
-            errorWidget: (_, _, _) => ColoredBox(color: surfaceHi),
+            placeholder: (_, _) => const DetailBackdropPlaceholder(
+              icon: Icons.movie_outlined,
+              loading: true,
+            ),
+            errorWidget: (_, _, _) =>
+                const DetailBackdropPlaceholder(icon: Icons.movie_outlined),
           ),
         ),
       ),
@@ -639,9 +656,9 @@ class _Fact extends StatelessWidget {
     constraints: maxWidth == null ? null : BoxConstraints(maxWidth: maxWidth!),
     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
     decoration: BoxDecoration(
-      color: Colors.black.withValues(alpha: .28),
+      color: surface.withValues(alpha: isDark ? .78 : .90),
       borderRadius: BorderRadius.circular(99),
-      border: Border.all(color: Colors.white.withValues(alpha: .16)),
+      border: Border.all(color: line),
     ),
     child: Row(
       mainAxisSize: MainAxisSize.min,
@@ -656,7 +673,7 @@ class _Fact extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: color ?? Colors.white.withValues(alpha: .84),
+              color: color ?? textHi,
               fontSize: 12.5,
               fontWeight: FontWeight.w700,
             ),
@@ -691,16 +708,12 @@ class _PrimaryPlay extends StatelessWidget {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(
-                Icons.play_arrow_rounded,
-                color: Colors.white,
-                size: 23,
-              ),
+              Icon(Icons.play_arrow_rounded, color: onAccent, size: 23),
               const SizedBox(width: 6),
               Text(
                 label,
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: onAccent,
                   fontWeight: FontWeight.w800,
                   fontSize: 15,
                 ),
@@ -714,8 +727,8 @@ class _PrimaryPlay extends StatelessWidget {
               child: LinearProgressIndicator(
                 value: progress,
                 minHeight: 2,
-                backgroundColor: Colors.white30,
-                valueColor: const AlwaysStoppedAnimation(Colors.white),
+                backgroundColor: onAccent.withValues(alpha: .28),
+                valueColor: AlwaysStoppedAnimation(onAccent),
               ),
             ),
           ],
@@ -741,53 +754,54 @@ class _DetailAction extends StatelessWidget {
   final double? progress;
 
   @override
-  Widget build(BuildContext context) => RemoteTap(
-    onTap: onTap,
-    child: Container(
-      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 14),
-      decoration: BoxDecoration(
-        color: selected
-            ? accent.withValues(alpha: .17)
-            : Colors.black.withValues(alpha: .30),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: selected ? accent.withValues(alpha: .56) : Colors.white24,
+  Widget build(BuildContext context) {
+    final foreground = selected ? onAccent : textHi;
+    return RemoteTap(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 14),
+        decoration: BoxDecoration(
+          color: selected
+              ? accent
+              : surface.withValues(alpha: isDark ? .82 : .92),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: selected ? Colors.transparent : line),
         ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (progress == null)
-            Icon(icon, color: selected ? accent : Colors.white, size: 20)
-          else
-            SizedBox(
-              width: 20,
-              height: 20,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  CircularProgressIndicator(
-                    value: progress,
-                    strokeWidth: 2,
-                    color: accent,
-                  ),
-                  Icon(icon, color: Colors.white, size: 12),
-                ],
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (progress == null)
+              Icon(icon, color: foreground, size: 20)
+            else
+              SizedBox(
+                width: 20,
+                height: 20,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    CircularProgressIndicator(
+                      value: progress,
+                      strokeWidth: 2,
+                      color: accentInk,
+                    ),
+                    Icon(icon, color: foreground, size: 12),
+                  ],
+                ),
+              ),
+            const SizedBox(width: 7),
+            Text(
+              label,
+              style: TextStyle(
+                color: foreground,
+                fontWeight: FontWeight.w700,
+                fontSize: 13.5,
               ),
             ),
-          const SizedBox(width: 7),
-          Text(
-            label,
-            style: TextStyle(
-              color: selected ? accent : Colors.white,
-              fontWeight: FontWeight.w700,
-              fontSize: 13.5,
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _EditorialDetails extends StatelessWidget {

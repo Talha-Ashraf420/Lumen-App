@@ -17,6 +17,7 @@ class Palette {
   final Color muted; // secondary text
   final Color subtle; // tertiary text / hints
   final Color accent; // single brand accent
+  final Color accentInk; // accessible accent for text/icons on neutral surfaces
   final Color accentDark; // pressed / deeper accent
   final Color gold; // rating highlight
   final Brightness brightness;
@@ -29,6 +30,7 @@ class Palette {
     required this.muted,
     required this.subtle,
     required this.accent,
+    required this.accentInk,
     required this.accentDark,
     required this.gold,
     required this.brightness,
@@ -57,17 +59,57 @@ Color _shade(Color c, double dl) {
   return h.withLightness((h.lightness + dl).clamp(0.0, 1.0)).toColor();
 }
 
+double contrastRatio(Color foreground, Color background) {
+  final lighter = foreground.computeLuminance() > background.computeLuminance()
+      ? foreground.computeLuminance()
+      : background.computeLuminance();
+  final darker = foreground.computeLuminance() > background.computeLuminance()
+      ? background.computeLuminance()
+      : foreground.computeLuminance();
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+/// Highest-contrast content colour for a solid accent fill.
+Color foregroundFor(Color background) {
+  const darkInk = Color(0xFF000000);
+  const lightInk = Color(0xFFFFFFFF);
+  return contrastRatio(darkInk, background) >=
+          contrastRatio(lightInk, background)
+      ? darkInk
+      : lightInk;
+}
+
+/// Preserve the selected hue while moving its lightness only as far as needed
+/// to reach WCAG AA contrast against the app's neutral surfaces.
+Color _accessibleInk(Color brand, Color background) {
+  if (contrastRatio(brand, background) >= 4.5) return brand;
+  final hsl = HSLColor.fromColor(brand);
+  final darkSurface =
+      ThemeData.estimateBrightnessForColor(background) == Brightness.dark;
+  for (var step = 1; step <= 24; step++) {
+    final amount = step / 24;
+    final target = darkSurface ? 1.0 : 0.0;
+    final lightness = hsl.lightness + (target - hsl.lightness) * amount;
+    final candidate = hsl.withLightness(lightness).toColor();
+    if (contrastRatio(candidate, background) >= 4.5) return candidate;
+  }
+  return foregroundFor(background);
+}
+
 /// Neutral cinema blacks keep wildly different provider artwork coherent.
 Palette darkPaletteFor(Color a) {
+  const neutralSurface = Color(0xFF101315);
+  const hardestNeutral = Color(0xFF181C1F);
   return Palette(
     bg: const Color(0xFF080A0B),
-    surface: const Color(0xFF101315),
+    surface: neutralSurface,
     surfaceHi: const Color(0xFF181C1F),
-    line: const Color(0x18FFFFFF),
+    line: const Color(0x2EFFFFFF),
     textHi: const Color(0xFFF4F1E8),
-    muted: const Color(0xFFA2A6A3),
-    subtle: const Color(0xFF686E6A),
+    muted: _accessibleInk(const Color(0xFFA2A6A3), hardestNeutral),
+    subtle: _accessibleInk(const Color(0xFF686E6A), hardestNeutral),
     accent: a,
+    accentInk: _accessibleInk(a, hardestNeutral),
     accentDark: _shade(a, -0.12),
     gold: const Color(0xFFFFC15E),
     brightness: Brightness.dark,
@@ -75,15 +117,19 @@ Palette darkPaletteFor(Color a) {
 }
 
 Palette lightPaletteFor(Color a) {
+  const neutralSurface = Color(0xFFFAF9F4);
+  const hardestNeutral = Color(0xFFE7E6DF);
+  final fill = _shade(a, -0.08);
   return Palette(
     bg: const Color(0xFFF1F0EA),
-    surface: const Color(0xFFFAF9F4),
+    surface: neutralSurface,
     surfaceHi: const Color(0xFFE7E6DF),
-    line: const Color(0x14000000),
+    line: const Color(0x26000000),
     textHi: const Color(0xFF111310),
-    muted: const Color(0xFF555A55),
-    subtle: const Color(0xFF858A84),
-    accent: _shade(a, -0.08),
+    muted: _accessibleInk(const Color(0xFF555A55), hardestNeutral),
+    subtle: _accessibleInk(const Color(0xFF858A84), hardestNeutral),
+    accent: fill,
+    accentInk: _accessibleInk(fill, hardestNeutral),
     accentDark: _shade(a, -0.20),
     gold: const Color(0xFFD9982E),
     brightness: Brightness.light,
@@ -110,13 +156,11 @@ Color get textHi => activePalette.textHi;
 Color get muted => activePalette.muted;
 Color get subtle => activePalette.subtle;
 Color get accent => activePalette.accent;
+Color get accentInk => activePalette.accentInk;
 Color get accentDark => activePalette.accentDark;
 Color get accent2 => activePalette.accent; // legacy alias → single accent
 Color get gold => activePalette.gold;
-Color get onAccent =>
-    ThemeData.estimateBrightnessForColor(accent) == Brightness.light
-    ? const Color(0xFF11130F)
-    : Colors.white;
+Color get onAccent => foregroundFor(accent);
 
 /// One soft, neutral shadow for floating surfaces (no coloured glow).
 List<BoxShadow> glow(
@@ -176,7 +220,9 @@ ThemeData buildTheme(Palette p) {
     scaffoldBackgroundColor: p.bg,
     colorScheme: base.colorScheme.copyWith(
       primary: p.accent,
+      onPrimary: foregroundFor(p.accent),
       secondary: p.accent,
+      onSecondary: foregroundFor(p.accent),
       surface: p.surface,
       surfaceContainerHighest: p.surfaceHi,
       brightness: p.brightness,
@@ -209,10 +255,14 @@ ThemeData buildTheme(Palette p) {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
-        borderSide: BorderSide(color: p.accent),
+        borderSide: BorderSide(color: p.accentInk),
       ),
     ),
     dividerTheme: DividerThemeData(color: p.line, thickness: 1),
+    progressIndicatorTheme: ProgressIndicatorThemeData(color: p.accentInk),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(foregroundColor: p.accentInk),
+    ),
     focusColor: p.accent.withValues(alpha: 0.30),
     hoverColor: p.accent.withValues(alpha: 0.12),
     splashColor: p.accent.withValues(alpha: 0.08),

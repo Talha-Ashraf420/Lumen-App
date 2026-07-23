@@ -662,7 +662,10 @@ class XtreamClient {
       // M3U channels carry their own direct URL (loaded by liveStreams).
       return _m3uUrlById[id is int ? id : int.tryParse('$id') ?? -1] ?? '';
     }
-    final e = ext.replaceFirst(RegExp(r'^\.'), '');
+    final normalizedExt = ext.trim().replaceFirst(RegExp(r'^\.'), '');
+    final e = normalizedExt.isEmpty
+        ? (kind.toLowerCase() == 'live' ? 'ts' : 'mp4')
+        : normalizedExt;
     final base = Uri.parse(creds.baseUrl);
     return base
         .replace(

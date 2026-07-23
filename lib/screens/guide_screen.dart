@@ -133,7 +133,7 @@ class _GuideScreenState extends State<GuideScreen>
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.grid_view_rounded, size: 18, color: accent),
+                    Icon(Icons.grid_view_rounded, size: 18, color: accentInk),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
@@ -156,7 +156,7 @@ class _GuideScreenState extends State<GuideScreen>
               if (snap.connectionState != ConnectionState.done) {
                 return Center(
                   child: CircularProgressIndicator(
-                    color: accent,
+                    color: accentInk,
                     strokeWidth: 2,
                   ),
                 );
@@ -427,12 +427,16 @@ class _ScheduleSheet extends StatelessWidget {
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.history_rounded, size: 15, color: accent),
+                          Icon(
+                            Icons.history_rounded,
+                            size: 15,
+                            color: accentInk,
+                          ),
                           const SizedBox(width: 4),
                           Text(
                             'Catch-up',
                             style: TextStyle(
-                              color: accent,
+                              color: accentInk,
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
                             ),
@@ -455,7 +459,7 @@ class _ScheduleSheet extends StatelessWidget {
                     if (snap.connectionState != ConnectionState.done) {
                       return Center(
                         child: CircularProgressIndicator(
-                          color: accent,
+                          color: accentInk,
                           strokeWidth: 2,
                         ),
                       );
@@ -489,7 +493,7 @@ class _ScheduleSheet extends StatelessWidget {
                             borderRadius: BorderRadius.circular(14),
                             border: e.isNow
                                 ? Border.all(
-                                    color: accent.withValues(alpha: 0.5),
+                                    color: accentInk.withValues(alpha: 0.55),
                                   )
                                 : null,
                           ),
@@ -529,7 +533,7 @@ class _ScheduleSheet extends StatelessWidget {
                                   child: Icon(
                                     Icons.circle,
                                     size: 9,
-                                    color: accent,
+                                    color: accentInk,
                                   ),
                                 )
                               else if (canWatch)
@@ -544,19 +548,19 @@ class _ScheduleSheet extends StatelessWidget {
                                       color: accent,
                                       borderRadius: BorderRadius.circular(10),
                                     ),
-                                    child: const Row(
+                                    child: Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         Icon(
                                           Icons.play_arrow_rounded,
-                                          color: Colors.white,
+                                          color: onAccent,
                                           size: 16,
                                         ),
-                                        SizedBox(width: 3),
+                                        const SizedBox(width: 3),
                                         Text(
                                           'Watch',
                                           style: TextStyle(
-                                            color: Colors.white,
+                                            color: onAccent,
                                             fontSize: 12,
                                             fontWeight: FontWeight.w700,
                                           ),

@@ -176,7 +176,7 @@ class _StatsScreenState extends State<StatsScreen> {
       children: [
         Row(
           children: [
-            Text('ALL-TIME PLAYBACK', style: kSection(color: accent)),
+            Text('ALL-TIME PLAYBACK', style: kSection(color: accentInk)),
             const Spacer(),
             Container(
               width: 36,
@@ -200,7 +200,10 @@ class _StatsScreenState extends State<StatsScreen> {
           style: TextStyle(color: muted, fontSize: 13.5),
         ),
         const SizedBox(height: 20),
-        Container(height: 1, color: accent.withValues(alpha: 0.24)),
+        Container(
+          height: 1,
+          color: accentInk.withValues(alpha: isDark ? 0.24 : 0.34),
+        ),
         const SizedBox(height: 16),
         Text(
           'Your activity stays on this device.',

@@ -440,7 +440,7 @@ class SearchScreenState extends State<SearchScreen>
                       : _section == 'series'
                       ? Icons.video_library_rounded
                       : Icons.live_tv_rounded,
-                  color: accent,
+                  color: accentInk,
                   size: 24,
                 ),
               ],
@@ -577,7 +577,7 @@ class SearchScreenState extends State<SearchScreen>
                 style: TextStyle(
                   fontWeight: FontWeight.w700,
                   fontSize: 13,
-                  color: sel ? Colors.white : muted,
+                  color: sel ? onAccent : muted,
                 ),
               ),
             ),
@@ -621,7 +621,7 @@ class SearchScreenState extends State<SearchScreen>
               children: [
                 Icon(
                   _sort == e.key ? Icons.check_rounded : Icons.sort_rounded,
-                  color: _sort == e.key ? accent : muted,
+                  color: _sort == e.key ? accentInk : muted,
                   size: 18,
                 ),
                 const SizedBox(width: 10),
@@ -651,7 +651,7 @@ class SearchScreenState extends State<SearchScreen>
             Icon(
               Icons.swap_vert_rounded,
               size: 18,
-              color: _sort == 'default' ? muted : accent,
+              color: _sort == 'default' ? muted : accentInk,
             ),
             const SizedBox(width: 6),
             Text(
@@ -659,7 +659,7 @@ class SearchScreenState extends State<SearchScreen>
               style: TextStyle(
                 fontWeight: FontWeight.w700,
                 fontSize: 13,
-                color: _sort == 'default' ? textHi : accent,
+                color: _sort == 'default' ? textHi : accentInk,
               ),
             ),
           ],
@@ -692,7 +692,7 @@ class SearchScreenState extends State<SearchScreen>
         ),
         child: Row(
           children: [
-            Icon(Icons.category_rounded, size: 18, color: accent),
+            Icon(Icons.category_rounded, size: 18, color: accentInk),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
@@ -719,7 +719,7 @@ class SearchScreenState extends State<SearchScreen>
       child: Row(
         children: [
           if (sel)
-            Icon(Icons.check_rounded, color: accent, size: 18)
+            Icon(Icons.check_rounded, color: accentInk, size: 18)
           else
             const SizedBox(width: 18),
           const SizedBox(width: 10),
@@ -786,7 +786,7 @@ class SearchScreenState extends State<SearchScreen>
               width: 3,
               height: sel ? 16 : 0,
               decoration: BoxDecoration(
-                color: accent,
+                color: accentInk,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),

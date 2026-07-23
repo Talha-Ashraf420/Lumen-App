@@ -23,7 +23,8 @@ class GlobeScreen extends StatefulWidget {
   State<GlobeScreen> createState() => _GlobeScreenState();
 }
 
-class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin {
+class _GlobeScreenState extends State<GlobeScreen>
+    with TickerProviderStateMixin {
   List<VodStream> _pool = [];
   List<_P3> _base = [];
   bool _loading = true;
@@ -43,13 +44,19 @@ class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin
   void initState() {
     super.initState();
     _ticker = createTicker(_tick)..start();
-    CatalogCache.instance.vod(widget.client).then((c) => mounted ? setState(() => _cats = c) : null);
+    CatalogCache.instance
+        .vod(widget.client)
+        .then((c) => mounted ? setState(() => _cats = c) : null);
     _load();
   }
 
   Future<void> _load() async {
     try {
-      final pool = await Discovery.pool(widget.client, target: 250, categoryId: _cat);
+      final pool = await Discovery.pool(
+        widget.client,
+        target: 250,
+        categoryId: _cat,
+      );
       if (!mounted) return;
       setState(() {
         _pool = pool;
@@ -121,9 +128,11 @@ class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin
   }
 
   void _open(VodStream m) {
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => MovieDetailScreen(client: widget.client, movie: m),
-    ));
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => MovieDetailScreen(client: widget.client, movie: m),
+      ),
+    );
   }
 
   @override
@@ -150,34 +159,50 @@ class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin
   }
 
   Widget _header() => Padding(
-        padding: const EdgeInsets.fromLTRB(8, 6, 16, 0),
-        child: Row(
-          children: [
-            // Discover is a root tab (not a pushed route), so only show a back
-            // button when there's actually something to pop — otherwise popping
-            // would unwind the whole app shell and leave a black screen.
-            if (Navigator.of(context).canPop()) ...[
-              IconButton(autofocus: true, onPressed: () => Navigator.of(context).pop(), icon: const Icon(Icons.arrow_back_rounded)),
-              const SizedBox(width: 4),
-            ] else
-              const SizedBox(width: 4),
-            const Text('Discover', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
-            const Spacer(),
-            Text('${_pool.length}', style: TextStyle(color: subtle, fontWeight: FontWeight.w700)),
-            const SizedBox(width: 4),
-            IconButton(
-              onPressed: () =>
-                  Navigator.of(context).push(MaterialPageRoute(builder: (_) => SwipeScreen(client: widget.client))),
-              icon: Icon(Icons.style_rounded, color: accent),
-              tooltip: 'Swipe',
-            ),
-          ],
+    padding: const EdgeInsets.fromLTRB(8, 6, 16, 0),
+    child: Row(
+      children: [
+        // Discover is a root tab (not a pushed route), so only show a back
+        // button when there's actually something to pop — otherwise popping
+        // would unwind the whole app shell and leave a black screen.
+        if (Navigator.of(context).canPop()) ...[
+          IconButton(
+            autofocus: true,
+            onPressed: () => Navigator.of(context).pop(),
+            icon: const Icon(Icons.arrow_back_rounded),
+          ),
+          const SizedBox(width: 4),
+        ] else
+          const SizedBox(width: 4),
+        const Text(
+          'Discover',
+          style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
         ),
-      );
+        const Spacer(),
+        Text(
+          '${_pool.length}',
+          style: TextStyle(color: subtle, fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(width: 4),
+        IconButton(
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => SwipeScreen(client: widget.client),
+            ),
+          ),
+          icon: Icon(Icons.style_rounded, color: accentInk),
+          tooltip: 'Swipe',
+        ),
+      ],
+    ),
+  );
 
   // Inline genre chips (replaces the old bottom-sheet picker).
   Widget _genreChips() {
-    final chips = <(String?, String)>[(null, 'For you'), for (final c in _cats) (c.id, c.name)];
+    final chips = <(String?, String)>[
+      (null, 'For you'),
+      for (final c in _cats) (c.id, c.name),
+    ];
     return SizedBox(
       height: 46,
       child: ListView.separated(
@@ -200,13 +225,27 @@ class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin
                 border: Border.all(color: sel ? accent : line),
                 boxShadow: sel ? glow(accent, blur: 16, y: 5) : null,
               ),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                if (i == 0) ...[
-                  Icon(Icons.auto_awesome_rounded, size: 15, color: sel ? Colors.white : accent),
-                  const SizedBox(width: 6),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (i == 0) ...[
+                    Icon(
+                      Icons.auto_awesome_rounded,
+                      size: 15,
+                      color: sel ? onAccent : accentInk,
+                    ),
+                    const SizedBox(width: 6),
+                  ],
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13.5,
+                      color: sel ? onAccent : textHi,
+                    ),
+                  ),
                 ],
-                Text(label, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5, color: sel ? Colors.white : textHi)),
-              ]),
+              ),
             ),
           );
         },
@@ -228,9 +267,21 @@ class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin
                 _load();
               },
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
-                decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(14)),
-                child: const Text('Retry', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 22,
+                  vertical: 12,
+                ),
+                decoration: BoxDecoration(
+                  color: accent,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Text(
+                  'Retry',
+                  style: TextStyle(
+                    color: onAccent,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
               ),
             ),
           ],
@@ -255,7 +306,17 @@ class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin
           }
           final t = (r.z + 1) / 2; // 0 = far back, 1 = front
           if (t < 0.06) continue; // cull only the deep-back tip
-          projected.add(_Proj(i, cx + r.x * radius, cy + r.y * radius, r.z, 0.6 + 0.5 * t, 0.28 + 0.72 * t, true));
+          projected.add(
+            _Proj(
+              i,
+              cx + r.x * radius,
+              cy + r.y * radius,
+              r.z,
+              0.6 + 0.5 * t,
+              0.28 + 0.72 * t,
+              true,
+            ),
+          );
         }
         if (frontIdx != _front) {
           _front = frontIdx;
@@ -284,7 +345,10 @@ class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin
               } else {
                 setState(() {
                   _yaw += d.focalPointDelta.dx * 0.008;
-                  _pitch = (_pitch - d.focalPointDelta.dy * 0.008).clamp(-1.1, 1.1);
+                  _pitch = (_pitch - d.focalPointDelta.dy * 0.008).clamp(
+                    -1.1,
+                    1.1,
+                  );
                   _vYaw = d.focalPointDelta.dx * 0.008;
                   _vPitch = -d.focalPointDelta.dy * 0.008;
                 });
@@ -301,7 +365,13 @@ class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin
                       opacity: p.opacity,
                       child: Transform.scale(
                         scale: p.scale,
-                        child: _poster(_pool[p.i], pw, ph, p.i == _front, p.img),
+                        child: _poster(
+                          _pool[p.i],
+                          pw,
+                          ph,
+                          p.i == _front,
+                          p.img,
+                        ),
                       ),
                     ),
                   ),
@@ -313,7 +383,13 @@ class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin
     );
   }
 
-  Widget _poster(VodStream m, double w, double h, bool focused, bool loadImage) {
+  Widget _poster(
+    VodStream m,
+    double w,
+    double h,
+    bool focused,
+    bool loadImage,
+  ) {
     return RepaintBoundary(
       child: RemoteTap(
         onTap: () => _open(m),
@@ -323,7 +399,7 @@ class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(7),
             color: surfaceHi,
-            border: focused ? Border.all(color: accent, width: 2) : null,
+            border: focused ? Border.all(color: accentInk, width: 2) : null,
           ),
           clipBehavior: Clip.antiAlias,
           // Only front-facing posters load an image (small-decoded to bound
@@ -333,7 +409,8 @@ class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin
                   imageUrl: m.icon,
                   fit: BoxFit.cover,
                   memCacheWidth: 160,
-                  errorWidget: (_, _, _) => Icon(Icons.movie_outlined, color: subtle, size: 18),
+                  errorWidget: (_, _, _) =>
+                      Icon(Icons.movie_outlined, color: subtle, size: 18),
                 )
               : null,
         ),
@@ -342,7 +419,9 @@ class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin
   }
 
   Widget _footer() {
-    final m = _pool.isNotEmpty ? _pool[_front.clamp(0, _pool.length - 1)] : null;
+    final m = _pool.isNotEmpty
+        ? _pool[_front.clamp(0, _pool.length - 1)]
+        : null;
     // Bottom padding lifts the controls clear of the floating nav bar.
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 96),
@@ -371,16 +450,30 @@ class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin
               RemoteTap(
                 onTap: _surprise,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 11,
+                  ),
                   decoration: BoxDecoration(
-                      color: surfaceHi.withValues(alpha: 0.85),
-                      borderRadius: BorderRadius.circular(30),
-                      border: Border.all(color: line)),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(Icons.casino_rounded, color: accent, size: 19),
-                    const SizedBox(width: 7),
-                    Text('Surprise', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5, color: textHi)),
-                  ]),
+                    color: surfaceHi.withValues(alpha: 0.85),
+                    borderRadius: BorderRadius.circular(30),
+                    border: Border.all(color: line),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.casino_rounded, color: accentInk, size: 19),
+                      const SizedBox(width: 7),
+                      Text(
+                        'Surprise',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13.5,
+                          color: textHi,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
@@ -388,13 +481,30 @@ class _GlobeScreenState extends State<GlobeScreen> with TickerProviderStateMixin
               RemoteTap(
                 onTap: m == null ? null : () => _open(m),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 11),
-                  decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(30), boxShadow: glow(accent)),
-                  child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(Icons.play_arrow_rounded, color: Colors.white, size: 20),
-                    SizedBox(width: 5),
-                    Text('Open', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, color: Colors.white)),
-                  ]),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 22,
+                    vertical: 11,
+                  ),
+                  decoration: BoxDecoration(
+                    color: accent,
+                    borderRadius: BorderRadius.circular(30),
+                    boxShadow: glow(accent),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.play_arrow_rounded, color: onAccent, size: 20),
+                      const SizedBox(width: 5),
+                      Text(
+                        'Open',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 13.5,
+                          color: onAccent,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],

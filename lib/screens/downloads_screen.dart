@@ -105,7 +105,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                               children: [
                                 Icon(
                                   Icons.folder_open_rounded,
-                                  color: accent,
+                                  color: accentInk,
                                   size: 17,
                                 ),
                                 if (MediaQuery.sizeOf(context).width >=
@@ -255,7 +255,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                     Text(
                       'Ready · ${_bytes(d.received)}',
                       style: TextStyle(
-                        color: accent,
+                        color: accentInk,
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                       ),
@@ -323,13 +323,13 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
             if (d.status == DlStatus.downloading)
               IconButton(
                 onPressed: () => Downloads.instance.pause(d.id),
-                icon: Icon(Icons.pause_rounded, color: accent),
+                icon: Icon(Icons.pause_rounded, color: accentInk),
                 tooltip: 'Pause',
               ),
             if (d.status == DlStatus.paused || d.status == DlStatus.failed)
               IconButton(
                 onPressed: () => Downloads.instance.resume(d.id),
-                icon: Icon(Icons.play_arrow_rounded, color: accent),
+                icon: Icon(Icons.play_arrow_rounded, color: accentInk),
                 tooltip: 'Resume',
               ),
             if (d.status == DlStatus.completed)

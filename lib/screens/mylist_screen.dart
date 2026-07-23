@@ -179,7 +179,7 @@ class _MyListScreenState extends State<MyListScreen> {
     child: Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(Icons.favorite_rounded, color: accent, size: 16),
+        Icon(Icons.favorite_rounded, color: accentInk, size: 16),
         const SizedBox(width: 7),
         Text('$count', style: const TextStyle(fontWeight: FontWeight.w800)),
       ],

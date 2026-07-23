@@ -61,8 +61,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   bool _isActive(XtreamCredentials p) =>
-      p.baseUrl == widget.client.creds.baseUrl &&
-      p.username == widget.client.creds.username;
+      Store.sameProfile(p, widget.client.creds);
 
   Future<void> _addProfile() async {
     await Navigator.of(context).push(
@@ -104,7 +103,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           FilledButton(
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFFFF5277),
-              foregroundColor: Colors.white,
+              foregroundColor: foregroundFor(const Color(0xFFFF5277)),
             ),
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Remove'),
@@ -144,7 +143,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           FilledButton(
             style: FilledButton.styleFrom(
               backgroundColor: accent,
-              foregroundColor: bg,
+              foregroundColor: onAccent,
             ),
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Clear'),
@@ -351,7 +350,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 child: _accountMetric(
                   'STATUS',
                   status,
-                  isActive ? accent : textHi,
+                  isActive ? accentInk : textHi,
                 ),
               ),
               _metricDivider(),
@@ -433,18 +432,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       vertical: 7,
                     ),
                     decoration: BoxDecoration(
-                      color: accent.withValues(alpha: 0.12),
+                      color: accentInk.withValues(alpha: isDark ? 0.12 : 0.10),
                       borderRadius: BorderRadius.circular(11),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.add_rounded, size: 17, color: accent),
+                        Icon(Icons.add_rounded, size: 17, color: accentInk),
                         const SizedBox(width: 4),
                         Text(
                           'Add',
                           style: TextStyle(
-                            color: accent,
+                            color: accentInk,
                             fontWeight: FontWeight.w800,
                             fontSize: 12,
                           ),
@@ -609,7 +608,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   height: 17,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    color: accent,
+                    color: accentInk,
                   ),
                 )
               : null,
@@ -636,10 +635,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
               width: 38,
               height: 38,
               decoration: BoxDecoration(
-                color: accent.withValues(alpha: 0.12),
+                color: accentInk.withValues(alpha: isDark ? 0.12 : 0.10),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(icon, color: accent, size: 19),
+              child: Icon(icon, color: accentInk, size: 19),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -683,7 +682,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     Widget? trailing,
   }) {
     const dangerColor = Color(0xFFFF6B88);
-    final iconColor = danger ? dangerColor : accent;
+    final iconColor = danger ? dangerColor : accentInk;
     return RemoteTap(
       onTap: onTap,
       semanticLabel: title,
@@ -794,7 +793,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 p.username.isNotEmpty ? p.username[0].toUpperCase() : '?',
                 style: TextStyle(
                   fontWeight: FontWeight.w800,
-                  color: active ? Colors.white : muted,
+                  color: active ? onAccent : muted,
                 ),
               ),
             ),
@@ -822,13 +821,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
                 decoration: BoxDecoration(
-                  color: accent.withValues(alpha: 0.18),
+                  color: accentInk.withValues(alpha: isDark ? 0.18 : 0.11),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
                   'Active',
                   style: TextStyle(
-                    color: accent,
+                    color: accentInk,
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
                   ),
@@ -900,7 +899,7 @@ class _ThemeSelector extends StatelessWidget {
                           Icon(
                             o.icon,
                             size: 20,
-                            color: current == o.mode ? Colors.white : muted,
+                            color: current == o.mode ? onAccent : muted,
                           ),
                           const SizedBox(height: 5),
                           Text(
@@ -908,7 +907,7 @@ class _ThemeSelector extends StatelessWidget {
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
-                              color: current == o.mode ? Colors.white : muted,
+                              color: current == o.mode ? onAccent : muted,
                             ),
                           ),
                         ],
@@ -953,7 +952,7 @@ class _AccentPicker extends StatelessWidget {
           FilledButton(
             style: FilledButton.styleFrom(
               backgroundColor: picked,
-              foregroundColor: Colors.white,
+              foregroundColor: foregroundFor(picked),
             ),
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Apply'),
@@ -1001,7 +1000,7 @@ class _AccentPicker extends StatelessWidget {
                     ],
                   ),
                   border: Border.all(
-                    color: isCustom ? Colors.white : Colors.transparent,
+                    color: isCustom ? textHi : Colors.transparent,
                     width: 3,
                   ),
                 ),
@@ -1033,7 +1032,7 @@ class _AccentPicker extends StatelessWidget {
           color: color,
           shape: BoxShape.circle,
           border: Border.all(
-            color: selected ? Colors.white : Colors.transparent,
+            color: selected ? textHi : Colors.transparent,
             width: 3,
           ),
           boxShadow: selected
@@ -1047,7 +1046,7 @@ class _AccentPicker extends StatelessWidget {
               : null,
         ),
         child: selected
-            ? const Icon(Icons.check_rounded, color: Colors.white, size: 18)
+            ? Icon(Icons.check_rounded, color: foregroundFor(color), size: 18)
             : null,
       ),
     );
