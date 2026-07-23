@@ -34,9 +34,11 @@ class ReconnectConfig {
 /// count because short provider-side disconnects are common.
 class PlaybackPolicy {
   static const vodStartupTimeout = Duration(seconds: 10);
-  static const liveStartupTimeout = Duration(seconds: 8);
+  // Live HLS/DASH may need a redirect, manifest and several segments before
+  // mpv exposes a first frame. Eight seconds aborted healthy slow starters.
+  static const liveStartupTimeout = Duration(seconds: 20);
   static const playerErrorGrace = Duration(seconds: 2);
-  static const liveStallTimeout = Duration(seconds: 10);
+  static const liveStallTimeout = Duration(seconds: 15);
 
   static Duration startupTimeout(bool live) =>
       live ? liveStartupTimeout : vodStartupTimeout;
@@ -51,6 +53,13 @@ class PlaybackPolicy {
       milliseconds: rawMs.clamp(0, config.maxDelay.inMilliseconds),
     );
   }
+
+  /// Startup/recovery owns the centre of the player. mpv reports "playing"
+  /// optimistically while opening, so its transport must not cover that state.
+  static bool showCenterTransport({
+    required String? reconnectStatus,
+    required bool retryExhausted,
+  }) => reconnectStatus == null && !retryExhausted;
 }
 
 const streamingPlayerConfiguration = PlayerConfiguration(
@@ -113,9 +122,18 @@ Future<void> configureStreamingPlayer(Player player) async {
   final platform = player.platform;
   if (platform is! NativePlayer) return;
   await platform.setProperty('cache-on-disk', 'no');
-  await platform.setProperty('cache-pause-initial', 'yes');
+  await platform.setProperty('cache-pause-initial', 'no');
   await platform.setProperty('cache-pause-wait', '1');
   await platform.setProperty('demuxer-readahead-secs', '3');
+}
+
+Future<void> configurePlayerForItem(Player player, PlayerItem item) async {
+  final platform = player.platform;
+  if (platform is! NativePlayer) return;
+  // Live should paint as soon as playable data arrives. VOD can wait for the
+  // small initial cache that makes seeking and early playback smoother.
+  await platform.setProperty('cache-pause-initial', item.isLive ? 'no' : 'yes');
+  await platform.setProperty('demuxer-readahead-secs', item.isLive ? '1' : '3');
 }
 
 /// Root navigator key so the floating mini-player overlay (which lives above the
@@ -289,6 +307,8 @@ class PlaybackController extends ChangeNotifier {
     try {
       await _nativeSetup;
       if (token != _openToken || player == null || item != target) return;
+      await configurePlayerForItem(player!, target);
+      if (token != _openToken || player == null || item != target) return;
       await player!.open(mediaForPlayerItem(target));
     } catch (error) {
       if (token != _openToken || player == null || item != target) return;
@@ -361,7 +381,9 @@ class PlaybackController extends ChangeNotifier {
       if (!errorReady && sinceOpen < PlaybackPolicy.startupTimeout(isLive)) {
         return;
       }
-      playbackError ??= 'The provider took too long to send the first frame.';
+      playbackError ??= isLive
+          ? 'The provider took too long to start this channel.'
+          : 'The provider took too long to start this video.';
       _handleFailedAttempt();
       return;
     }

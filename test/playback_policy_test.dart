@@ -12,13 +12,34 @@ void main() {
     );
 
     expect(PlaybackPolicy.startupTimeout(false), const Duration(seconds: 10));
-    expect(PlaybackPolicy.startupTimeout(true), const Duration(seconds: 8));
+    expect(PlaybackPolicy.startupTimeout(true), const Duration(seconds: 20));
     expect(PlaybackPolicy.retryLimit(false, config), 1);
     expect(PlaybackPolicy.retryLimit(true, config), 3);
     expect(PlaybackPolicy.retryDelay(1, config), const Duration(seconds: 1));
     expect(PlaybackPolicy.retryDelay(2, config), const Duration(seconds: 2));
     expect(PlaybackPolicy.retryDelay(3, config), const Duration(seconds: 4));
     expect(PlaybackPolicy.retryDelay(4, config), const Duration(seconds: 4));
+    expect(
+      PlaybackPolicy.showCenterTransport(
+        reconnectStatus: 'Opening live channel…',
+        retryExhausted: false,
+      ),
+      isFalse,
+    );
+    expect(
+      PlaybackPolicy.showCenterTransport(
+        reconnectStatus: null,
+        retryExhausted: true,
+      ),
+      isFalse,
+    );
+    expect(
+      PlaybackPolicy.showCenterTransport(
+        reconnectStatus: null,
+        retryExhausted: false,
+      ),
+      isTrue,
+    );
   });
 
   test(

@@ -841,24 +841,17 @@ class _PlayerHostState extends State<PlayerHost> {
             fit: StackFit.expand,
             children: [
               _hudOverlay(),
-              StreamBuilder<bool>(
-                stream: pc.player!.stream.buffering,
-                builder: (_, s) => (s.data ?? false)
-                    ? Center(
-                        child: CircularProgressIndicator(
-                          color: accent,
-                          strokeWidth: 2.6,
-                        ),
-                      )
-                    : const SizedBox.shrink(),
-              ),
-              // Reconnect overlay — shown while auto-retry is in progress.
-              _reconnectOverlay(),
               AnimatedOpacity(
                 opacity: _controls ? 1 : 0,
                 duration: const Duration(milliseconds: 220),
                 child: IgnorePointer(ignoring: !_controls, child: _overlay()),
               ),
+              // Healthy buffering is informational, not a competing centre
+              // action. Keep it in a compact lane below the title bar.
+              _bufferingPill(),
+              // Recovery owns the centre stage and paints above transport
+              // chrome, so status text and Retry can never be obscured.
+              _reconnectOverlay(),
               // Skip-intro / Up-next prompts (shown regardless of control chrome).
               _autoOverlays(),
               if (_panelKind != null) _panel(),
@@ -868,6 +861,70 @@ class _PlayerHostState extends State<PlayerHost> {
       ),
     );
   }
+
+  Widget _bufferingPill() => StreamBuilder<bool>(
+    stream: pc.player!.stream.buffering,
+    initialData: pc.player!.state.buffering,
+    builder: (_, snapshot) {
+      final visible =
+          (snapshot.data ?? false) &&
+          pc.reconnectStatus == null &&
+          !pc.retryExhausted;
+      return Positioned(
+        top: 88,
+        left: 16,
+        right: 16,
+        child: IgnorePointer(
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 180),
+            child: visible
+                ? Center(
+                    key: const ValueKey('player-buffering-pill'),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 9,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xE6101112),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: Colors.white12),
+                        boxShadow: const [
+                          BoxShadow(color: Colors.black45, blurRadius: 18),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                              color: accent,
+                              strokeWidth: 2.2,
+                            ),
+                          ),
+                          const SizedBox(width: 9),
+                          Text(
+                            _isLive ? 'Catching up to live' : 'Buffering',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                : const SizedBox.shrink(
+                    key: ValueKey('player-buffering-hidden'),
+                  ),
+          ),
+        ),
+      );
+    },
+  );
 
   Widget _miniLayer(double mx, double my, double mw, double mh) {
     return Positioned(
@@ -1171,76 +1228,170 @@ class _PlayerHostState extends State<PlayerHost> {
     if (status == null && !exhausted) return const SizedBox.shrink();
 
     return Center(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.72),
-          borderRadius: BorderRadius.circular(18),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (status != null) ...[
-              SizedBox(
-                width: 28,
-                height: 28,
-                child: CircularProgressIndicator(
-                  color: accent,
-                  strokeWidth: 2.5,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                status,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ] else ...[
-              Icon(Icons.wifi_off_rounded, color: Colors.white54, size: 36),
-              const SizedBox(height: 10),
-              const Text(
-                'Stream unavailable',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              if ((pc.playbackError ?? '').isNotEmpty) ...[
-                const SizedBox(height: 6),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 300),
-                  child: Text(
-                    pc.playbackError!,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.white54, fontSize: 12),
-                  ),
-                ),
-              ],
-              const SizedBox(height: 14),
-              FilledButton.icon(
-                style: FilledButton.styleFrom(
-                  backgroundColor: accent,
-                  foregroundColor: onAccent,
-                ),
-                onPressed: () {
-                  pc.retryNow();
-                  setState(() {});
-                },
-                icon: const Icon(Icons.refresh_rounded, size: 18),
-                label: const Text('Retry'),
-              ),
+      child: Semantics(
+        liveRegion: true,
+        label: status ?? pc.playbackError ?? 'Stream unavailable',
+        child: Container(
+          constraints: const BoxConstraints(minWidth: 300, maxWidth: 410),
+          padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 26),
+          decoration: BoxDecoration(
+            color: const Color(0xF0101112),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: Colors.white12),
+            boxShadow: const [
+              BoxShadow(color: Colors.black54, blurRadius: 34, spreadRadius: 5),
             ],
-          ],
+          ),
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 220),
+            child: status != null ? _openingState(status) : _unavailableState(),
+          ),
         ),
       ),
     );
   }
+
+  Widget _openingState(String status) => Column(
+    key: ValueKey('opening:${pc.reconnectAttempt}'),
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      SizedBox(
+        width: 58,
+        height: 58,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            SizedBox(
+              width: 58,
+              height: 58,
+              child: CircularProgressIndicator(
+                color: accent,
+                backgroundColor: Colors.white10,
+                strokeWidth: 2.5,
+              ),
+            ),
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: accent.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.sensors_rounded, color: accent, size: 23),
+            ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 17),
+      Text(
+        status,
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 16,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+      const SizedBox(height: 7),
+      Text(
+        pc.reconnectAttempt > 0
+            ? 'Restoring a stable feed without leaving the channel.'
+            : (_isLive
+                  ? 'Connecting to the live feed and preparing playback.'
+                  : 'Preparing the stream and decoder.'),
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+          color: Colors.white60,
+          fontSize: 12.5,
+          height: 1.35,
+        ),
+      ),
+    ],
+  );
+
+  Widget _unavailableState() => Column(
+    key: const ValueKey('stream-unavailable'),
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Container(
+        width: 52,
+        height: 52,
+        decoration: const BoxDecoration(
+          color: Color(0x16FFFFFF),
+          shape: BoxShape.circle,
+        ),
+        child: const Icon(
+          Icons.signal_wifi_statusbar_connected_no_internet_4_rounded,
+          color: Colors.white70,
+          size: 28,
+        ),
+      ),
+      const SizedBox(height: 14),
+      Text(
+        _isLive ? 'Channel didn’t start' : 'Video didn’t start',
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 17,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+      if ((pc.playbackError ?? '').isNotEmpty) ...[
+        const SizedBox(height: 7),
+        Text(
+          pc.playbackError!,
+          maxLines: 3,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Colors.white70,
+            fontSize: 13,
+            height: 1.4,
+          ),
+        ),
+      ],
+      const SizedBox(height: 20),
+      Wrap(
+        alignment: WrapAlignment.center,
+        spacing: 10,
+        runSpacing: 10,
+        children: [
+          FilledButton.icon(
+            style: FilledButton.styleFrom(
+              backgroundColor: accent,
+              foregroundColor: onAccent,
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+            ),
+            onPressed: () {
+              pc.retryNow();
+              setState(() {});
+            },
+            icon: const Icon(Icons.refresh_rounded, size: 18),
+            label: const Text('Try again'),
+          ),
+          if (_hasNext)
+            OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.white,
+                side: const BorderSide(color: Colors.white24),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 12,
+                ),
+              ),
+              onPressed: () => _go(pc.index + 1),
+              icon: const Icon(Icons.skip_next_rounded, size: 18),
+              label: const Text('Next channel'),
+            ),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: Colors.white70),
+            onPressed: _minimize,
+            child: const Text('Browse'),
+          ),
+        ],
+      ),
+    ],
+  );
 
   Widget _hudOverlay() {
     if (_hud == null) return const SizedBox.shrink();
@@ -1464,7 +1615,13 @@ class _PlayerHostState extends State<PlayerHost> {
           children: [
             _topBar(),
             const Spacer(),
-            _centerControls(),
+            if (PlaybackPolicy.showCenterTransport(
+              reconnectStatus: pc.reconnectStatus,
+              retryExhausted: pc.retryExhausted,
+            ))
+              _centerControls()
+            else
+              const SizedBox(height: 74),
             const Spacer(),
             _bottomBar(),
           ],
