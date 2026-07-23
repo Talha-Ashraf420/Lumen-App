@@ -14,6 +14,14 @@ val keystorePropertiesFile = rootProject.file("key.properties")
 val hasKeystore = keystorePropertiesFile.exists()
 val keystoreProperties = Properties()
 if (hasKeystore) keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+val requiresPlaySigning = gradle.startParameter.taskNames.any {
+    it.contains("bundleRelease", ignoreCase = true)
+}
+if (requiresPlaySigning && !hasKeystore) {
+    throw GradleException(
+        "Release app bundles require android/key.properties and a private upload keystore."
+    )
+}
 
 android {
     namespace = "com.talhaashraf.lumen"

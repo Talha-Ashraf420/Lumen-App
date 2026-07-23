@@ -19,11 +19,12 @@ Do not use phrases such as “free TV,” “premium channels,” “watch anyth
 
 ## Required actions before the first upload
 
-- [ ] Rotate the upload keystore. The former key was committed to Git history and must be treated as compromised. Enroll the new key in Google Play App Signing and keep it outside Git.
-- [ ] Purge `android/app/lumen.keystore` and `android/key.properties` from all public Git history, not only the current branch, then rotate any passwords exposed in that file.
+- [x] Rotate the upload keystore. The former key was committed to Git history and is retired. The new upload key is outside Git with an owner-only local backup.
+- [ ] Purge `android/app/lumen.keystore` and `android/key.properties` from all public Git history. This is still recommended because the retired credential remains visible in old commits, but history rewriting must not delay adoption of the new key and must never rewrite a key that has already been enrolled with Play.
 - [ ] Enable GitHub Pages with the `/docs` folder as its source and verify `https://talha-ashraf420.github.io/Lumen-App/privacy-policy.html` is public, active, non-geofenced, and readable without login.
 - [ ] Create the app in Play Console with application ID `com.talhaashraf.lumen`. An application ID cannot be changed after publishing.
 - [ ] Use Google Play App Signing. Upload an Android App Bundle (`.aab`), never the validation bundle signed with the compromised old key.
+- [ ] Build the candidate with `tool/build_play_aab.sh`; it refuses to create a Play bundle when signing credentials are missing or tracked by Git.
 - [ ] Test the exact release bundle on a phone, tablet, and Android TV/Google TV device or emulator with D-pad navigation.
 - [ ] If TMDB enrichment is enabled, supply the key at build time with `--dart-define=TMDB_API_KEY=...`, comply with TMDB's API terms, and keep the in-app attribution. The former embedded key must be treated as exposed.
 
@@ -38,18 +39,9 @@ The account must remain active throughout review, work from Google's review regi
 
 ## Data Safety draft — verify against the final binary
 
-Conservative answers for the current build:
-
-- Data collected: **Yes**. User IDs/account identifiers and app activity/media search details leave the device to provide app functionality.
-- User IDs: required for provider login when an account source is used; encrypted in transit by the Android HTTPS-only rule; not received or retained on a Lumen developer server.
-- App activity / in-app search history: media titles or search details may be sent to TMDB, OpenSubtitles, or the user-configured provider for app functionality.
-- Data shared: assess the Play Console definitions carefully. Transfers to a user-configured provider and service providers can have specific exceptions, but optional metadata services must still be described accurately.
-- Data sold or used for advertising: **No**.
-- Analytics: **No**.
-- Account creation inside Lumen: **No**. Lumen stores credentials for a third-party service but does not create a Lumen account.
-- Deletion: users can remove profiles, clear history, delete downloads, clear Android app storage, or uninstall. Provider-side deletion must be requested from that provider.
-
-Re-check this form whenever an SDK, analytics tool, crash reporter, ad service, API, or data flow changes.
+Use the detailed, conservative answer sheet in
+`docs/play-console-answers.md`. Re-check the form whenever an SDK, analytics
+tool, crash reporter, ad service, API, or data flow changes.
 
 ## Play Console declarations
 

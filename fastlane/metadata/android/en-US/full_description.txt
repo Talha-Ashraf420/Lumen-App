@@ -1,34 +1,36 @@
-Lumen is a fast, beautiful player for the IPTV service you already pay for. Sign in with your Xtream / X3U codes or paste an M3U playlist URL, and enjoy Live TV, Movies and Series with a clean, modern interface.
+Lumen is a private media player for services and playlists you already have
+the legal right to use. Connect your own authorized HTTPS
+Xtream-compatible service or M3U playlist and browse the media made
+available by that source.
 
-Lumen is a PLAYER only. It comes with no channels, movies or other content — you bring your own subscription or playlist.
+Lumen does not provide, sell, host, curate, or endorse channels,
+subscriptions, playlists, streams, movies, series, or any other media. You
+must supply your own authorized source. Lumen is not affiliated with any
+content provider.
 
-LIVE TV
-• Full TV-guide grid (channels × time) with now/next and a "jump to now" line
-• Catch-up / archive playback where your provider supports it
-• Optional XMLTV EPG when you use a plain M3U playlist
+YOUR LIBRARY
+• Browse the live, movie, and series sections supplied by your source
+• Search, filter, sort, save favorites, and continue watching
+• View an optional XMLTV program guide when your source supports it
+• Use optional metadata enrichment and subtitle search integrations
 
-MOVIES & SERIES
-• Rich artwork, ratings, cast and trailers (TMDB)
-• Continue watching and Recently watched
-• Next-episode autoplay with a countdown, plus Skip-intro
+PLAYBACK
+• Select available audio and subtitle tracks
+• Adjust subtitle appearance, playback speed, video fit, and sleep timer
+• Continue with Picture-in-Picture and the in-app mini player
+• Save offline copies only where your source and content rights permit it
 
-OFFLINE
-• Download movies and episodes for offline viewing
-• Pause / resume downloads; files saved to a real folder
+PERSONALIZED AND PRIVATE
+• Light, dark, and system appearance modes with selectable accent colors
+• Multiple locally stored source profiles
+• Encrypted local credential storage on Android
+• No advertising SDK and no analytics SDK
 
-A PLAYER THAT FEELS PREMIUM
-• Polished video player: audio & subtitle tracks, subtitle styling, playback speed, sleep timer
-• Picture-in-Picture — keep watching while you use other apps
-• Floating mini-player while you browse
+BUILT FOR YOUR SCREENS
+• Responsive phone and tablet layouts
+• Android TV and Google TV support with remote and D-pad navigation
 
-MAKE IT YOURS
-• Light / Dark / System themes
-• Choose your own accent colour — the whole UI recolours to match
-• Multiple profiles, customisable Home, search with sort & filter
-
-BUILT FOR EVERY SCREEN
-• Phones and tablets
-• Android TV / Google TV with full remote (D-pad) navigation
-• Also available for macOS, Windows and Linux
-
-Lumen does not host, provide or stream any content. It is a third-party client for your own legally obtained IPTV subscription or playlist. You are responsible for the sources you add.
+Availability of sections, metadata, program information, subtitles, and
+playback features depends on the source you configure. Users are responsible
+for ensuring that they have permission to access and play every source and
+media item they add.
