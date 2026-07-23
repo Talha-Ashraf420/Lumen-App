@@ -21,6 +21,8 @@ void main() {
   });
 
   setUp(() {
+    // The screenshot harness deliberately supplies an isolated preferences store.
+    // ignore: invalid_use_of_visible_for_testing_member
     SharedPreferences.setMockInitialValues({});
     activePalette = darkPalette;
   });
@@ -62,8 +64,7 @@ void main() {
     await expectLater(
       find.byKey(const ValueKey('store-screenshot')),
       matchesGoldenFile(
-        '../fastlane/metadata/android/en-US/images/phoneScreenshots/'
-        '01-welcome.png',
+        '../docs/play-store/source-screenshots/phone/01-welcome.png',
       ),
     );
   });
@@ -80,8 +81,7 @@ void main() {
     await expectLater(
       find.byKey(const ValueKey('store-screenshot')),
       matchesGoldenFile(
-        '../fastlane/metadata/android/en-US/images/phoneScreenshots/'
-        '02-privacy.png',
+        '../docs/play-store/source-screenshots/phone/02-privacy.png',
       ),
     );
   });
@@ -98,8 +98,7 @@ void main() {
     await expectLater(
       find.byKey(const ValueKey('store-screenshot')),
       matchesGoldenFile(
-        '../fastlane/metadata/android/en-US/images/tvScreenshots/'
-        '01-tv-welcome.png',
+        '../docs/play-store/source-screenshots/tv/01-tv-welcome.png',
       ),
     );
   });
