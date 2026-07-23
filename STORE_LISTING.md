@@ -1,12 +1,12 @@
 # Lumen — Store Listing Kit
 
-Everything needed to publish Lumen on free Android app stores. The text/graphics
-also live under `fastlane/metadata/android/en-US/` (the standard structure that
-F-Droid/IzzyOnDroid and many tools read).
+Reusable listing text and graphics for Google Play and other Android stores.
+The canonical copy lives under `fastlane/metadata/android/en-US/`.
 
 ## Assets
 - **Icon**: `fastlane/metadata/android/en-US/images/icon.png` (512×512)
 - **Feature graphic**: `fastlane/metadata/android/en-US/images/featureGraphic.png` (1024×500)
+- **Android TV banner**: `fastlane/metadata/android/en-US/images/tvBanner.png` (320×180)
 - **Screenshots**: capture from a phone or emulator and drop into
   `fastlane/metadata/android/en-US/images/phoneScreenshots/` (1.png, 2.png, …).
   Recommended shots: Home (immersive hero), TV Guide grid, a Movie/Series detail,
@@ -16,7 +16,7 @@ F-Droid/IzzyOnDroid and many tools read).
 - **Content rating**: typically Teen/12+ (user-supplied media)
 
 ## Short description (≤ 80 chars)
-> A premium player for your own IPTV — Live TV, Movies & Series. Bring your playlist.
+> Private media player for your own authorized playlists and services.
 
 ## Full description
 See `fastlane/metadata/android/en-US/full_description.txt` (copy-paste ready).
@@ -27,7 +27,17 @@ See `fastlane/metadata/android/en-US/full_description.txt` (copy-paste ready).
 
 ---
 
-## Where to publish (free)
+## Google Play
+
+- Use `docs/play-store-submission.md` for the release gates.
+- Use `docs/play-console-answers.md` for the Console declarations.
+- Use `docs/reviewer-access-template.md` for private review credentials.
+- Upload an AAB signed with the private upload key and enroll in Google Play App
+  Signing.
+- New personal accounts must complete Google's required closed test before
+  production access.
+
+## Other distribution options
 
 ### 1. Obtainium (recommended — zero submission)
 Not a store: users install + auto-update straight from GitHub Releases.
@@ -52,11 +62,9 @@ Not a store: users install + auto-update straight from GitHub Releases.
 - Amazon Appstore, Samsung Galaxy Store, Huawei AppGallery. Frame Lumen strictly
   as a **media player (bring your own playlist)** to improve approval odds.
 
-### Not currently viable
-- **F-Droid / IzzyOnDroid**: require FOSS + Fastlane metadata (we have the
-  metadata) **but cap a single APK at ~30 MB** — Lumen is ~97 MB (libmpv), so it
-  won't qualify without major slimming.
-- **Google Play**: $25 one-time fee (not free) and frequently rejects IPTV apps.
+### Current limitation
+- **F-Droid / IzzyOnDroid**: require FOSS + Fastlane metadata, while Lumen's
+  native video libraries make the current universal APK unusually large.
 
 ---
 
