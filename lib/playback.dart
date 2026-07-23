@@ -33,15 +33,18 @@ class ReconnectConfig {
 /// VOD gets one automatic clean retry; live streams get the configured retry
 /// count because short provider-side disconnects are common.
 class PlaybackPolicy {
-  static const vodStartupTimeout = Duration(seconds: 10);
-  // Live HLS/DASH may need a redirect, manifest and several segments before
-  // mpv exposes a first frame. Eight seconds aborted healthy slow starters.
-  static const liveStartupTimeout = Duration(seconds: 20);
-  static const playerErrorGrace = Duration(seconds: 2);
+  // Initial buffering is intentionally enabled, so the watchdog must leave
+  // enough room for provider redirects, manifests, codec probing and prefetch.
+  static const vodStartupTimeout = Duration(seconds: 45);
+  static const liveStartupTimeout = Duration(seconds: 35);
+  static const progressingStartupTimeout = Duration(seconds: 75);
+  static const playerErrorGrace = Duration(seconds: 8);
   static const liveStallTimeout = Duration(seconds: 15);
 
-  static Duration startupTimeout(bool live) =>
-      live ? liveStartupTimeout : vodStartupTimeout;
+  static Duration startupTimeout(bool live, {bool hasBufferedData = false}) =>
+      hasBufferedData
+      ? progressingStartupTimeout
+      : (live ? liveStartupTimeout : vodStartupTimeout);
 
   static int retryLimit(bool live, ReconnectConfig config) =>
       live ? config.maxAttempts.clamp(0, 5) : 1;
@@ -382,6 +385,21 @@ class PlaybackController extends ChangeNotifier {
     }
   }
 
+  void _updateStartupStatus(Duration elapsed, bool buffering) {
+    if (!buffering || reconnectAttempt > 0) return;
+    final next = elapsed >= const Duration(seconds: 25)
+        ? 'Provider is responding slowly…'
+        : elapsed >= const Duration(seconds: 8)
+        ? (isLive
+              ? 'Building a stable live buffer…'
+              : 'Building a stable video buffer…')
+        : null;
+    if (next != null && reconnectStatus != next) {
+      reconnectStatus = next;
+      notifyListeners();
+    }
+  }
+
   /// Enforces a bounded first-frame deadline for every media type, then keeps
   /// monitoring already-started live streams for sustained stalls.
   void _checkStall() {
@@ -398,9 +416,19 @@ class PlaybackController extends ChangeNotifier {
 
     final sinceOpen = Duration(milliseconds: now - _openedAtMs);
     if (!_startedCurrent) {
+      final hasBufferedData =
+          s.buffer > s.position || s.bufferingPercentage > 0;
+      _updateStartupStatus(sinceOpen, s.buffering || hasBufferedData);
       final errorReady =
-          playbackError != null && sinceOpen >= PlaybackPolicy.playerErrorGrace;
-      if (!errorReady && sinceOpen < PlaybackPolicy.startupTimeout(isLive)) {
+          playbackError != null &&
+          !s.buffering &&
+          !hasBufferedData &&
+          sinceOpen >= PlaybackPolicy.playerErrorGrace;
+      final deadline = PlaybackPolicy.startupTimeout(
+        isLive,
+        hasBufferedData: hasBufferedData,
+      );
+      if (!errorReady && sinceOpen < deadline) {
         return;
       }
       playbackError ??= isLive

@@ -11,8 +11,16 @@ void main() {
       maxDelay: Duration(seconds: 4),
     );
 
-    expect(PlaybackPolicy.startupTimeout(false), const Duration(seconds: 10));
-    expect(PlaybackPolicy.startupTimeout(true), const Duration(seconds: 20));
+    expect(PlaybackPolicy.startupTimeout(false), const Duration(seconds: 45));
+    expect(PlaybackPolicy.startupTimeout(true), const Duration(seconds: 35));
+    expect(
+      PlaybackPolicy.startupTimeout(false, hasBufferedData: true),
+      const Duration(seconds: 75),
+    );
+    expect(
+      PlaybackPolicy.startupTimeout(true, hasBufferedData: true),
+      const Duration(seconds: 75),
+    );
     expect(PlaybackPolicy.retryLimit(false, config), 1);
     expect(PlaybackPolicy.retryLimit(true, config), 3);
     expect(PlaybackPolicy.retryDelay(1, config), const Duration(seconds: 1));
