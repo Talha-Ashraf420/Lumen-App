@@ -11,9 +11,10 @@ The canonical copy lives under `fastlane/metadata/android/en-US/`.
   `fastlane/metadata/android/en-US/images/phoneScreenshots/`
 - **Android TV screenshots**:
   `fastlane/metadata/android/en-US/images/tvScreenshots/`
-- The committed screenshots use only Lumen UI and fictional/local test data.
-  Regenerate them with
-  `flutter test --update-goldens tool/store_screenshots_test.dart`.
+- The committed mockups use only Lumen UI and fictional/local test data.
+  Regenerate the accurate source captures, then the branded mockups:
+  `flutter test --update-goldens tool/store_screenshots_test.dart`
+  and `dart run tool/generate_store_mockups.dart`.
 - Add further screenshots only when every poster, logo, program name, and media
   item is owned or licensed for store marketing.
 - **App name**: Lumen
