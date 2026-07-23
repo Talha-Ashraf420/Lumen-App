@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'models.dart';
 import 'store.dart';
 
 /// A favouritable item (movie / series / live channel).
@@ -10,19 +11,32 @@ class MediaRef {
   final String image;
   final String url; // direct play url (used for live channels)
   final String cat; // category id (used to infer taste for Discover)
-  const MediaRef(
-      {required this.kind, required this.id, required this.name, this.image = '', this.url = '', this.cat = ''});
+  const MediaRef({
+    required this.kind,
+    required this.id,
+    required this.name,
+    this.image = '',
+    this.url = '',
+    this.cat = '',
+  });
   bool get isLive => kind == 'live';
   String get key => '$kind:$id';
-  Map<String, dynamic> toJson() => {'kind': kind, 'id': id, 'name': name, 'image': image, 'url': url, 'cat': cat};
+  Map<String, dynamic> toJson() => {
+    'kind': kind,
+    'id': id,
+    'name': name,
+    'image': image,
+    'url': url,
+    'cat': cat,
+  };
   factory MediaRef.fromJson(Map<String, dynamic> j) => MediaRef(
-        kind: j['kind'],
-        id: j['id'],
-        name: j['name'],
-        image: j['image'] ?? '',
-        url: j['url'] ?? '',
-        cat: j['cat'] ?? '',
-      );
+    kind: j['kind'],
+    id: j['id'],
+    name: j['name'],
+    image: j['image'] ?? '',
+    url: j['url'] ?? '',
+    cat: j['cat'] ?? '',
+  );
 }
 
 /// Saved playback progress for continue-watching.
@@ -46,18 +60,26 @@ class Progress {
     required this.updatedAt,
   });
   double get fraction => duration > 0 ? (position / duration).clamp(0, 1) : 0;
-  Map<String, dynamic> toJson() =>
-      {'key': key, 'title': title, 'poster': poster, 'url': url, 'ext': ext, 'p': position, 'd': duration, 't': updatedAt};
+  Map<String, dynamic> toJson() => {
+    'key': key,
+    'title': title,
+    'poster': poster,
+    'url': url,
+    'ext': ext,
+    'p': position,
+    'd': duration,
+    't': updatedAt,
+  };
   factory Progress.fromJson(Map<String, dynamic> j) => Progress(
-        key: j['key'],
-        title: j['title'] ?? '',
-        poster: j['poster'] ?? '',
-        url: j['url'] ?? '',
-        ext: j['ext'] ?? '',
-        position: j['p'] ?? 0,
-        duration: j['d'] ?? 0,
-        updatedAt: j['t'] ?? 0,
-      );
+    key: j['key'],
+    title: j['title'] ?? '',
+    poster: j['poster'] ?? '',
+    url: j['url'] ?? '',
+    ext: j['ext'] ?? '',
+    position: j['p'] ?? 0,
+    duration: j['d'] ?? 0,
+    updatedAt: j['t'] ?? 0,
+  );
 }
 
 /// Persistent user library: favourites, continue-watching, recently-watched.
@@ -72,19 +94,60 @@ class Library extends ChangeNotifier {
   final List<MediaRef> favourites = [];
   final Map<String, Progress> progress = {};
   final List<MediaRef> recent = [];
+  String? _scope;
+  int _activation = 0;
 
-  Future<void> load() async {
-    _readList(await Store.readPrivate(_kFav), favourites);
-    _readList(await Store.readPrivate(_kRecent), recent);
+  /// Switch the in-memory library to [credentials] immediately, then hydrate
+  /// only that profile's saved state. The generation guard prevents a slow
+  /// previous profile read from winning after a rapid second switch.
+  Future<void> activate(XtreamCredentials? credentials) async {
+    final activation = ++_activation;
+    _scope = credentials == null ? null : Store.profileScope(credentials);
+    favourites.clear();
+    recent.clear();
     progress.clear();
-    final pr = await Store.readPrivate(_kProg);
+    notifyListeners();
+    final scope = _scope;
+    if (scope == null) return;
+
+    var fav = await Store.readPrivate('${_kFav}_$scope');
+    var rec = await Store.readPrivate('${_kRecent}_$scope');
+    var pr = await Store.readPrivate('${_kProg}_$scope');
+
+    // Preserve existing users' data by assigning the one-time unscoped state
+    // to the first profile opened after this upgrade.
+    if (fav == null && rec == null && pr == null) {
+      fav = await Store.readPrivate(_kFav);
+      rec = await Store.readPrivate(_kRecent);
+      pr = await Store.readPrivate(_kProg);
+      if (fav != null || rec != null || pr != null) {
+        await Future.wait([
+          if (fav != null) Store.writePrivate('${_kFav}_$scope', fav),
+          if (rec != null) Store.writePrivate('${_kRecent}_$scope', rec),
+          if (pr != null) Store.writePrivate('${_kProg}_$scope', pr),
+          Store.deletePrivate(_kFav),
+          Store.deletePrivate(_kRecent),
+          Store.deletePrivate(_kProg),
+        ]);
+      }
+    }
+    if (activation != _activation || scope != _scope) return;
+    _readList(fav, favourites);
+    _readList(rec, recent);
     if (pr != null) {
       try {
-        (jsonDecode(pr) as Map).forEach((k, v) => progress[k] = Progress.fromJson((v as Map).cast<String, dynamic>()));
+        (jsonDecode(pr) as Map).forEach(
+          (k, v) => progress[k] = Progress.fromJson(
+            (v as Map).cast<String, dynamic>(),
+          ),
+        );
       } catch (_) {}
     }
     notifyListeners();
   }
+
+  @Deprecated('Use activate(credentials) so state cannot cross profiles.')
+  Future<void> load() => activate(null);
 
   void _readList(String? raw, List<MediaRef> into) {
     into.clear();
@@ -97,19 +160,15 @@ class Library extends ChangeNotifier {
   }
 
   Future<void> _save() async {
+    final scope = _scope;
+    if (scope == null) return;
+    final fav = jsonEncode(favourites.map((e) => e.toJson()).toList());
+    final rec = jsonEncode(recent.map((e) => e.toJson()).toList());
+    final prog = jsonEncode(progress.map((k, v) => MapEntry(k, v.toJson())));
     await Future.wait([
-      Store.writePrivate(
-        _kFav,
-        jsonEncode(favourites.map((e) => e.toJson()).toList()),
-      ),
-      Store.writePrivate(
-        _kRecent,
-        jsonEncode(recent.map((e) => e.toJson()).toList()),
-      ),
-      Store.writePrivate(
-        _kProg,
-        jsonEncode(progress.map((k, v) => MapEntry(k, v.toJson()))),
-      ),
+      Store.writePrivate('${_kFav}_$scope', fav),
+      Store.writePrivate('${_kRecent}_$scope', rec),
+      Store.writePrivate('${_kProg}_$scope', prog),
     ]);
   }
 
@@ -148,7 +207,9 @@ class Library extends ChangeNotifier {
   }
 
   List<Progress> continueWatching() {
-    final l = progress.values.where((e) => e.duration > 0 && e.position > 10).toList();
+    final l = progress.values
+        .where((e) => e.duration > 0 && e.position > 10)
+        .toList();
     l.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     return l;
   }

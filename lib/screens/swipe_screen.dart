@@ -17,7 +17,13 @@ import 'movie_detail_screen.dart';
 String _clean(String s) {
   var t = s;
   t = t.replaceAll(RegExp(r'\((?:19|20)\d{2}\)'), '');
-  t = t.replaceAll(RegExp(r'\b(?:4K|UHD|FHD|HD|SD|HQ|1080p|720p|2160p|HEVC|x26[45]|DV|HDR)\b', caseSensitive: false), '');
+  t = t.replaceAll(
+    RegExp(
+      r'\b(?:4K|UHD|FHD|HD|SD|HQ|1080p|720p|2160p|HEVC|x26[45]|DV|HDR)\b',
+      caseSensitive: false,
+    ),
+    '',
+  );
   t = t.replaceAll(RegExp(r'[._]+'), ' ');
   t = t.replaceAll(RegExp(r'\(\s*\)|\[\s*\]'), '');
   t = t.replaceAll(RegExp(r'\s{2,}'), ' ').trim();
@@ -25,7 +31,8 @@ String _clean(String s) {
   return t.isEmpty ? s : t;
 }
 
-int _yearOf(String s) => int.tryParse(RegExp(r'(19|20)\d{2}').firstMatch(s)?.group(0) ?? '') ?? 0;
+int _yearOf(String s) =>
+    int.tryParse(RegExp(r'(19|20)\d{2}').firstMatch(s)?.group(0) ?? '') ?? 0;
 
 /// Tinder-style discovery: swipe right to save to My List, left to skip, tap to
 /// open. On desktop it's a two-pane layout (card + live info panel) with
@@ -84,15 +91,24 @@ class _SwipeScreenState extends State<SwipeScreen> {
   void _fetchMeta(VodStream m) {
     if (_meta.containsKey(m.streamId)) return;
     _meta[m.streamId] = null;
-    Tmdb.movie(m.name).then((t) => mounted ? setState(() => _meta[m.streamId] = t) : null);
+    Tmdb.movie(
+      m.name,
+    ).then((t) => mounted ? setState(() => _meta[m.streamId] = t) : null);
   }
 
-  MediaRef _ref(VodStream m) => MediaRef(kind: 'movie', id: m.streamId, name: m.name, image: m.icon, cat: m.categoryId);
+  MediaRef _ref(VodStream m) => MediaRef(
+    kind: 'movie',
+    id: m.streamId,
+    name: m.name,
+    image: m.icon,
+    cat: m.categoryId,
+  );
 
   bool _onSwipe(int prev, int? current, CardSwiperDirection dir) {
     if (dir == CardSwiperDirection.right) {
       final m = _pool[prev];
-      if (!Library.instance.isFav(_ref(m).key)) Library.instance.toggleFav(_ref(m));
+      if (!Library.instance.isFav(_ref(m).key))
+        Library.instance.toggleFav(_ref(m));
       HapticFeedback.mediumImpact();
       setState(() => _liked++);
     } else {
@@ -106,20 +122,33 @@ class _SwipeScreenState extends State<SwipeScreen> {
   }
 
   void _open([VodStream? m]) {
-    final movie = m ?? (_index >= 0 && _index < _pool.length ? _pool[_index] : null);
+    final movie =
+        m ?? (_index >= 0 && _index < _pool.length ? _pool[_index] : null);
     if (movie == null) return;
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => MovieDetailScreen(client: widget.client, movie: movie)));
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => MovieDetailScreen(client: widget.client, movie: movie),
+      ),
+    );
   }
 
   void _play(VodStream m) {
     final ext = m.containerExtension.isEmpty ? 'mp4' : m.containerExtension;
     PlaybackController.instance.open([
-      PlayerItem(widget.client.streamUrl('movie', m.streamId, ext: ext), m.name, progressKey: 'movie:${m.streamId}', poster: m.icon, ext: ext, favRef: _ref(m)),
+      PlayerItem(
+        widget.client.streamUrl('movie', m.streamId, ext: ext),
+        m.name,
+        progressKey: 'movie:${m.streamId}',
+        poster: m.icon,
+        ext: ext,
+        favRef: _ref(m),
+      ),
     ], 0);
   }
 
   KeyEventResult _onKey(FocusNode node, KeyEvent e) {
-    if (e is! KeyDownEvent || _loading || _done || _pool.isEmpty) return KeyEventResult.ignored;
+    if (e is! KeyDownEvent || _loading || _done || _pool.isEmpty)
+      return KeyEventResult.ignored;
     switch (e.logicalKey) {
       case LogicalKeyboardKey.arrowLeft:
         _controller.swipe(CardSwiperDirection.left);
@@ -154,10 +183,10 @@ class _SwipeScreenState extends State<SwipeScreen> {
                     child: _loading
                         ? BrandedLoading()
                         : _done
-                            ? _doneView()
-                            : wide
-                                ? _wideBody()
-                                : _narrowBody(),
+                        ? _doneView()
+                        : wide
+                        ? _wideBody()
+                        : _narrowBody(),
                   ),
                   if (!wide && !_loading && !_done) _actions(),
                   SizedBox(height: wide ? 20 : 96),
@@ -171,24 +200,44 @@ class _SwipeScreenState extends State<SwipeScreen> {
   }
 
   Widget _header() => Padding(
-        padding: const EdgeInsets.fromLTRB(8, 6, 16, 0),
-        child: Row(
-          children: [
-            IconButton(autofocus: true, onPressed: () => Navigator.of(context).pop(), icon: const Icon(Icons.arrow_back_rounded)),
-            const SizedBox(width: 4),
-            const Text('For you', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
-            const SizedBox(width: 10),
-            Text('Swipe to build your taste', style: TextStyle(color: subtle, fontSize: 13, fontWeight: FontWeight.w600)),
-            const Spacer(),
-            if (_liked > 0)
-              Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(Icons.favorite_rounded, color: accent, size: 18),
-                const SizedBox(width: 5),
-                Text('$_liked saved', style: const TextStyle(fontWeight: FontWeight.w800)),
-              ]),
-          ],
+    padding: const EdgeInsets.fromLTRB(8, 6, 16, 0),
+    child: Row(
+      children: [
+        IconButton(
+          autofocus: true,
+          onPressed: () => Navigator.of(context).pop(),
+          icon: const Icon(Icons.arrow_back_rounded),
         ),
-      );
+        const SizedBox(width: 4),
+        const Text(
+          'For you',
+          style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(width: 10),
+        Text(
+          'Swipe to build your taste',
+          style: TextStyle(
+            color: subtle,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const Spacer(),
+        if (_liked > 0)
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.favorite_rounded, color: accentInk, size: 18),
+              const SizedBox(width: 5),
+              Text(
+                '$_liked saved',
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+            ],
+          ),
+      ],
+    ),
+  );
 
   // ── Desktop: card on the left, live info panel on the right ───────────────
   Widget _wideBody() {
@@ -200,7 +249,9 @@ class _SwipeScreenState extends State<SwipeScreen> {
         children: [
           SizedBox(width: 360, child: _swiper()),
           const SizedBox(width: 48),
-          Expanded(child: Center(child: SingleChildScrollView(child: _infoPanel(m)))),
+          Expanded(
+            child: Center(child: SingleChildScrollView(child: _infoPanel(m))),
+          ),
         ],
       ),
     );
@@ -209,7 +260,9 @@ class _SwipeScreenState extends State<SwipeScreen> {
   Widget _infoPanel(VodStream m) {
     final t = _meta[m.streamId];
     final rating = (t?.rating ?? 0) > 0 ? t!.rating : m.rating;
-    final year = _yearOf(m.name) > 0 ? _yearOf(m.name) : _yearOf(t?.releaseDate ?? '');
+    final year = _yearOf(m.name) > 0
+        ? _yearOf(m.name)
+        : _yearOf(t?.releaseDate ?? '');
     final genre = t?.genres ?? '';
     final overview = t?.overview ?? '';
     final cast = t?.cast ?? '';
@@ -219,88 +272,218 @@ class _SwipeScreenState extends State<SwipeScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text('FOR YOU', style: TextStyle(color: accent, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 3)),
+          Text(
+            'FOR YOU',
+            style: TextStyle(
+              color: accentInk,
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 3,
+            ),
+          ),
           const SizedBox(height: 12),
           AnimatedSwitcher(
             duration: const Duration(milliseconds: 250),
-            child: Text(_clean(m.name), key: ValueKey(m.streamId), maxLines: 2, overflow: TextOverflow.ellipsis, style: kDisplay()),
+            child: Text(
+              _clean(m.name),
+              key: ValueKey(m.streamId),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: kDisplay(),
+            ),
           ),
           const SizedBox(height: 14),
-          Wrap(spacing: 8, runSpacing: 8, children: [
-            if (rating > 0)
-              _chip(Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(Icons.star_rounded, color: gold, size: 15),
-                const SizedBox(width: 4),
-                Text(rating.toStringAsFixed(1), style: TextStyle(color: gold, fontWeight: FontWeight.w800, fontSize: 13)),
-              ])),
-            if (year > 0) _chip(Text('$year', style: TextStyle(color: textHi, fontWeight: FontWeight.w700, fontSize: 13))),
-            if (genre.isNotEmpty) _chip(Text(genre, style: TextStyle(color: muted, fontSize: 13))),
-          ]),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              if (rating > 0)
+                _chip(
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.star_rounded, color: gold, size: 15),
+                      const SizedBox(width: 4),
+                      Text(
+                        rating.toStringAsFixed(1),
+                        style: TextStyle(
+                          color: gold,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              if (year > 0)
+                _chip(
+                  Text(
+                    '$year',
+                    style: TextStyle(
+                      color: textHi,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              if (genre.isNotEmpty)
+                _chip(
+                  Text(genre, style: TextStyle(color: muted, fontSize: 13)),
+                ),
+            ],
+          ),
           if (overview.isNotEmpty) ...[
             const SizedBox(height: 18),
-            Text(overview, maxLines: 5, overflow: TextOverflow.ellipsis, style: kBody()),
+            Text(
+              overview,
+              maxLines: 5,
+              overflow: TextOverflow.ellipsis,
+              style: kBody(),
+            ),
           ],
           if (cast.isNotEmpty) ...[
             const SizedBox(height: 14),
-            Text('Cast', style: TextStyle(color: subtle, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.2)),
+            Text(
+              'Cast',
+              style: TextStyle(
+                color: subtle,
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.2,
+              ),
+            ),
             const SizedBox(height: 4),
-            Text(cast, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: textHi, fontSize: 13.5, fontWeight: FontWeight.w600)),
+            Text(
+              cast,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: textHi,
+                fontSize: 13.5,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ],
           const SizedBox(height: 26),
-          Row(children: [
-            _panelBtn(Icons.close_rounded, 'Skip', const Color(0xFFFF5277), () => _controller.swipe(CardSwiperDirection.left)),
-            const SizedBox(width: 12),
-            _panelBtn(Icons.favorite_rounded, 'Save', const Color(0xFF36E27A), () => _controller.swipe(CardSwiperDirection.right)),
-          ]),
+          Row(
+            children: [
+              _panelBtn(
+                Icons.close_rounded,
+                'Skip',
+                const Color(0xFFFF5277),
+                () => _controller.swipe(CardSwiperDirection.left),
+              ),
+              const SizedBox(width: 12),
+              _panelBtn(
+                Icons.favorite_rounded,
+                'Save',
+                const Color(0xFF36E27A),
+                () => _controller.swipe(CardSwiperDirection.right),
+              ),
+            ],
+          ),
           const SizedBox(height: 12),
-          Row(children: [
-            PillButton(icon: Icons.play_arrow_rounded, label: 'Play', onTap: () => _play(m)),
-            const SizedBox(width: 12),
-            _ghostBtn(Icons.info_outline_rounded, 'Details', () => _open(m)),
-          ]),
+          Row(
+            children: [
+              PillButton(
+                icon: Icons.play_arrow_rounded,
+                label: 'Play',
+                onTap: () => _play(m),
+              ),
+              const SizedBox(width: 12),
+              _ghostBtn(Icons.info_outline_rounded, 'Details', () => _open(m)),
+            ],
+          ),
           const SizedBox(height: 18),
-          Text('← Skip     → Save     Enter to open', style: TextStyle(color: subtle, fontSize: 12, fontWeight: FontWeight.w600)),
+          Text(
+            '← Skip     → Save     Enter to open',
+            style: TextStyle(
+              color: subtle,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
         ],
       ),
     );
   }
 
   Widget _chip(Widget child) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
-        decoration: BoxDecoration(color: surfaceHi, borderRadius: BorderRadius.circular(10), border: Border.all(color: line)),
-        child: child,
-      );
+    padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+    decoration: BoxDecoration(
+      color: surfaceHi,
+      borderRadius: BorderRadius.circular(10),
+      border: Border.all(color: line),
+    ),
+    child: child,
+  );
 
-  Widget _panelBtn(IconData icon, String label, Color color, VoidCallback onTap) => HoverScale(
-        child: RemoteTap(
-          onTap: onTap,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-            decoration: BoxDecoration(
-              color: color,
-              borderRadius: BorderRadius.circular(30),
-              boxShadow: [BoxShadow(color: color.withValues(alpha: 0.4), blurRadius: 20, offset: const Offset(0, 8))],
+  Widget _panelBtn(
+    IconData icon,
+    String label,
+    Color color,
+    VoidCallback onTap,
+  ) => HoverScale(
+    child: RemoteTap(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(30),
+          boxShadow: [
+            BoxShadow(
+              color: color.withValues(alpha: 0.4),
+              blurRadius: 20,
+              offset: const Offset(0, 8),
             ),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(icon, color: Colors.white, size: 20),
-              const SizedBox(width: 8),
-              Text(label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15)),
-            ]),
-          ),
+          ],
         ),
-      );
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: foregroundFor(color), size: 20),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: TextStyle(
+                color: foregroundFor(color),
+                fontWeight: FontWeight.w800,
+                fontSize: 15,
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 
-  Widget _ghostBtn(IconData icon, String label, VoidCallback onTap) => HoverScale(
+  Widget _ghostBtn(IconData icon, String label, VoidCallback onTap) =>
+      HoverScale(
         child: RemoteTap(
           onTap: onTap,
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 13),
-            decoration: BoxDecoration(color: surfaceHi, borderRadius: BorderRadius.circular(30), border: Border.all(color: line)),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(icon, color: textHi, size: 20),
-              const SizedBox(width: 8),
-              Text(label, style: TextStyle(color: textHi, fontWeight: FontWeight.w800, fontSize: 15)),
-            ]),
+            decoration: BoxDecoration(
+              color: surfaceHi,
+              borderRadius: BorderRadius.circular(30),
+              border: Border.all(color: line),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, color: textHi, size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: textHi,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       );
@@ -309,45 +492,65 @@ class _SwipeScreenState extends State<SwipeScreen> {
   Widget _narrowBody() => _swiper();
 
   Widget _swiper() => CardSwiper(
-        controller: _controller,
-        cardsCount: _pool.length,
-        numberOfCardsDisplayed: math.min(3, _pool.length),
-        isLoop: false,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        backCardOffset: const Offset(0, 28),
-        onSwipe: _onSwipe,
-        onEnd: () => setState(() => _done = true),
-        cardBuilder: (context, index, hpct, vpct) => _card(_pool[index], hpct),
-      );
+    controller: _controller,
+    cardsCount: _pool.length,
+    numberOfCardsDisplayed: math.min(3, _pool.length),
+    isLoop: false,
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+    backCardOffset: const Offset(0, 28),
+    onSwipe: _onSwipe,
+    onEnd: () => setState(() => _done = true),
+    cardBuilder: (context, index, hpct, vpct) => _card(_pool[index], hpct),
+  );
 
   Widget _doneView() => Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.check_circle_rounded, color: accent, size: 44),
-            const SizedBox(height: 14),
-            Text('That’s all for now', style: TextStyle(color: textHi, fontWeight: FontWeight.w800, fontSize: 17)),
-            const SizedBox(height: 6),
-            Text(_liked > 0 ? 'Added $_liked to My List' : 'Swipe right to save favourites', style: TextStyle(color: subtle)),
-            const SizedBox(height: 18),
-            RemoteTap(
-              onTap: () {
-                setState(() => _loading = true);
-                _load();
-              },
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(14)),
-                child: const Text('More', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
-              ),
-            ),
-          ],
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.check_circle_rounded, color: accentInk, size: 44),
+        const SizedBox(height: 14),
+        Text(
+          'That’s all for now',
+          style: TextStyle(
+            color: textHi,
+            fontWeight: FontWeight.w800,
+            fontSize: 17,
+          ),
         ),
-      );
+        const SizedBox(height: 6),
+        Text(
+          _liked > 0
+              ? 'Added $_liked to My List'
+              : 'Swipe right to save favourites',
+          style: TextStyle(color: subtle),
+        ),
+        const SizedBox(height: 18),
+        RemoteTap(
+          onTap: () {
+            setState(() => _loading = true);
+            _load();
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            decoration: BoxDecoration(
+              color: accent,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Text(
+              'More',
+              style: TextStyle(color: onAccent, fontWeight: FontWeight.w800),
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
 
   Widget _card(VodStream m, int hpct) {
     final t = _meta[m.streamId];
-    final year = _yearOf(m.name) > 0 ? _yearOf(m.name) : _yearOf(t?.releaseDate ?? '');
+    final year = _yearOf(m.name) > 0
+        ? _yearOf(m.name)
+        : _yearOf(t?.releaseDate ?? '');
     final genre = t?.genres ?? '';
     return RemoteTap(
       onTap: () => _open(m),
@@ -362,12 +565,18 @@ class _SwipeScreenState extends State<SwipeScreen> {
                 imageUrl: m.icon,
                 fit: BoxFit.cover,
                 filterQuality: FilterQuality.high,
-                errorWidget: (_, _, _) => Center(child: Icon(Icons.movie_outlined, color: subtle, size: 40)),
+                errorWidget: (_, _, _) => Center(
+                  child: Icon(Icons.movie_outlined, color: subtle, size: 40),
+                ),
               ),
             const Positioned.fill(
               child: DecoratedBox(
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(begin: Alignment.center, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black]),
+                  gradient: LinearGradient(
+                    begin: Alignment.center,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.transparent, Colors.black],
+                  ),
                 ),
               ),
             ),
@@ -379,22 +588,64 @@ class _SwipeScreenState extends State<SwipeScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(_clean(m.name),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800, height: 1.1)),
+                  Text(
+                    _clean(m.name),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                      height: 1.1,
+                    ),
+                  ),
                   const SizedBox(height: 8),
-                  Wrap(spacing: 8, runSpacing: 6, children: [
-                    if (m.rating > 0 || (t?.rating ?? 0) > 0)
-                      _darkChip(Row(mainAxisSize: MainAxisSize.min, children: [
-                        Icon(Icons.star_rounded, color: gold, size: 14),
-                        const SizedBox(width: 3),
-                        Text(((t?.rating ?? 0) > 0 ? t!.rating : m.rating).toStringAsFixed(1),
-                            style: TextStyle(color: gold, fontWeight: FontWeight.w800, fontSize: 12)),
-                      ])),
-                    if (year > 0) _darkChip(Text('$year', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12))),
-                    if (genre.isNotEmpty) _darkChip(Text(genre, style: const TextStyle(color: Colors.white70, fontSize: 12))),
-                  ]),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: [
+                      if (m.rating > 0 || (t?.rating ?? 0) > 0)
+                        _darkChip(
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.star_rounded, color: gold, size: 14),
+                              const SizedBox(width: 3),
+                              Text(
+                                ((t?.rating ?? 0) > 0 ? t!.rating : m.rating)
+                                    .toStringAsFixed(1),
+                                style: TextStyle(
+                                  color: gold,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      if (year > 0)
+                        _darkChip(
+                          Text(
+                            '$year',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      if (genre.isNotEmpty)
+                        _darkChip(
+                          Text(
+                            genre,
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -406,15 +657,25 @@ class _SwipeScreenState extends State<SwipeScreen> {
                 child: Transform.rotate(
                   angle: hpct > 0 ? -0.3 : 0.3,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: hpct > 0 ? const Color(0xFF36E27A) : const Color(0xFFFF5277), width: 3),
+                      border: Border.all(
+                        color: hpct > 0
+                            ? const Color(0xFF36E27A)
+                            : const Color(0xFFFF5277),
+                        width: 3,
+                      ),
                     ),
                     child: Text(
                       hpct > 0 ? 'SAVE' : 'SKIP',
                       style: TextStyle(
-                        color: hpct > 0 ? const Color(0xFF36E27A) : const Color(0xFFFF5277),
+                        color: hpct > 0
+                            ? const Color(0xFF36E27A)
+                            : const Color(0xFFFF5277),
                         fontWeight: FontWeight.w900,
                         fontSize: 22,
                         letterSpacing: 1,
@@ -430,10 +691,14 @@ class _SwipeScreenState extends State<SwipeScreen> {
   }
 
   Widget _darkChip(Widget child) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-        decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.white.withValues(alpha: 0.22))),
-        child: child,
-      );
+    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+    decoration: BoxDecoration(
+      color: Colors.white.withValues(alpha: 0.14),
+      borderRadius: BorderRadius.circular(8),
+      border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
+    ),
+    child: child,
+  );
 
   Widget _actions() {
     return Padding(
@@ -441,17 +706,28 @@ class _SwipeScreenState extends State<SwipeScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          _btn(Icons.close_rounded, const Color(0xFFFF5277), 64, () => _controller.swipe(CardSwiperDirection.left)),
+          _btn(
+            Icons.close_rounded,
+            const Color(0xFFFF5277),
+            64,
+            () => _controller.swipe(CardSwiperDirection.left),
+          ),
           const SizedBox(width: 22),
           _btn(Icons.info_outline_rounded, accent, 52, () => _open()),
           const SizedBox(width: 22),
-          _btn(Icons.favorite_rounded, const Color(0xFF36E27A), 64, () => _controller.swipe(CardSwiperDirection.right)),
+          _btn(
+            Icons.favorite_rounded,
+            const Color(0xFF36E27A),
+            64,
+            () => _controller.swipe(CardSwiperDirection.right),
+          ),
         ],
       ),
     );
   }
 
-  Widget _btn(IconData icon, Color color, double size, VoidCallback onTap) => RemoteTap(
+  Widget _btn(IconData icon, Color color, double size, VoidCallback onTap) =>
+      RemoteTap(
         onTap: onTap,
         child: Container(
           width: size,

@@ -19,6 +19,29 @@ class Store {
 
   static bool _migrated = false;
 
+  /// Stable, non-secret namespace for state belonging to one provider profile.
+  ///
+  /// Credentials and tokenised M3U URLs must never become part of a preference
+  /// key. FNV-1a is sufficient here: this is a namespace, not authentication.
+  static String profileScope(XtreamCredentials credentials) {
+    final identity = credentials.isM3u
+        ? 'm3u|${credentials.m3uUrl?.trim() ?? ''}'
+        : 'xtream|${credentials.baseUrl.trim().toLowerCase()}|'
+              '${credentials.username.trim()}';
+    var hash = 0x811c9dc5;
+    for (final byte in utf8.encode(identity)) {
+      hash ^= byte;
+      hash = (hash * 0x01000193) & 0xffffffff;
+    }
+    return hash.toRadixString(16).padLeft(8, '0');
+  }
+
+  static String scopedKey(String key, XtreamCredentials credentials) =>
+      '${key}_${profileScope(credentials)}';
+
+  static bool sameProfile(XtreamCredentials a, XtreamCredentials b) =>
+      profileScope(a) == profileScope(b);
+
   static Future<String?> _read(String key) async {
     if (_useSecure) return _secure.read(key: key);
     final p = await SharedPreferences.getInstance();
@@ -72,7 +95,8 @@ class Store {
       for (final key in [_kActive, _kProfiles]) {
         final old = p.getString(key);
         if (old != null) {
-          if (await _secure.read(key: key) == null) await _secure.write(key: key, value: old);
+          if (await _secure.read(key: key) == null)
+            await _secure.write(key: key, value: old);
           await p.remove(key);
         }
       }
@@ -93,9 +117,12 @@ class Store {
   static Future<void> setActive(XtreamCredentials c) async {
     await _write(_kActive, jsonEncode(c.toJson()));
     final profiles = await savedProfiles();
-    if (!profiles.any((x) => x.baseUrl == c.baseUrl && x.username == c.username)) {
+    if (!profiles.any((x) => sameProfile(x, c))) {
       profiles.insert(0, c);
-      await _write(_kProfiles, jsonEncode(profiles.map((e) => e.toJson()).toList()));
+      await _write(
+        _kProfiles,
+        jsonEncode(profiles.map((e) => e.toJson()).toList()),
+      );
     }
   }
 
@@ -103,14 +130,19 @@ class Store {
     await _delete(_kActive);
   }
 
-  static Future<List<XtreamCredentials>> removeProfile(XtreamCredentials c) async {
+  static Future<List<XtreamCredentials>> removeProfile(
+    XtreamCredentials c,
+  ) async {
     final profiles = await savedProfiles();
-    profiles.removeWhere((x) => x.baseUrl == c.baseUrl && x.username == c.username);
-    await _write(_kProfiles, jsonEncode(profiles.map((e) => e.toJson()).toList()));
+    profiles.removeWhere((x) => sameProfile(x, c));
+    await _write(
+      _kProfiles,
+      jsonEncode(profiles.map((e) => e.toJson()).toList()),
+    );
     // If we removed the currently-active account, clear the active session too —
     // otherwise it silently persists and signs back in on the next launch.
     final act = await active();
-    if (act != null && act.baseUrl == c.baseUrl && act.username == c.username) {
+    if (act != null && sameProfile(act, c)) {
       await _delete(_kActive);
     }
     return profiles;
@@ -121,7 +153,9 @@ class Store {
     final raw = await _read(_kProfiles);
     if (raw == null) return [];
     try {
-      return (jsonDecode(raw) as List).map((e) => XtreamCredentials.fromJson(e)).toList();
+      return (jsonDecode(raw) as List)
+          .map((e) => XtreamCredentials.fromJson(e))
+          .toList();
     } catch (_) {
       return [];
     }

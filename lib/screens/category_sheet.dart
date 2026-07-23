@@ -72,12 +72,14 @@ class _CategorySheetState extends State<_CategorySheet> {
                       width: 38,
                       height: 38,
                       decoration: BoxDecoration(
-                        color: accent.withValues(alpha: 0.13),
+                        color: accentInk.withValues(
+                          alpha: isDark ? 0.13 : 0.09,
+                        ),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Icon(
                         Icons.category_outlined,
-                        color: accent,
+                        color: accentInk,
                         size: 19,
                       ),
                     ),
@@ -216,7 +218,7 @@ class _CategorySheetState extends State<_CategorySheet> {
                 ),
               ),
             ),
-            if (sel) Icon(Icons.check_rounded, color: accent, size: 18),
+            if (sel) Icon(Icons.check_rounded, color: accentInk, size: 18),
           ],
         ),
       ),

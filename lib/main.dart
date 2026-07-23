@@ -10,6 +10,7 @@ import 'home_config.dart';
 import 'models.dart';
 import 'playback.dart';
 import 'session.dart';
+import 'split.dart';
 import 'stats.dart';
 import 'store.dart';
 import 'library.dart';
@@ -43,6 +44,9 @@ Future<void> main() async {
   );
 
   runApp(const LumenApp());
+  WidgetsBinding.instance.addPostFrameCallback(
+    (_) => PlaybackController.instance.prewarm(),
+  );
 }
 
 class LumenApp extends StatelessWidget {
@@ -126,24 +130,27 @@ class _GateState extends State<_Gate> {
   XtreamCredentials? _creds;
   bool _legalAccepted = false;
   bool _loading = true;
+  int _sessionChange = 0;
 
   @override
   void initState() {
     super.initState();
-    Library.instance.load();
-    HomeConfig.instance.load();
-    WatchStats.instance.load();
-    ThemeController.instance.load();
-    Downloads.instance.load();
-    Future.wait<dynamic>([Store.active(), LegalAcceptance.isAccepted()]).then((
-      values,
-    ) {
-      if (!mounted) return;
-      setState(() {
-        _creds = values[0] as XtreamCredentials?;
-        _legalAccepted = values[1] as bool;
-        _loading = false;
-      });
+    _bootstrap();
+  }
+
+  Future<void> _bootstrap() async {
+    final values = await Future.wait<dynamic>([
+      Store.active(),
+      LegalAcceptance.isAccepted(),
+      ThemeController.instance.load(),
+    ]);
+    final credentials = values[0] as XtreamCredentials?;
+    await _activateProfileState(credentials);
+    if (!mounted) return;
+    setState(() {
+      _creds = credentials;
+      _legalAccepted = values[1] as bool;
+      _loading = false;
     });
   }
 
@@ -154,35 +161,46 @@ class _GateState extends State<_Gate> {
 
   XtreamClient? _client; // cached so theme rebuilds don't recreate it
 
-  /// Make these credentials active: rebuild the client and drop cached catalogs.
-  void _activate(XtreamCredentials c) {
+  Future<void> _activateProfileState(XtreamCredentials? credentials) =>
+      Future.wait([
+        Library.instance.activate(credentials),
+        HomeConfig.instance.activate(credentials),
+        WatchStats.instance.activate(credentials),
+        Downloads.instance.activate(credentials),
+      ]);
+
+  /// Make these credentials active: stop account-bound work, atomically switch
+  /// persisted state, then rebuild with a fresh client and catalog namespace.
+  Future<void> _activate(XtreamCredentials? credentials) async {
+    final change = ++_sessionChange;
     _client?.close();
+    activeClient = null;
+    PlaybackController.instance.stop();
+    SplitController.instance.close();
+    CatalogCache.instance.clear();
+    EpgCache.instance.clear();
+    if (mounted) setState(() => _loading = true);
+    await _activateProfileState(credentials);
+    if (!mounted || change != _sessionChange) return;
     setState(() {
-      _creds = c;
+      _creds = credentials;
       _client = null;
-      PlaybackController.instance.stop();
-      CatalogCache.instance.clear();
-      EpgCache.instance.clear();
+      _loading = false;
     });
   }
 
-  void _onLogin(XtreamCredentials c) => _activate(c);
+  void _onLogin(XtreamCredentials c) {
+    _activate(c);
+  }
 
   Future<void> _switchTo(XtreamCredentials c) async {
     await Store.setActive(c);
-    if (mounted) _activate(c);
+    if (mounted) await _activate(c);
   }
 
-  void _onLogout() {
-    _client?.close();
-    activeClient = null;
-    setState(() {
-      _creds = null;
-      _client = null;
-      PlaybackController.instance.stop();
-      CatalogCache.instance.clear();
-      EpgCache.instance.clear();
-    });
+  Future<void> _onLogout() async {
+    await Store.logout();
+    if (mounted) await _activate(null);
   }
 
   @override
@@ -213,7 +231,7 @@ class _GateState extends State<_Gate> {
         // Key by the active profile so switching fully remounts all tabs with
         // the new client (fresh catalogs), not stale data from the old account.
         return HomeShell(
-          key: ValueKey('${_creds!.baseUrl}|${_creds!.username}'),
+          key: ValueKey(Store.profileScope(_creds!)),
           client: _client!,
           onLogout: _onLogout,
           onSwitch: _switchTo,

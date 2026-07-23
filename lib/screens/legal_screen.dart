@@ -214,7 +214,7 @@ class LegalScreen extends StatelessWidget {
                                   const SizedBox(height: 22),
                                   Text(
                                     'THE IMPORTANT PARTS',
-                                    style: kSection(color: accent),
+                                    style: kSection(color: accentInk),
                                   ),
                                   const SizedBox(height: 12),
                                   Wrap(
@@ -261,7 +261,7 @@ class LegalScreen extends StatelessWidget {
                                   const SizedBox(height: 24),
                                   Text(
                                     'POLICIES & CONTACT',
-                                    style: kSection(color: accent),
+                                    style: kSection(color: accentInk),
                                   ),
                                   const SizedBox(height: 12),
                                   Wrap(
@@ -335,7 +335,7 @@ class _Point extends StatelessWidget {
     child: Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, color: accent, size: 20),
+        Icon(icon, color: accentInk, size: 20),
         const SizedBox(width: 12),
         Expanded(child: Text(text, style: const TextStyle(height: 1.4))),
       ],
@@ -369,7 +369,7 @@ class _Section extends StatelessWidget {
               Text(
                 index,
                 style: TextStyle(
-                  color: accent,
+                  color: accentInk,
                   fontWeight: FontWeight.w800,
                   fontSize: 11,
                   letterSpacing: 1.2,
@@ -415,7 +415,7 @@ class _LinkTile extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       child: Row(
         children: [
-          Icon(icon, color: accent),
+          Icon(icon, color: accentInk),
           const SizedBox(width: 12),
           Expanded(
             child: Column(

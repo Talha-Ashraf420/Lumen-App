@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import '../catalog_cache.dart';
 import '../downloads.dart';
 import '../models.dart';
 import '../playback.dart';
@@ -36,6 +37,8 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   int _index = 0;
+  late _CatalogCapabilities _capabilities;
+  int _capabilityLoad = 0;
   final GlobalKey<SearchScreenState> _searchKey =
       GlobalKey<SearchScreenState>();
   // Auto-refresh the catalog when the app returns to the foreground (throttled),
@@ -49,18 +52,12 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   // Live/TV-Guide/Downloads = 5/6/7/8/9 — see _pageFor and _Sidebar).
   static const _pageCount = 10;
 
-  // Mobile bottom-nav tabs (indices 0–4).
-  static const _nav = [
-    (icon: Icons.home_rounded, label: 'Home'),
-    (icon: Icons.auto_awesome_rounded, label: 'Discover'),
-    (icon: Icons.search_rounded, label: 'Search'),
-    (icon: Icons.favorite_rounded, label: 'My List'),
-    (icon: Icons.person_rounded, label: 'Profile'),
-  ];
-
   @override
   void initState() {
     super.initState();
+    _capabilities = _CatalogCapabilities(live: widget.client.creds.isM3u);
+    _loadCapabilities();
+    contentRefresh.addListener(_loadCapabilities);
     WidgetsBinding.instance.addObserver(this);
     // Quietly check for a newer build once per launch (skip dev builds).
     if (Updater.instance.isEnabled && kBuildNumber > 0) {
@@ -73,8 +70,65 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _loadCapabilities() async {
+    final generation = ++_capabilityLoad;
+    final cache = CatalogCache.instance;
+    try {
+      if (widget.client.creds.isM3u) {
+        final live = await cache.live(widget.client, priority: true);
+        if (!mounted || generation != _capabilityLoad) return;
+        _setCapabilities(_CatalogCapabilities(live: live.isNotEmpty));
+        return;
+      }
+      // Probe progressively instead of opening all provider endpoints at once.
+      // Home shares these cached futures, so its movie-first loading order stays
+      // fast and connection-limited while the dock gains confirmed sections.
+      final movies = await cache.vod(widget.client, priority: true);
+      if (!mounted || generation != _capabilityLoad) return;
+      _setCapabilities(
+        _CatalogCapabilities(
+          movies: movies.isNotEmpty,
+          series: _capabilities.series,
+          live: _capabilities.live,
+        ),
+      );
+      final series = await cache.series(widget.client, priority: true);
+      if (!mounted || generation != _capabilityLoad) return;
+      _setCapabilities(
+        _CatalogCapabilities(
+          movies: _capabilities.movies,
+          series: series.isNotEmpty,
+          live: _capabilities.live,
+        ),
+      );
+      final live = await cache.live(widget.client, priority: true);
+      if (!mounted || generation != _capabilityLoad) return;
+      _setCapabilities(
+        _CatalogCapabilities(
+          movies: _capabilities.movies,
+          series: _capabilities.series,
+          live: live.isNotEmpty,
+        ),
+      );
+    } catch (_) {
+      // A provider may be temporarily unavailable. Keep the conservative
+      // destinations already shown; content refresh can retry the catalogs.
+    }
+  }
+
+  void _setCapabilities(_CatalogCapabilities value) {
+    setState(() {
+      _capabilities = value;
+      if (!value.allows(_index)) {
+        _index = 0;
+        _visited.add(0);
+      }
+    });
+  }
+
   @override
   void dispose() {
+    contentRefresh.removeListener(_loadCapabilities);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -122,6 +176,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   };
 
   void _select(int i) {
+    if (!_capabilities.allows(i)) return;
     if (i != _index) HapticFeedback.selectionClick();
     setState(() => _index = i);
     if (i == 2) {
@@ -165,7 +220,11 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     return SafeArea(
       child: Row(
         children: [
-          _SignalDock(index: _index, onSelect: _select),
+          _SignalDock(
+            index: _index,
+            capabilities: _capabilities,
+            onSelect: _select,
+          ),
           Expanded(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(0, 10, 10, 10),
@@ -223,9 +282,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
-                        children: [
-                          for (var i = 0; i < _nav.length; i++) _item(i),
-                        ],
+                        children: [for (final nav in _mobileDock) _item(nav)],
                       ),
                     ),
                   )
@@ -237,31 +294,42 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     );
   }
 
-  Widget _item(int i) {
-    final sel = i == _index;
+  List<_Nav> get _mobileDock => [
+    const _Nav(Icons.home_rounded, 'Home', 0),
+    if (_capabilities.hasDiscovery)
+      const _Nav(Icons.auto_awesome_rounded, 'Discover', 1),
+    const _Nav(Icons.search_rounded, 'Search', 2),
+    const _Nav(Icons.favorite_rounded, 'My List', 3),
+    const _Nav(Icons.person_rounded, 'Profile', 4),
+  ];
+
+  Widget _item(_Nav nav) {
+    final sel = nav.page == _index;
     return RemoteTap(
-      autofocus: i == 0,
+      autofocus: nav.page == 0,
       behavior: HitTestBehavior.opaque,
-      onTap: () => _select(i),
+      onTap: () => _select(nav.page),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 280),
         curve: Curves.easeOut,
         margin: const EdgeInsets.symmetric(horizontal: 2),
         padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
         decoration: BoxDecoration(
-          color: sel ? accent.withValues(alpha: 0.12) : null,
+          color: sel ? accentInk.withValues(alpha: isDark ? 0.12 : 0.09) : null,
           borderRadius: BorderRadius.circular(17),
           border: sel
-              ? Border.all(color: accent.withValues(alpha: 0.28))
+              ? Border.all(
+                  color: accentInk.withValues(alpha: isDark ? 0.28 : 0.42),
+                )
               : null,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(_nav[i].icon, size: 20, color: sel ? accent : muted),
+            Icon(nav.icon, size: 20, color: sel ? accentInk : muted),
             const SizedBox(height: 3),
             Text(
-              _nav[i].label,
+              nav.label,
               style: TextStyle(
                 fontWeight: sel ? FontWeight.w700 : FontWeight.w500,
                 color: sel ? textHi : subtle,
@@ -276,6 +344,27 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
 }
 
 // ── Signal dock ──────────────────────────────────────────────────────────────
+class _CatalogCapabilities {
+  final bool movies;
+  final bool series;
+  final bool live;
+  const _CatalogCapabilities({
+    this.movies = false,
+    this.series = false,
+    this.live = false,
+  });
+
+  bool get hasDiscovery => movies || series;
+
+  bool allows(int page) => switch (page) {
+    1 => hasDiscovery,
+    5 => movies,
+    6 => series,
+    7 || 8 => live,
+    _ => true,
+  };
+}
+
 class _Nav {
   final IconData icon;
   final String label;
@@ -307,8 +396,13 @@ const List<_Nav> _utilityDock = [
 
 class _SignalDock extends StatelessWidget {
   final int index;
+  final _CatalogCapabilities capabilities;
   final ValueChanged<int> onSelect;
-  const _SignalDock({required this.index, required this.onSelect});
+  const _SignalDock({
+    required this.index,
+    required this.capabilities,
+    required this.onSelect,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -321,7 +415,9 @@ class _SignalDock extends StatelessWidget {
             const SizedBox(height: 6),
             Tooltip(message: 'Lumen', child: LumenMark(size: 27)),
             const SizedBox(height: 26),
-            for (final nav in _mainDock)
+            for (final nav in _mainDock.where(
+              (nav) => capabilities.allows(nav.page),
+            ))
               _DockItem(
                 nav: nav,
                 selected: nav.page == index,
@@ -371,12 +467,12 @@ class _DockItem extends StatelessWidget {
           margin: const EdgeInsets.only(bottom: 3),
           decoration: BoxDecoration(
             color: selected
-                ? accent.withValues(alpha: 0.14)
+                ? accentInk.withValues(alpha: isDark ? 0.14 : 0.09)
                 : (active ? surfaceHi : Colors.transparent),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
               color: selected
-                  ? accent.withValues(alpha: 0.32)
+                  ? accentInk.withValues(alpha: isDark ? 0.32 : 0.42)
                   : Colors.transparent,
             ),
           ),
@@ -386,7 +482,7 @@ class _DockItem extends StatelessWidget {
                 child: Icon(
                   nav.icon,
                   size: 21,
-                  color: selected ? accent : (active ? textHi : muted),
+                  color: selected ? accentInk : (active ? textHi : muted),
                 ),
               ),
               if (selected)
@@ -397,7 +493,7 @@ class _DockItem extends StatelessWidget {
                   child: Container(
                     width: 2,
                     decoration: BoxDecoration(
-                      color: accent,
+                      color: accentInk,
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
@@ -419,7 +515,7 @@ class _DockItem extends StatelessWidget {
                               width: 6,
                               height: 6,
                               decoration: BoxDecoration(
-                                color: accent,
+                                color: accentInk,
                                 shape: BoxShape.circle,
                               ),
                             ),
@@ -471,7 +567,10 @@ class _CommandBar extends StatelessWidget {
             Container(
               width: 5,
               height: 5,
-              decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
+              decoration: BoxDecoration(
+                color: accentInk,
+                shape: BoxShape.circle,
+              ),
             ),
             const Spacer(),
             if (index != 2) ...[
@@ -485,7 +584,7 @@ class _CommandBar extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: active ? surfaceHi : surface,
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: active ? accent : line),
+                    border: Border.all(color: active ? accentInk : line),
                   ),
                   child: Row(
                     children: [

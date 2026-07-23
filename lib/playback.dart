@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
@@ -23,11 +22,100 @@ class ReconnectConfig {
   final bool liveOnly;
 
   const ReconnectConfig({
-    this.maxAttempts = 3,
-    this.baseDelay = const Duration(seconds: 2),
-    this.maxDelay = const Duration(seconds: 16),
+    this.maxAttempts = 2,
+    this.baseDelay = const Duration(seconds: 1),
+    this.maxDelay = const Duration(seconds: 4),
     this.liveOnly = true,
   });
+}
+
+/// Startup and recovery limits shared by movies, episodes, and live streams.
+/// VOD gets one automatic clean retry; live streams get the configured retry
+/// count because short provider-side disconnects are common.
+class PlaybackPolicy {
+  static const vodStartupTimeout = Duration(seconds: 10);
+  static const liveStartupTimeout = Duration(seconds: 8);
+  static const playerErrorGrace = Duration(seconds: 2);
+  static const liveStallTimeout = Duration(seconds: 10);
+
+  static Duration startupTimeout(bool live) =>
+      live ? liveStartupTimeout : vodStartupTimeout;
+
+  static int retryLimit(bool live, ReconnectConfig config) =>
+      live ? config.maxAttempts.clamp(0, 5) : 1;
+
+  static Duration retryDelay(int attempt, ReconnectConfig config) {
+    final safeAttempt = attempt.clamp(1, 8);
+    final rawMs = config.baseDelay.inMilliseconds * (1 << (safeAttempt - 1));
+    return Duration(
+      milliseconds: rawMs.clamp(0, config.maxDelay.inMilliseconds),
+    );
+  }
+}
+
+const streamingPlayerConfiguration = PlayerConfiguration(
+  bufferSize: 16 * 1024 * 1024,
+  protocolWhitelist: [
+    'udp',
+    'rtp',
+    'tcp',
+    'tls',
+    'data',
+    'file',
+    'http',
+    'https',
+    'crypto',
+    'rtsp',
+    'rtmp',
+    'rtmps',
+    'mms',
+    'mmsh',
+    'mmst',
+  ],
+);
+
+bool isPlayableMediaUrl(String value) {
+  final raw = value.trim();
+  if (raw.isEmpty) return false;
+  if (raw.startsWith('/') || RegExp(r'^[A-Za-z]:[\\/]').hasMatch(raw)) {
+    return true;
+  }
+  final uri = Uri.tryParse(raw);
+  if (uri == null || !uri.hasScheme) return false;
+  return const {
+    'asset',
+    'file',
+    'http',
+    'https',
+    'rtp',
+    'rtsp',
+    'rtmp',
+    'rtmps',
+    'udp',
+    'mms',
+    'mmsh',
+    'mmst',
+  }.contains(uri.scheme.toLowerCase());
+}
+
+Media mediaForPlayerItem(PlayerItem item) => Media(
+  item.url.trim(),
+  httpHeaders: {
+    'User-Agent': 'VLC/3.0.20 LibVLC/3.0.20',
+    'Accept': '*/*',
+    ...item.httpHeaders,
+  },
+);
+
+/// Native defaults are disk-cache oriented. Streaming into memory avoids slow
+/// first-frame disk I/O, especially on Android TV storage.
+Future<void> configureStreamingPlayer(Player player) async {
+  final platform = player.platform;
+  if (platform is! NativePlayer) return;
+  await platform.setProperty('cache-on-disk', 'no');
+  await platform.setProperty('cache-pause-initial', 'yes');
+  await platform.setProperty('cache-pause-wait', '1');
+  await platform.setProperty('demuxer-readahead-secs', '3');
 }
 
 /// Root navigator key so the floating mini-player overlay (which lives above the
@@ -39,15 +127,25 @@ class PlayerItem {
   final String url;
   final String title;
   final bool isLive;
-  final String? progressKey; // continue-watching key, e.g. 'movie:123' / 'ep:456'
+  final String?
+  progressKey; // continue-watching key, e.g. 'movie:123' / 'ep:456'
   final String poster; // thumbnail for continue-watching / recents
   final String ext;
   final Map<String, String> httpHeaders;
   final MediaRef? favRef; // what the heart toggles (movie/series/channel)
-  final Future<List<EpgEntry>> Function()? epg; // now/next for live channels (lazy)
-  const PlayerItem(this.url, this.title,
-      {this.isLive = false, this.progressKey, this.poster = '', this.ext = '',
-       this.httpHeaders = const {}, this.favRef, this.epg});
+  final Future<List<EpgEntry>> Function()?
+  epg; // now/next for live channels (lazy)
+  const PlayerItem(
+    this.url,
+    this.title, {
+    this.isLive = false,
+    this.progressKey,
+    this.poster = '',
+    this.ext = '',
+    this.httpHeaders = const {},
+    this.favRef,
+    this.epg,
+  });
 }
 
 /// App-level playback so the video keeps running while you browse. The full
@@ -81,6 +179,10 @@ class PlaybackController extends ChangeNotifier {
   int _openedAtMs = 0;
   int _lastStatsTickMs = 0;
   bool _wantsPlayback = false;
+  bool _startedCurrent = false;
+  bool _retryExhausted = false;
+  int _openToken = 0;
+  Future<void>? _nativeSetup;
 
   // ---- auto-reconnect state ----
   /// Active reconnect configuration (can be overridden by the user).
@@ -101,29 +203,39 @@ class PlaybackController extends ChangeNotifier {
   bool get isLive => hasMedia && item.isLive;
   bool get hasNext => index < items.length - 1;
   bool get hasPrev => index > 0;
+  int get retryLimit =>
+      hasMedia ? PlaybackPolicy.retryLimit(isLive, reconnectConfig) : 0;
+  bool get retryExhausted => _retryExhausted;
+
+  /// Starts native decoder/video initialization without opening media. Called
+  /// after the app's first frame so the first Play tap does not pay this cost.
+  void prewarm() => _ensurePlayer();
+
+  void _ensurePlayer() {
+    if (player != null) return;
+    player = Player(configuration: streamingPlayerConfiguration);
+    controller = VideoController(player!);
+    _nativeSetup = configureStreamingPlayer(player!).catchError((_) {});
+    _posSub = player!.stream.position.listen(_onPosition);
+    _completedSub = player!.stream.completed.listen((done) {
+      if (done && !isLive && hasNext && autoAdvance) go(index + 1);
+    });
+    _errorSub = player!.stream.error.listen(_onPlayerError);
+    _statsTimer = Timer.periodic(
+      const Duration(seconds: 15),
+      (_) => _tickStats(),
+    );
+    // Reconnect is driven by a stall watchdog (below), NOT directly by libmpv
+    // error events, some of which are recoverable HLS segment failures.
+    _watchdog = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) => _checkStall(),
+    );
+  }
 
   void open(List<PlayerItem> newItems, int i) {
     if (newItems.isEmpty) return;
-    if (player == null) {
-      player = Player();
-      controller = VideoController(player!);
-      _posSub = player!.stream.position.listen(_onPosition);
-      _completedSub = player!.stream.completed.listen((done) {
-        if (done && !isLive && hasNext && autoAdvance) go(index + 1);
-      });
-      _errorSub = player!.stream.error.listen(_onPlayerError);
-      _statsTimer = Timer.periodic(
-        const Duration(seconds: 15),
-        (_) => _tickStats(),
-      );
-      // Reconnect is driven by a stall watchdog (below), NOT by libmpv error
-      // events — those fire spuriously during normal startup/buffering and were
-      // both slowing loads (reopening mid-load) and failing real drops.
-      _watchdog = Timer.periodic(
-        const Duration(seconds: 3),
-        (_) => _checkStall(),
-      );
-    }
+    _ensurePlayer();
     items = newItems;
     index = i.clamp(0, newItems.length - 1);
     minimized = false;
@@ -155,74 +267,140 @@ class PlaybackController extends ChangeNotifier {
     _lastProgressMs = _openedAtMs;
     _lastStatsTickMs = _openedAtMs;
     _lastPos = Duration.zero;
-    player!.open(_mediaForCurrent());
+    _startedCurrent = false;
+    _retryExhausted = false;
+    reconnectStatus = isLive ? 'Opening live channel…' : 'Starting playback…';
+    final current = item;
+    if (!isPlayableMediaUrl(current.url)) {
+      _finishUnavailable(
+        'This item has no valid stream address. Refresh the library and try again.',
+      );
+      return;
+    }
+    final token = ++_openToken;
+    unawaited(_openMedia(current, token));
     if (item.favRef != null) Library.instance.addRecent(item.favRef!);
     _loadEpg();
   }
 
   // ---- reconnect logic ----
 
-  Media _mediaForCurrent() => Media(
-    item.url,
-    httpHeaders: {
-      'User-Agent': 'VLC/3.0.20 LibVLC/3.0.20',
-      ...item.httpHeaders,
-    },
-  );
-
-  void _onPlayerError(String error) {
-    if (!_wantsPlayback || !isLive) return;
-    playbackError = error.trim().isEmpty
-        ? 'The stream stopped unexpectedly.'
-        : error.trim();
-    // The watchdog decides whether to reopen. libmpv may report recoverable
-    // segment errors, so reacting immediately here causes reconnect loops.
+  Future<void> _openMedia(PlayerItem target, int token) async {
+    try {
+      await _nativeSetup;
+      if (token != _openToken || player == null || item != target) return;
+      await player!.open(mediaForPlayerItem(target));
+    } catch (error) {
+      if (token != _openToken || player == null || item != target) return;
+      playbackError = _friendlyPlayerError('$error');
+      _handleFailedAttempt();
+    }
   }
 
-  /// Runs every few seconds. A live stream that is *playing* (not user-paused)
-  /// but has been *buffering with no progress* for a sustained period is a real
-  /// connection drop → schedule a reconnect. Anything healthy resets the clock,
-  /// so this never fires during normal startup or short re-buffers.
+  void _onPlayerError(String error) {
+    if (!_wantsPlayback) return;
+    playbackError = _friendlyPlayerError(error);
+    notifyListeners();
+    // The watchdog gives libmpv a short grace period before reopening because
+    // some HLS segment errors recover without intervention.
+  }
+
+  String _friendlyPlayerError(String raw) {
+    final value = raw.toLowerCase();
+    if (value.contains('401') || value.contains('403')) {
+      return 'The provider rejected this stream. Check the account or device limit.';
+    }
+    if (value.contains('404')) {
+      return 'The provider no longer has this stream.';
+    }
+    if (value.contains('timed out') || value.contains('timeout')) {
+      return 'The provider took too long to respond.';
+    }
+    if (value.contains('tls') ||
+        value.contains('ssl') ||
+        value.contains('certificate')) {
+      return 'A secure connection to the provider could not be established.';
+    }
+    if (value.contains('decoder') || value.contains('codec')) {
+      return 'This device cannot decode the stream format.';
+    }
+    return 'The provider did not start this stream.';
+  }
+
+  void _markHealthy(int now) {
+    _startedCurrent = true;
+    _lastProgressMs = now;
+    if (reconnectStatus != null ||
+        reconnectAttempt != 0 ||
+        playbackError != null) {
+      _cancelReconnect();
+      playbackError = null;
+      _retryExhausted = false;
+      notifyListeners();
+    }
+  }
+
+  /// Enforces a bounded first-frame deadline for every media type, then keeps
+  /// monitoring already-started live streams for sustained stalls.
   void _checkStall() {
     if (player == null || items.isEmpty) return;
-    if (reconnectConfig.liveOnly && !isLive) return;
     if (!_wantsPlayback) return;
     if (_reconnectTimer != null) return; // a reconnect is already pending
     final s = player!.state;
     final now = DateTime.now().millisecondsSinceEpoch;
-    // Give initial loads and retries enough time for DNS, manifests and a
-    // first buffer before judging them as stalled.
-    if (now - _openedAtMs < 15000) return;
+
     if (s.playing && !s.buffering) {
-      _lastProgressMs = now;
-      if (reconnectStatus != null || reconnectAttempt != 0) {
-        _cancelReconnect();
-        playbackError = null;
-        notifyListeners();
-      }
+      _markHealthy(now);
       return;
     }
-    if (now - _lastProgressMs <= 12000) return;
-    if (reconnectAttempt >= reconnectConfig.maxAttempts) {
-      if (reconnectStatus != null) {
-        reconnectStatus = null;
-        playbackError ??=
-            'Stream unavailable after ${reconnectConfig.maxAttempts} retries.';
-        notifyListeners();
+
+    final sinceOpen = Duration(milliseconds: now - _openedAtMs);
+    if (!_startedCurrent) {
+      final errorReady =
+          playbackError != null && sinceOpen >= PlaybackPolicy.playerErrorGrace;
+      if (!errorReady && sinceOpen < PlaybackPolicy.startupTimeout(isLive)) {
+        return;
       }
+      playbackError ??= 'The provider took too long to send the first frame.';
+      _handleFailedAttempt();
       return;
     }
-    // Both prolonged buffering and an unexpected playing=false state are
-    // treated as drops. User pauses are excluded by _wantsPlayback.
+
+    if (reconnectConfig.liveOnly && !isLive) return;
+    final sinceProgress = Duration(milliseconds: now - _lastProgressMs);
+    if (sinceProgress > PlaybackPolicy.liveStallTimeout) {
+      playbackError ??= 'The live stream stopped sending data.';
+      _handleFailedAttempt();
+    }
+  }
+
+  void _handleFailedAttempt() {
+    if (!_wantsPlayback || _reconnectTimer != null) return;
+    if (reconnectAttempt >= retryLimit) {
+      _finishUnavailable(
+        playbackError ?? 'The stream is currently unavailable.',
+      );
+      return;
+    }
     _scheduleReconnect();
+  }
+
+  void _finishUnavailable(String message) {
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    reconnectStatus = null;
+    playbackError = message;
+    _retryExhausted = true;
+    _wantsPlayback = false;
+    notifyListeners();
   }
 
   void _scheduleReconnect() {
     reconnectAttempt++;
-    // Exponential back-off: 2s, 4s, 8s … capped at maxDelay.
-    final rawMs = reconnectConfig.baseDelay.inMilliseconds * (1 << (reconnectAttempt - 1));
-    final delay = Duration(milliseconds: rawMs.clamp(0, reconnectConfig.maxDelay.inMilliseconds));
-    reconnectStatus = 'Reconnecting (${reconnectAttempt}/${reconnectConfig.maxAttempts})…';
+    final delay = PlaybackPolicy.retryDelay(reconnectAttempt, reconnectConfig);
+    reconnectStatus = isLive
+        ? 'Reconnecting live channel ($reconnectAttempt/$retryLimit)…'
+        : 'Trying the stream again…';
     notifyListeners();
     _reconnectTimer = Timer(delay, _doReconnect);
   }
@@ -234,7 +412,12 @@ class PlaybackController extends ChangeNotifier {
     _openedAtMs = DateTime.now().millisecondsSinceEpoch;
     _lastProgressMs = _openedAtMs;
     _lastPos = Duration.zero;
-    player!.open(_mediaForCurrent());
+    _startedCurrent = false;
+    reconnectStatus = isLive ? 'Opening live channel…' : 'Starting playback…';
+    final current = item;
+    final token = ++_openToken;
+    notifyListeners();
+    unawaited(_openMedia(current, token));
   }
 
   void _cancelReconnect() {
@@ -252,7 +435,19 @@ class PlaybackController extends ChangeNotifier {
     _wantsPlayback = true;
     _openedAtMs = DateTime.now().millisecondsSinceEpoch;
     _lastProgressMs = _openedAtMs;
-    player!.open(_mediaForCurrent());
+    _lastPos = Duration.zero;
+    _startedCurrent = false;
+    _retryExhausted = false;
+    reconnectStatus = isLive ? 'Opening live channel…' : 'Starting playback…';
+    if (!isPlayableMediaUrl(item.url)) {
+      _finishUnavailable(
+        'This item has no valid stream address. Refresh the library and try again.',
+      );
+      return;
+    }
+    final current = item;
+    final token = ++_openToken;
+    unawaited(_openMedia(current, token));
     notifyListeners();
   }
 
@@ -283,12 +478,14 @@ class PlaybackController extends ChangeNotifier {
     final fetch = item.epg;
     if (fetch == null) return;
     final forItem = item;
-    fetch().then((list) {
-      if (player != null && items.isNotEmpty && item == forItem) {
-        epg = list;
-        notifyListeners();
-      }
-    }).catchError((_) {});
+    fetch()
+        .then((list) {
+          if (player != null && items.isNotEmpty && item == forItem) {
+            epg = list;
+            notifyListeners();
+          }
+        })
+        .catchError((_) {});
   }
 
   EpgEntry? get epgNow {
@@ -311,12 +508,7 @@ class PlaybackController extends ChangeNotifier {
     // so refresh the clock and clear any in-progress reconnect (recovery).
     if (pos > _lastPos) {
       _lastPos = pos;
-      _lastProgressMs = DateTime.now().millisecondsSinceEpoch;
-      if (reconnectStatus != null || reconnectAttempt != 0) {
-        _cancelReconnect();
-        playbackError = null;
-        notifyListeners();
-      }
+      _markHealthy(DateTime.now().millisecondsSinceEpoch);
     }
     if (isLive || item.progressKey == null) return;
     final dur = player!.state.duration;
@@ -324,7 +516,9 @@ class PlaybackController extends ChangeNotifier {
     if (!_resumed) {
       _resumed = true;
       final saved = Library.instance.progress[item.progressKey];
-      if (saved != null && saved.position > 10 && saved.position < dur.inSeconds * 0.95) {
+      if (saved != null &&
+          saved.position > 10 &&
+          saved.position < dur.inSeconds * 0.95) {
         player!.seek(Duration(seconds: saved.position));
       }
       return;
@@ -366,16 +560,18 @@ class PlaybackController extends ChangeNotifier {
     if (player == null || isLive || item.progressKey == null) return;
     final dur = player!.state.duration, pos = player!.state.position;
     if (dur.inSeconds <= 0) return;
-    Library.instance.saveProgress(Progress(
-      key: item.progressKey!,
-      title: item.title,
-      poster: item.poster,
-      url: item.url,
-      ext: item.ext,
-      position: pos.inSeconds,
-      duration: dur.inSeconds,
-      updatedAt: DateTime.now().millisecondsSinceEpoch,
-    ));
+    Library.instance.saveProgress(
+      Progress(
+        key: item.progressKey!,
+        title: item.title,
+        poster: item.poster,
+        url: item.url,
+        ext: item.ext,
+        position: pos.inSeconds,
+        duration: dur.inSeconds,
+        updatedAt: DateTime.now().millisecondsSinceEpoch,
+      ),
+    );
   }
 
   void minimize() {
@@ -403,6 +599,10 @@ class PlaybackController extends ChangeNotifier {
     _watchdog?.cancel();
     _watchdog = null;
     _wantsPlayback = false;
+    _startedCurrent = false;
+    _retryExhausted = false;
+    _openToken++;
+    _nativeSetup = null;
     player?.dispose();
     player = null;
     controller = null;

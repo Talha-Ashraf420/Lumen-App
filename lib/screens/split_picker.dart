@@ -118,21 +118,27 @@ class _SplitPickerState extends State<SplitPicker> {
     ),
   );
 
-  void _pickMovie(VodStream m) => widget.onPick(
-    PlayerItem(
-      widget.client.streamUrl('movie', m.streamId, ext: m.containerExtension),
-      m.name,
-      poster: m.icon,
-    ),
-  );
+  void _pickMovie(VodStream m) {
+    final ext = m.containerExtension.isEmpty ? 'mp4' : m.containerExtension;
+    widget.onPick(
+      PlayerItem(
+        widget.client.streamUrl('movie', m.streamId, ext: ext),
+        m.name,
+        poster: m.icon,
+        ext: ext,
+      ),
+    );
+  }
 
   void _pickEpisode(Episode e) {
     final name = e.title.isEmpty ? 'Episode ${e.episodeNum}' : e.title;
+    final ext = e.containerExtension.isEmpty ? 'mp4' : e.containerExtension;
     widget.onPick(
       PlayerItem(
-        widget.client.streamUrl('series', e.id, ext: e.containerExtension),
+        widget.client.streamUrl('series', e.id, ext: ext),
         '${_series?.name ?? 'Series'} · $name',
         poster: e.image.isNotEmpty ? e.image : (_info?.cover ?? ''),
+        ext: ext,
       ),
     );
   }
@@ -215,9 +221,7 @@ class _SplitPickerState extends State<SplitPicker> {
                           style: TextStyle(
                             fontWeight: FontWeight.w700,
                             fontSize: 13,
-                            color: _section == s.$1
-                                ? Colors.white
-                                : Colors.white70,
+                            color: _section == s.$1 ? onAccent : Colors.white70,
                           ),
                         ),
                       ),

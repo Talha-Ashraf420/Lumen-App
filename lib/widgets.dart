@@ -221,7 +221,7 @@ class _RemoteTapState extends State<RemoteTap> {
             foregroundDecoration: widget.showFocusRing && _focused
                 ? BoxDecoration(
                     borderRadius: BorderRadius.circular(widget.focusRadius),
-                    border: Border.all(color: accent, width: 2.5),
+                    border: Border.all(color: accentInk, width: 2.5),
                   )
                 : null,
             child: GestureDetector(
@@ -314,7 +314,7 @@ class LumenMark extends StatelessWidget {
   @override
   Widget build(BuildContext context) => CustomPaint(
     size: Size.square(size),
-    painter: _LumenMarkPainter(signal: accent, frame: textHi),
+    painter: _LumenMarkPainter(signal: accentInk, frame: textHi),
   );
 }
 
@@ -418,6 +418,11 @@ class Glass extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tintColor = tint ?? surfaceHi;
+    final tintAlpha = tint == null
+        ? (isDark ? 0.55 : 0.72)
+        : tintColor.a < 0.99
+        ? tintColor.a
+        : (isDark ? 0.18 : 0.13);
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
       child: BackdropFilter(
@@ -425,9 +430,9 @@ class Glass extends StatelessWidget {
         child: Container(
           padding: padding,
           decoration: BoxDecoration(
-            color: tintColor.withValues(alpha: 0.55),
+            color: tintColor.withValues(alpha: tintAlpha),
             borderRadius: BorderRadius.circular(radius),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+            border: Border.all(color: line),
           ),
           child: child,
         ),
@@ -488,11 +493,13 @@ class EditorialPageHeader extends StatelessWidget {
           width: 46,
           height: 46,
           decoration: BoxDecoration(
-            color: accent.withValues(alpha: 0.13),
+            color: accentInk.withValues(alpha: isDark ? 0.13 : 0.09),
             borderRadius: BorderRadius.circular(15),
-            border: Border.all(color: accent.withValues(alpha: 0.24)),
+            border: Border.all(
+              color: accentInk.withValues(alpha: isDark ? 0.24 : 0.38),
+            ),
           ),
-          child: Icon(icon, color: accent, size: 22),
+          child: Icon(icon, color: accentInk, size: 22),
         ),
         const SizedBox(width: 14),
         Expanded(
@@ -500,7 +507,7 @@ class EditorialPageHeader extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(eyebrow.toUpperCase(), style: kSection(color: accent)),
+              Text(eyebrow.toUpperCase(), style: kSection(color: accentInk)),
               const SizedBox(height: 3),
               Text(
                 title,
@@ -563,17 +570,21 @@ class LumenEmptyState extends StatelessWidget {
                     height: 82,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      border: Border.all(color: accent.withValues(alpha: 0.25)),
+                      border: Border.all(
+                        color: accentInk.withValues(
+                          alpha: isDark ? 0.25 : 0.38,
+                        ),
+                      ),
                     ),
                   ),
                   Container(
                     width: 60,
                     height: 60,
                     decoration: BoxDecoration(
-                      color: accent.withValues(alpha: 0.14),
+                      color: accentInk.withValues(alpha: isDark ? 0.14 : 0.09),
                       borderRadius: BorderRadius.circular(20),
                     ),
-                    child: Icon(icon, color: accent, size: 29),
+                    child: Icon(icon, color: accentInk, size: 29),
                   ),
                   Positioned(
                     right: 3,
@@ -582,7 +593,7 @@ class LumenEmptyState extends StatelessWidget {
                       width: 8,
                       height: 8,
                       decoration: BoxDecoration(
-                        color: accent,
+                        color: accentInk,
                         shape: BoxShape.circle,
                       ),
                     ),
@@ -590,7 +601,7 @@ class LumenEmptyState extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 18),
-              Text(eyebrow.toUpperCase(), style: kSection(color: accent)),
+              Text(eyebrow.toUpperCase(), style: kSection(color: accentInk)),
               const SizedBox(height: 7),
               Text(
                 title,
@@ -925,6 +936,68 @@ Widget _skelBox(double w, double h, {double r = 12}) => Container(
   ),
 );
 
+/// A quiet artwork field for detail pages while a real backdrop is decoding,
+/// or when a provider only supplied poster art. It avoids stretching a portrait
+/// poster across the hero and works in both light and dark themes.
+class DetailBackdropPlaceholder extends StatelessWidget {
+  const DetailBackdropPlaceholder({
+    super.key,
+    required this.icon,
+    this.loading = false,
+  });
+
+  final IconData icon;
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) {
+    final visual = DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [surfaceHi, surface, bg],
+        ),
+      ),
+      child: Align(
+        alignment: const Alignment(0.72, -0.08),
+        child: Icon(
+          icon,
+          size: MediaQuery.sizeOf(context).width >= 700 ? 190 : 120,
+          color: accentInk.withValues(alpha: isDark ? 0.13 : 0.09),
+        ),
+      ),
+    );
+    return loading ? _ShimmerSweep(child: visual) : visual;
+  }
+}
+
+/// Short skeleton copy used inside a detail hero while provider metadata is
+/// still arriving. The page remains usable, but loading is visually deliberate.
+class DetailMetadataSkeleton extends StatelessWidget {
+  const DetailMetadataSkeleton({super.key, this.maxWidth = 620});
+
+  final double maxWidth;
+
+  @override
+  Widget build(BuildContext context) => ConstrainedBox(
+    constraints: BoxConstraints(maxWidth: maxWidth),
+    child: _ShimmerSweep(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _skelBox(double.infinity, 12, r: 6),
+          const SizedBox(height: 9),
+          FractionallySizedBox(
+            widthFactor: 0.72,
+            child: _skelBox(double.infinity, 12, r: 6),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
 /// A shimmer skeleton loader — a hero block + poster rows with a light sweep
 /// gliding across. No spinner, no logo, no text; it reads as the page
 /// materialising. Used for full pages (Home, Discover, detail).
@@ -1090,7 +1163,7 @@ class SectionHeader extends StatelessWidget {
             height: 29,
             margin: const EdgeInsets.only(right: 12, bottom: 1),
             decoration: BoxDecoration(
-              color: accent,
+              color: accentInk,
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -1121,7 +1194,11 @@ class SectionHeader extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 5),
-                    Icon(Icons.arrow_outward_rounded, color: accent, size: 15),
+                    Icon(
+                      Icons.arrow_outward_rounded,
+                      color: accentInk,
+                      size: 15,
+                    ),
                   ],
                 ),
               ),

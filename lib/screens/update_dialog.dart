@@ -98,7 +98,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('NEW RELEASE', style: kSection(color: accent)),
+                    Text('NEW RELEASE', style: kSection(color: accentInk)),
                     const SizedBox(height: 7),
                     Text(
                       info.name,

@@ -15,17 +15,22 @@ class SplitController extends ChangeNotifier {
   Player? player;
   VideoController? controller;
   PlayerItem? item;
+  Future<void>? _nativeSetup;
 
   bool get active => player != null && controller != null && item != null;
 
   Future<void> open(PlayerItem it) async {
-    player ??= Player();
-    controller ??= VideoController(player!);
+    if (!isPlayableMediaUrl(it.url)) {
+      throw StateError('The selected item has no valid stream address.');
+    }
+    if (player == null) {
+      player = Player(configuration: streamingPlayerConfiguration);
+      controller = VideoController(player!);
+      _nativeSetup = configureStreamingPlayer(player!).catchError((_) {});
+    }
     item = it;
-    await player!.open(Media(it.url, httpHeaders: {
-      'User-Agent': 'VLC/3.0.20 LibVLC/3.0.20',
-      ...it.httpHeaders,
-    }));
+    await _nativeSetup;
+    await player!.open(mediaForPlayerItem(it));
     await player!.setVolume(0); // secondary is muted
     notifyListeners();
   }
@@ -35,6 +40,7 @@ class SplitController extends ChangeNotifier {
     player = null;
     controller = null;
     item = null;
+    _nativeSetup = null;
     notifyListeners();
     await p?.dispose();
   }

@@ -264,7 +264,7 @@ class _CustomizeHomeScreenState extends State<CustomizeHomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('YOUR HOME', style: kSection(color: accent)),
+            Text('YOUR HOME', style: kSection(color: accentInk)),
             const SizedBox(height: 7),
             Text(
               shelves.isEmpty
@@ -287,7 +287,7 @@ class _CustomizeHomeScreenState extends State<CustomizeHomeScreen> {
                   ? Center(
                       child: Icon(
                         Icons.auto_awesome_rounded,
-                        color: accent.withValues(alpha: 0.5),
+                        color: accentInk.withValues(alpha: 0.58),
                         size: 46,
                       ),
                     )
@@ -322,7 +322,7 @@ class _CustomizeHomeScreenState extends State<CustomizeHomeScreen> {
               count == 0
                   ? Icons.auto_awesome_rounded
                   : Icons.view_carousel_rounded,
-              color: accent,
+              color: accentInk,
               size: 19,
             ),
             const SizedBox(width: 10),
@@ -355,7 +355,7 @@ class _CustomizeHomeScreenState extends State<CustomizeHomeScreen> {
         Text(
           '${index + 1}'.padLeft(2, '0'),
           style: TextStyle(
-            color: accent,
+            color: accentInk,
             fontWeight: FontWeight.w800,
             fontSize: 11,
           ),

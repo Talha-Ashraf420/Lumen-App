@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'models.dart';
+import 'store.dart';
 
 /// A single shelf the user chose to show on Home (a category/playlist).
 class ShelfRef {
@@ -21,12 +22,26 @@ class HomeConfig extends ChangeNotifier {
   static const _k = 'home_shelves';
 
   final List<ShelfRef> shelves = [];
+  String? _scope;
+  int _activation = 0;
   bool get isCustom => shelves.isNotEmpty;
 
-  Future<void> load() async {
-    final p = await SharedPreferences.getInstance();
-    final raw = p.getString(_k);
+  Future<void> activate(XtreamCredentials? credentials) async {
+    final activation = ++_activation;
+    _scope = credentials == null ? null : Store.profileScope(credentials);
     shelves.clear();
+    notifyListeners();
+    final scope = _scope;
+    if (scope == null) return;
+    var raw = await Store.readPrivate('${_k}_$scope');
+    if (raw == null) {
+      raw = await Store.readPrivate(_k);
+      if (raw != null) {
+        await Store.writePrivate('${_k}_$scope', raw);
+        await Store.deletePrivate(_k);
+      }
+    }
+    if (activation != _activation || scope != _scope) return;
     if (raw != null) {
       try {
         for (final e in jsonDecode(raw) as List) {
@@ -37,7 +52,11 @@ class HomeConfig extends ChangeNotifier {
     notifyListeners();
   }
 
-  bool isEnabled(String type, String id) => shelves.any((s) => s.type == type && s.id == id);
+  @Deprecated('Use activate(credentials) so state cannot cross profiles.')
+  Future<void> load() => activate(null);
+
+  bool isEnabled(String type, String id) =>
+      shelves.any((s) => s.type == type && s.id == id);
 
   void toggle(ShelfRef ref) {
     final i = shelves.indexWhere((s) => s.key == ref.key);
@@ -65,7 +84,11 @@ class HomeConfig extends ChangeNotifier {
   }
 
   Future<void> _save() async {
-    final p = await SharedPreferences.getInstance();
-    await p.setString(_k, jsonEncode(shelves.map((e) => e.toJson()).toList()));
+    final scope = _scope;
+    if (scope == null) return;
+    await Store.writePrivate(
+      '${_k}_$scope',
+      jsonEncode(shelves.map((e) => e.toJson()).toList()),
+    );
   }
 }

@@ -263,7 +263,7 @@ class _LoginScreenState extends State<LoginScreen> {
           const Center(child: Wordmark(size: 38)),
           const SizedBox(height: 24),
         ],
-        Text('CONNECT YOUR LIBRARY', style: kSection(color: accent)),
+        Text('CONNECT YOUR LIBRARY', style: kSection(color: accentInk)),
         const SizedBox(height: 7),
         const Text(
           'Welcome to Lumen',
@@ -371,10 +371,10 @@ class _LoginScreenState extends State<LoginScreen> {
         Center(
           child: TextButton.icon(
             onPressed: _busy ? null : _pasteUrl,
-            icon: Icon(Icons.link_rounded, size: 18, color: accent),
+            icon: Icon(Icons.link_rounded, size: 18, color: accentInk),
             label: Text(
               'Connect a playlist URL instead',
-              style: TextStyle(color: accent, fontWeight: FontWeight.w700),
+              style: TextStyle(color: accentInk, fontWeight: FontWeight.w700),
             ),
           ),
         ),
@@ -449,10 +449,10 @@ class _ProfileTile extends StatelessWidget {
               width: 38,
               height: 38,
               decoration: BoxDecoration(
-                color: accent.withValues(alpha: 0.13),
+                color: accentInk.withValues(alpha: isDark ? 0.13 : 0.09),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(Icons.tv_rounded, color: accent, size: 19),
+              child: Icon(Icons.tv_rounded, color: accentInk, size: 19),
             ),
             const SizedBox(width: 11),
             Expanded(
@@ -472,7 +472,7 @@ class _ProfileTile extends StatelessWidget {
                 ],
               ),
             ),
-            Icon(Icons.arrow_forward_rounded, size: 17, color: accent),
+            Icon(Icons.arrow_forward_rounded, size: 17, color: accentInk),
           ],
         ),
       ),
@@ -496,7 +496,7 @@ class _TrustPill extends StatelessWidget {
     child: Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, color: accent, size: 16),
+        Icon(icon, color: accentInk, size: 16),
         const SizedBox(width: 7),
         Text(
           label,
