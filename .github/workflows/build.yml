@@ -89,7 +89,10 @@ jobs:
       - run: flutter pub get
       - run: flutter build macos --release --dart-define=APP_BUILD=${{ github.run_number }}
       - name: Zip .app
-        run: ditto -c -k --sequesterRsrc --keepParent build/macos/Build/Products/Release/lumen_tv.app Lumen-macOS.zip
+        run: |
+          APP_PATH="build/macos/Build/Products/Release/Lumen.app"
+          test -d "$APP_PATH"
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" Lumen-macOS.zip
       - uses: actions/upload-artifact@v4
         with:
           name: Lumen-macOS
