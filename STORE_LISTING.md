@@ -7,10 +7,15 @@ The canonical copy lives under `fastlane/metadata/android/en-US/`.
 - **Icon**: `fastlane/metadata/android/en-US/images/icon.png` (512×512)
 - **Feature graphic**: `fastlane/metadata/android/en-US/images/featureGraphic.png` (1024×500)
 - **Android TV banner**: `fastlane/metadata/android/en-US/images/tvBanner.png` (320×180)
-- **Screenshots**: capture from a phone or emulator and drop into
-  `fastlane/metadata/android/en-US/images/phoneScreenshots/` (1.png, 2.png, …).
-  Recommended shots: Home (immersive hero), TV Guide grid, a Movie/Series detail,
-  the video player with controls, Downloads, Profile → Appearance (accent picker).
+- **Phone screenshots**:
+  `fastlane/metadata/android/en-US/images/phoneScreenshots/`
+- **Android TV screenshots**:
+  `fastlane/metadata/android/en-US/images/tvScreenshots/`
+- The committed screenshots use only Lumen UI and fictional/local test data.
+  Regenerate them with
+  `flutter test --update-goldens tool/store_screenshots_test.dart`.
+- Add further screenshots only when every poster, logo, program name, and media
+  item is owned or licensed for store marketing.
 - **App name**: Lumen
 - **Category**: Video Players & Editors / Entertainment
 - **Content rating**: typically Teen/12+ (user-supplied media)
