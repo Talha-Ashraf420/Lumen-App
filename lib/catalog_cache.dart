@@ -36,6 +36,7 @@ class CatalogCache {
   final Map<String, Future<List<LiveStream>>> _liveStreams = {};
   final Map<int, Future<VodInfo>> _vodInfo = {};
   final Map<int, Future<SeriesInfo>> _seriesInfo = {};
+  final Map<String, Future<void>> _allImports = {};
 
   Future<List<Category>> vod(XtreamClient client, {bool priority = false}) {
     _ensureOwner(client);
@@ -197,6 +198,7 @@ class CatalogCache {
     _liveStreams.clear();
     _vodInfo.clear();
     _seriesInfo.clear();
+    _allImports.clear();
   }
 
   Future<List<Category>> _loadCategoriesCachedFirst(
@@ -320,17 +322,49 @@ class CatalogCache {
     int offset = 0,
     int limit = CatalogStore.defaultPageSize,
     String query = '',
+    String sort = 'default',
   }) async {
     _ensureOwner(client);
     final bucket = categoryId ?? '*';
-    await vodStreams(client, categoryId, priority: true);
-    return CatalogStore.instance.vodPage(
-      Store.profileScope(client.creds),
+    final scope = Store.profileScope(client.creds);
+    final cached = await CatalogStore.instance.vodPage(
+      scope,
       bucket: bucket,
       offset: offset,
       limit: limit,
       query: query,
+      sort: sort,
     );
+    if (cached.items.isNotEmpty) {
+      unawaited(vodStreams(client, categoryId, priority: true));
+      return cached;
+    }
+    var direct = await vodStreams(client, categoryId, priority: true);
+    if (categoryId == null && direct.isEmpty) {
+      await _importAllVod(client, scope);
+      direct = await vodStreams(client, categoryId, priority: true);
+    }
+    final stored = await CatalogStore.instance.vodPage(
+      scope,
+      bucket: bucket,
+      offset: offset,
+      limit: limit,
+      query: query,
+      sort: sort,
+    );
+    return stored.items.isNotEmpty || direct.isEmpty
+        ? stored
+        : _memoryPage(
+            direct,
+            offset: offset,
+            limit: limit,
+            query: query,
+            sort: sort,
+            name: (item) => item.name,
+            rating: (item) => item.rating,
+            recent: (item) => int.tryParse(item.added) ?? 0,
+            year: (item) => _yearValue(item.name),
+          );
   }
 
   Future<CatalogPage<Series>> seriesPage(
@@ -339,17 +373,53 @@ class CatalogCache {
     int offset = 0,
     int limit = CatalogStore.defaultPageSize,
     String query = '',
+    String sort = 'default',
   }) async {
     _ensureOwner(client);
     final bucket = categoryId ?? '*';
-    await seriesItems(client, categoryId, priority: true);
-    return CatalogStore.instance.seriesPage(
-      Store.profileScope(client.creds),
+    final scope = Store.profileScope(client.creds);
+    final cached = await CatalogStore.instance.seriesPage(
+      scope,
       bucket: bucket,
       offset: offset,
       limit: limit,
       query: query,
+      sort: sort,
     );
+    if (cached.items.isNotEmpty) {
+      unawaited(seriesItems(client, categoryId, priority: true));
+      return cached;
+    }
+    var direct = await seriesItems(client, categoryId, priority: true);
+    if (categoryId == null && direct.isEmpty) {
+      await _importAllSeries(client, scope);
+      direct = await seriesItems(client, categoryId, priority: true);
+    }
+    final stored = await CatalogStore.instance.seriesPage(
+      scope,
+      bucket: bucket,
+      offset: offset,
+      limit: limit,
+      query: query,
+      sort: sort,
+    );
+    return stored.items.isNotEmpty || direct.isEmpty
+        ? stored
+        : _memoryPage(
+            direct,
+            offset: offset,
+            limit: limit,
+            query: query,
+            sort: sort,
+            name: (item) => item.name,
+            rating: (item) => item.rating,
+            recent: (item) => _yearValue(
+              item.releaseDate.isEmpty ? item.name : item.releaseDate,
+            ),
+            year: (item) => _yearValue(
+              item.releaseDate.isEmpty ? item.name : item.releaseDate,
+            ),
+          );
   }
 
   Future<CatalogPage<LiveStream>> livePage(
@@ -358,17 +428,196 @@ class CatalogCache {
     int offset = 0,
     int limit = CatalogStore.defaultPageSize,
     String query = '',
+    String sort = 'default',
   }) async {
     _ensureOwner(client);
     final bucket = categoryId ?? '*';
-    await liveStreams(client, categoryId, priority: true);
-    return CatalogStore.instance.livePage(
-      Store.profileScope(client.creds),
+    final scope = Store.profileScope(client.creds);
+    final cached = await CatalogStore.instance.livePage(
+      scope,
       bucket: bucket,
       offset: offset,
       limit: limit,
       query: query,
+      sort: sort,
     );
+    if (cached.items.isNotEmpty) {
+      unawaited(liveStreams(client, categoryId, priority: true));
+      return cached;
+    }
+    var direct = await liveStreams(client, categoryId, priority: true);
+    if (categoryId == null && direct.isEmpty) {
+      await _importAllLive(client, scope);
+      direct = await liveStreams(client, categoryId, priority: true);
+    }
+    final stored = await CatalogStore.instance.livePage(
+      scope,
+      bucket: bucket,
+      offset: offset,
+      limit: limit,
+      query: query,
+      sort: sort,
+    );
+    return stored.items.isNotEmpty || direct.isEmpty
+        ? stored
+        : _memoryPage(
+            direct,
+            offset: offset,
+            limit: limit,
+            query: query,
+            sort: sort,
+            name: (item) => item.name,
+            rating: (_) => 0,
+            recent: (_) => 0,
+            year: (_) => 0,
+          );
+  }
+
+  CatalogPage<T> _memoryPage<T>(
+    List<T> source, {
+    required int offset,
+    required int limit,
+    required String query,
+    required String sort,
+    required String Function(T item) name,
+    required double Function(T item) rating,
+    required int Function(T item) recent,
+    required int Function(T item) year,
+  }) {
+    final normalized = query.trim().toLowerCase();
+    final values = source
+        .where(
+          (item) =>
+              normalized.isEmpty ||
+              name(item).toLowerCase().contains(normalized),
+        )
+        .toList();
+    int byName(T a, T b) =>
+        name(a).toLowerCase().compareTo(name(b).toLowerCase());
+    switch (sort) {
+      case 'az':
+        values.sort(byName);
+      case 'za':
+        values.sort((a, b) => byName(b, a));
+      case 'rating':
+        values.sort((a, b) {
+          final compared = rating(b).compareTo(rating(a));
+          return compared == 0 ? byName(a, b) : compared;
+        });
+      case 'recent':
+        values.sort((a, b) {
+          final compared = recent(b).compareTo(recent(a));
+          return compared == 0 ? byName(a, b) : compared;
+        });
+      case 'year':
+        values.sort((a, b) {
+          final compared = year(b).compareTo(year(a));
+          return compared == 0 ? byName(a, b) : compared;
+        });
+    }
+    if (offset >= values.length) {
+      return CatalogPage<T>(
+        items: const [],
+        offset: offset,
+        limit: limit,
+        hasMore: false,
+      );
+    }
+    final end = (offset + limit).clamp(0, values.length);
+    return CatalogPage<T>(
+      items: values.sublist(offset, end),
+      offset: offset,
+      limit: limit,
+      hasMore: end < values.length,
+    );
+  }
+
+  static int _yearValue(String value) =>
+      int.tryParse(RegExp(r'(19|20)\d{2}').firstMatch(value)?.group(0) ?? '') ??
+      0;
+
+  Future<void> _importAllVod(XtreamClient client, String scope) =>
+      _memoized(_allImports, 'movie', () async {
+        final generation = _generation();
+        final categories = await vod(client, priority: true);
+        final items = await _mergeCategories(
+          categories,
+          (id) => vodStreams(client, id),
+          (item) => item.streamId,
+        );
+        if (items.isEmpty) return;
+        await CatalogStore.instance.replaceVod(
+          scope,
+          '*',
+          items,
+          generation: generation,
+        );
+        if (identical(_owner, client)) {
+          _vodStreams['*'] = Future.value(items);
+        }
+      });
+
+  Future<void> _importAllSeries(XtreamClient client, String scope) =>
+      _memoized(_allImports, 'series', () async {
+        final generation = _generation();
+        final categories = await series(client, priority: true);
+        final items = await _mergeCategories(
+          categories,
+          (id) => seriesItems(client, id),
+          (item) => item.seriesId,
+        );
+        if (items.isEmpty) return;
+        await CatalogStore.instance.replaceSeries(
+          scope,
+          '*',
+          items,
+          generation: generation,
+        );
+        if (identical(_owner, client)) {
+          _series['*'] = Future.value(items);
+        }
+      });
+
+  Future<void> _importAllLive(XtreamClient client, String scope) =>
+      _memoized(_allImports, 'live', () async {
+        final generation = _generation();
+        final categories = await live(client, priority: true);
+        final items = await _mergeCategories(
+          categories,
+          (id) => liveStreams(client, id),
+          (item) => item.streamId,
+        );
+        if (items.isEmpty) return;
+        await CatalogStore.instance.replaceLive(
+          scope,
+          '*',
+          items,
+          generation: generation,
+        );
+        if (identical(_owner, client)) {
+          _liveStreams['*'] = Future.value(items);
+        }
+      });
+
+  Future<List<T>> _mergeCategories<T, K>(
+    List<Category> categories,
+    Future<List<T>> Function(String categoryId) fetch,
+    K Function(T item) identity,
+  ) async {
+    final unique = <K, T>{};
+    const batchSize = 4;
+    for (var i = 0; i < categories.length; i += batchSize) {
+      final batch = categories.skip(i).take(batchSize);
+      final results = await Future.wait(
+        batch.map((category) => fetch(category.id).catchError((_) => <T>[])),
+      );
+      for (final items in results) {
+        for (final item in items) {
+          unique[identity(item)] = item;
+        }
+      }
+    }
+    return unique.values.toList(growable: false);
   }
 
   static int _generation() => DateTime.now().microsecondsSinceEpoch;

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen_tv/models.dart';
@@ -37,6 +39,7 @@ void main() {
     WidgetTester tester,
     Size size, {
     double? contentWidth,
+    Future<void> Function()? onLogout,
   }) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = size;
@@ -53,7 +56,7 @@ void main() {
               width: contentWidth,
               child: ProfileScreen(
                 client: _ProfileTestClient(),
-                onLogout: () {},
+                onLogout: onLogout ?? () async {},
                 onSwitch: (_) {},
               ),
             ),
@@ -108,6 +111,40 @@ void main() {
     final settingsTopLeft = tester.getTopLeft(find.text('Make Lumen yours'));
     expect(settingsTopLeft.dy, greaterThan(accountsTopLeft.dy));
     expect(find.text('Profile'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('sign out confirms and awaits the root session callback', (
+    tester,
+  ) async {
+    var calls = 0;
+    final completion = Completer<void>();
+    await pumpProfile(
+      tester,
+      const Size(390, 844),
+      onLogout: () {
+        calls++;
+        return completion.future;
+      },
+    );
+    await tester.scrollUntilVisible(
+      find.text('Sign out of Lumen'),
+      500,
+      scrollable: find.byType(Scrollable).first,
+    );
+
+    await tester.tap(find.text('Sign out of Lumen'));
+    await tester.pumpAndSettle();
+    expect(find.text('Sign out of Lumen?'), findsOneWidget);
+    expect(calls, 0);
+
+    await tester.tap(find.text('Sign out'));
+    await tester.pump();
+    expect(calls, 1);
+    expect(find.text('Signing out…'), findsOneWidget);
+
+    completion.complete();
+    await tester.pump();
     expect(tester.takeException(), isNull);
   });
 }

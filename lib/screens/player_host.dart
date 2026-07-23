@@ -1228,24 +1228,33 @@ class _PlayerHostState extends State<PlayerHost> {
     // Nothing to show while connected and not retrying.
     if (status == null && !exhausted) return const SizedBox.shrink();
 
-    return Center(
-      child: Semantics(
-        liveRegion: true,
-        label: status ?? pc.playbackError ?? 'Stream unavailable',
-        child: Container(
-          constraints: const BoxConstraints(minWidth: 300, maxWidth: 410),
-          padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 26),
-          decoration: BoxDecoration(
-            color: const Color(0xF0101112),
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: Colors.white12),
-            boxShadow: const [
-              BoxShadow(color: Colors.black54, blurRadius: 34, spreadRadius: 5),
-            ],
-          ),
-          child: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 220),
-            child: status != null ? _openingState(status) : _unavailableState(),
+    return SafeArea(
+      minimum: const EdgeInsets.all(20),
+      child: Center(
+        child: Semantics(
+          liveRegion: true,
+          label: status ?? pc.playbackError ?? 'Stream unavailable',
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 440),
+            padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 26),
+            decoration: BoxDecoration(
+              color: const Color(0xF0101112),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: Colors.white12),
+              boxShadow: const [
+                BoxShadow(
+                  color: Colors.black54,
+                  blurRadius: 34,
+                  spreadRadius: 5,
+                ),
+              ],
+            ),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 220),
+              child: status != null
+                  ? _openingState(status)
+                  : _unavailableState(),
+            ),
           ),
         ),
       ),
@@ -1307,7 +1316,59 @@ class _PlayerHostState extends State<PlayerHost> {
           height: 1.35,
         ),
       ),
+      const SizedBox(height: 14),
+      Wrap(
+        alignment: WrapAlignment.center,
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          _recoveryTag(
+            Icons.source_outlined,
+            'Source ${pc.sourceNumber}/${pc.sourceCount}',
+          ),
+          _recoveryTag(Icons.video_file_outlined, pc.sourceFormat),
+          if (pc.reconnectAttempt > 0)
+            _recoveryTag(
+              Icons.replay_rounded,
+              '${pc.reconnectAttempt}/${pc.retryLimit}',
+            ),
+        ],
+      ),
+      if (pc.reconnectAttempt > 0) ...[
+        const SizedBox(height: 14),
+        TextButton.icon(
+          autofocus: true,
+          style: TextButton.styleFrom(foregroundColor: Colors.white70),
+          onPressed: pc.cancelRecovery,
+          icon: const Icon(Icons.stop_circle_outlined, size: 18),
+          label: const Text('Stop automatic retry'),
+        ),
+      ],
     ],
+  );
+
+  Widget _recoveryTag(IconData icon, String label) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+    decoration: BoxDecoration(
+      color: Colors.white.withValues(alpha: 0.07),
+      borderRadius: BorderRadius.circular(999),
+      border: Border.all(color: Colors.white12),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, color: Colors.white54, size: 14),
+        const SizedBox(width: 5),
+        Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white70,
+            fontSize: 11.5,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    ),
   );
 
   Widget _unavailableState() => Column(
@@ -1351,6 +1412,25 @@ class _PlayerHostState extends State<PlayerHost> {
           ),
         ),
       ],
+      if (pc.failure != null) ...[
+        const SizedBox(height: 10),
+        Text(
+          pc.failure!.suggestion,
+          maxLines: 3,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Colors.white54,
+            fontSize: 12,
+            height: 1.35,
+          ),
+        ),
+        const SizedBox(height: 10),
+        _recoveryTag(
+          Icons.info_outline_rounded,
+          '${pc.failure!.code} · source ${pc.sourceNumber}/${pc.sourceCount}',
+        ),
+      ],
       const SizedBox(height: 20),
       Wrap(
         alignment: WrapAlignment.center,
@@ -1358,6 +1438,7 @@ class _PlayerHostState extends State<PlayerHost> {
         runSpacing: 10,
         children: [
           FilledButton.icon(
+            autofocus: true,
             style: FilledButton.styleFrom(
               backgroundColor: accent,
               foregroundColor: onAccent,
@@ -1382,7 +1463,7 @@ class _PlayerHostState extends State<PlayerHost> {
               ),
               onPressed: () async {
                 final opened = await AndroidCompatibilityPlayer.open(
-                  url: _item.url,
+                  url: pc.activeSourceUrl,
                   title: _item.title,
                   isLive: _item.isLive,
                   headers: {
@@ -1402,8 +1483,18 @@ class _PlayerHostState extends State<PlayerHost> {
                 }
               },
               icon: const Icon(Icons.android_rounded, size: 18),
-              label: const Text('Android player'),
+              label: const Text('Compatibility player'),
             ),
+          OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.white,
+              side: const BorderSide(color: Colors.white24),
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+            ),
+            onPressed: _openDiagnostics,
+            icon: const Icon(Icons.monitor_heart_outlined, size: 18),
+            label: const Text('Playback info'),
+          ),
           if (_hasNext)
             OutlinedButton.icon(
               style: OutlinedButton.styleFrom(
@@ -1923,7 +2014,16 @@ class _PlayerHostState extends State<PlayerHost> {
                   ),
                 IconButton(
                   onPressed: _openSettings,
+                  tooltip: 'Playback settings',
                   icon: const Icon(Icons.tune_rounded, color: Colors.white),
+                ),
+                IconButton(
+                  onPressed: _openDiagnostics,
+                  tooltip: 'Playback information',
+                  icon: const Icon(
+                    Icons.info_outline_rounded,
+                    color: Colors.white,
+                  ),
                 ),
                 if (_isAndroid)
                   IconButton(
@@ -2131,6 +2231,17 @@ class _PlayerHostState extends State<PlayerHost> {
     });
   }
 
+  void _openDiagnostics() {
+    _hideTimer?.cancel();
+    setState(() {
+      _controls = true;
+      _panelKind = 'diagnostics';
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) FocusScope.of(context).nextFocus();
+    });
+  }
+
   void _closePanel() {
     setState(() => _panelKind = null);
     _scheduleHide();
@@ -2198,6 +2309,8 @@ class _PlayerHostState extends State<PlayerHost> {
                                 child: SingleChildScrollView(
                                   child: _panelKind == 'subs'
                                       ? _subsContent()
+                                      : _panelKind == 'diagnostics'
+                                      ? _diagnosticsContent()
                                       : _settingsContent(),
                                 ),
                               ),
@@ -2454,6 +2567,224 @@ class _PlayerHostState extends State<PlayerHost> {
     pc.player!.setVolume(_curVol);
     setState(() {});
   }
+
+  Widget _diagnosticsContent() => StreamBuilder<Duration>(
+    stream: pc.player?.stream.position,
+    builder: (_, _) {
+      final events = pc.diagnosticEvents;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 12, 4),
+            child: Row(
+              children: [
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Playback information',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      SizedBox(height: 3),
+                      Text(
+                        'Safe details—credentials are never shown.',
+                        style: TextStyle(color: Colors.white54, fontSize: 11.5),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  autofocus: true,
+                  onPressed: _closePanel,
+                  icon: const Icon(Icons.close_rounded, color: Colors.white70),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.07),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.white12),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: accent.withValues(alpha: 0.14),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      pc.retryExhausted
+                          ? Icons.warning_amber_rounded
+                          : Icons.monitor_heart_outlined,
+                      color: accent,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          pc.playbackStateLabel,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 16,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          pc.failure?.message ?? 'The stream is responding.',
+                          style: const TextStyle(
+                            color: Colors.white60,
+                            fontSize: 12,
+                            height: 1.3,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          _diagnosticRow('Endpoint', pc.endpointLabel),
+          _diagnosticRow('Format', pc.sourceFormat),
+          _diagnosticRow('Source', '${pc.sourceNumber} of ${pc.sourceCount}'),
+          _diagnosticRow(
+            'Buffered',
+            '${pc.bufferedAhead.inSeconds}s · '
+                '${pc.bufferingPercentage.toStringAsFixed(0)}%',
+          ),
+          _diagnosticRow(
+            'Recovery',
+            '${pc.reconnectAttempt} of ${pc.retryLimit} attempts',
+          ),
+          if (pc.failure != null) ...[
+            _diagnosticRow('Failure code', pc.failure!.code),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+              child: Text(
+                pc.failure!.suggestion,
+                style: const TextStyle(
+                  color: Colors.white60,
+                  height: 1.4,
+                  fontSize: 12.5,
+                ),
+              ),
+            ),
+          ],
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: accent,
+                    foregroundColor: onAccent,
+                  ),
+                  onPressed: pc.retryExhausted ? pc.retryNow : null,
+                  icon: const Icon(Icons.refresh_rounded, size: 18),
+                  label: const Text('Try again'),
+                ),
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    side: const BorderSide(color: Colors.white24),
+                  ),
+                  onPressed: () async {
+                    await Clipboard.setData(
+                      ClipboardData(text: pc.diagnosticSummary),
+                    );
+                    if (mounted) {
+                      _flashHud(
+                        'Playback details copied',
+                        Icons.copy_all_rounded,
+                      );
+                    }
+                  },
+                  icon: const Icon(Icons.copy_all_rounded, size: 18),
+                  label: const Text('Copy details'),
+                ),
+              ],
+            ),
+          ),
+          if (events.isNotEmpty) ...[
+            _settingLabel('Recent recovery activity'),
+            for (final event in events)
+              ListTile(
+                dense: true,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+                leading: Icon(Icons.circle, color: accent, size: 8),
+                title: Text(
+                  event.label,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                  ),
+                ),
+                subtitle: Text(
+                  event.detail,
+                  style: const TextStyle(color: Colors.white54, fontSize: 11.5),
+                ),
+                trailing: Text(
+                  _diagnosticTime(event.time),
+                  style: const TextStyle(color: Colors.white38, fontSize: 10.5),
+                ),
+              ),
+          ],
+          const SizedBox(height: 20),
+        ],
+      );
+    },
+  );
+
+  Widget _diagnosticRow(String label, String value) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 7),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 88,
+          child: Text(
+            label,
+            style: const TextStyle(color: Colors.white54, fontSize: 12),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            textAlign: TextAlign.right,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+              fontSize: 12.5,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+
+  String _diagnosticTime(DateTime value) =>
+      '${value.hour.toString().padLeft(2, '0')}:'
+      '${value.minute.toString().padLeft(2, '0')}:'
+      '${value.second.toString().padLeft(2, '0')}';
 
   Widget _settingsContent() {
     final audio = pc.player!.state.tracks.audio

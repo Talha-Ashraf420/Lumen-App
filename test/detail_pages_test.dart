@@ -131,6 +131,79 @@ class _HomeClient extends XtreamClient {
   Future<List<LiveStream>> liveStreams(String? categoryId) async => const [];
 }
 
+class _PagedClient extends XtreamClient {
+  _PagedClient()
+    : super(
+        const XtreamCredentials(
+          baseUrl: 'https://paged-provider.example',
+          username: 'large-library',
+          password: 'test-only',
+        ),
+      );
+
+  int vodCategoryCalls = 0;
+  int vodStreamCalls = 0;
+
+  @override
+  Future<List<Category>> vodCategories() async {
+    vodCategoryCalls++;
+    return [Category('large', 'Large library')];
+  }
+
+  @override
+  Future<List<VodStream>> vodStreams(String? categoryId) async {
+    vodStreamCalls++;
+    return List.generate(
+      60,
+      (index) => VodStream(
+        index + 1,
+        'Movie ${(index + 1).toString().padLeft(2, '0')} (2026)',
+        '',
+        categoryId ?? 'large',
+        'mp4',
+        8,
+        '${1000 + index}',
+      ),
+    );
+  }
+}
+
+class _CategoryOnlyClient extends XtreamClient {
+  _CategoryOnlyClient()
+    : super(
+        const XtreamCredentials(
+          baseUrl: 'https://category-only.example',
+          username: 'searcher',
+          password: 'test-only',
+        ),
+      );
+
+  final requestedCategories = <String?>[];
+
+  @override
+  Future<List<Category>> vodCategories() async => [
+    Category('one', 'First'),
+    Category('two', 'Second'),
+  ];
+
+  @override
+  Future<List<VodStream>> vodStreams(String? categoryId) async {
+    requestedCategories.add(categoryId);
+    if (categoryId == null) return const [];
+    return [
+      VodStream(
+        categoryId == 'one' ? 1 : 2,
+        categoryId == 'one' ? 'First Film' : 'Second Film',
+        '',
+        categoryId,
+        'mp4',
+        8,
+        '',
+      ),
+    ];
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -344,6 +417,19 @@ void main() {
     expect(client.streamCalls, 1);
   });
 
+  test(
+    'global search imports providers that only expose category catalogs',
+    () async {
+      final client = _CategoryOnlyClient();
+      addTearDown(client.close);
+
+      final page = await CatalogCache.instance.vodPage(client, query: 'second');
+
+      expect(page.items.single.name, 'Second Film');
+      expect(client.requestedCategories, containsAll([null, 'one', 'two']));
+    },
+  );
+
   testWidgets('Home warms catalogs once and skips whole VOD', (tester) async {
     final client = _HomeClient();
     await pumpAt(
@@ -395,6 +481,38 @@ void main() {
     expect(find.text('The Last Signal'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
+    await disposeUi(tester);
+  });
+
+  testWidgets('Movies browse appends a second page near the grid end', (
+    tester,
+  ) async {
+    final client = _PagedClient();
+    final key = GlobalKey<SearchScreenState>();
+    addTearDown(client.close);
+
+    await pumpAt(
+      tester,
+      SearchScreen(key: key, client: client, initialSection: 'movie'),
+      const Size(1280, 800),
+    );
+    await waitFor(tester, () => key.currentState?.debugLoadedResultCount == 48);
+
+    expect(client.vodCategoryCalls, 1);
+    expect(client.vodStreamCalls, 1);
+
+    for (
+      var attempt = 0;
+      attempt < 6 && key.currentState?.debugLoadedResultCount == 48;
+      attempt++
+    ) {
+      await tester.fling(find.byType(GridView), const Offset(0, -1200), 2500);
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    await waitFor(tester, () => key.currentState?.debugLoadedResultCount == 60);
+
+    expect(client.vodStreamCalls, 1);
+    expect(tester.takeException(), isNull);
     await disposeUi(tester);
   });
 

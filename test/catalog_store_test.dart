@@ -38,6 +38,130 @@ void main() {
     );
   });
 
+  test(
+    'catalog pages preserve provider order and support indexed sorts',
+    () async {
+      final movies = List.generate(
+        60,
+        (index) => VodStream(
+          index + 1,
+          switch (index) {
+            0 => 'Zulu Premiere (2021)',
+            1 => 'Alpha Feature (2026)',
+            2 => 'Middle Story (2024)',
+            _ => 'Movie ${index.toString().padLeft(2, '0')} (2023)',
+          },
+          '',
+          'large',
+          'mp4',
+          switch (index) {
+            0 => 7.1,
+            1 => 8.2,
+            2 => 9.7,
+            _ => 5.0,
+          },
+          switch (index) {
+            0 => '100',
+            1 => '300',
+            2 => '200',
+            _ => '${99 - index}',
+          },
+        ),
+      );
+      await store.replaceVod('profile', 'large', movies, generation: 10);
+
+      final first = await store.vodPage('profile', bucket: 'large', limit: 48);
+      final second = await store.vodPage(
+        'profile',
+        bucket: 'large',
+        offset: 48,
+        limit: 48,
+      );
+      expect(first.items, hasLength(48));
+      expect(first.items.first.streamId, 1);
+      expect(first.hasMore, isTrue);
+      expect(second.items, hasLength(12));
+      expect(second.items.first.streamId, 49);
+      expect(second.hasMore, isFalse);
+
+      final highestRated = await store.vodPage(
+        'profile',
+        bucket: 'large',
+        sort: 'rating',
+        limit: 1,
+      );
+      expect(highestRated.items.single.name, 'Middle Story (2024)');
+
+      final newestAdded = await store.vodPage(
+        'profile',
+        bucket: 'large',
+        sort: 'recent',
+        limit: 1,
+      );
+      expect(newestAdded.items.single.name, 'Alpha Feature (2026)');
+
+      final newestYear = await store.vodPage(
+        'profile',
+        bucket: 'large',
+        sort: 'year',
+        limit: 1,
+      );
+      expect(newestYear.items.single.name, 'Alpha Feature (2026)');
+
+      final descending = await store.vodPage(
+        'profile',
+        bucket: 'large',
+        sort: 'za',
+        limit: 1,
+      );
+      expect(descending.items.single.name, 'Zulu Premiere (2021)');
+    },
+  );
+
+  test(
+    'series and live pages use the same query and offset contract',
+    () async {
+      await store.replaceSeries(
+        'profile',
+        'shows',
+        List.generate(
+          50,
+          (index) => Series(
+            index + 1,
+            'Series ${(index + 1).toString().padLeft(2, '0')}',
+            '',
+            '',
+            '',
+            7,
+            '2025',
+            'shows',
+          ),
+        ),
+        generation: 10,
+      );
+      await store.replaceLive('profile', 'channels', [
+        LiveStream(1, 'World News', '', 'channels', ''),
+        LiveStream(2, 'Sports Arena', '', 'channels', ''),
+      ], generation: 11);
+
+      final secondSeriesPage = await store.seriesPage(
+        'profile',
+        bucket: 'shows',
+        offset: 48,
+        limit: 48,
+      );
+      expect(secondSeriesPage.items.map((item) => item.seriesId), [49, 50]);
+      expect(secondSeriesPage.hasMore, isFalse);
+
+      final liveSearch = await store.livePage(
+        'profile',
+        bucket: 'channels',
+        query: 'sports',
+      );
+      expect(liveSearch.items.single.name, 'Sports Arena');
+    },
+  );
+
   test('an older refresh cannot overwrite a newer generation', () async {
     await store.replaceLive('profile', '*', [
       LiveStream(1, 'New channel', '', 'news', ''),

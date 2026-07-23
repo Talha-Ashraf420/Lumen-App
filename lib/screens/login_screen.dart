@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../models.dart';
 import '../distribution.dart';
@@ -7,9 +8,29 @@ import '../widgets.dart';
 import '../theme.dart';
 import '../xtream.dart';
 
+typedef LoginClientFactory = XtreamClient Function(XtreamCredentials);
+typedef LoginCredentialSaver = Future<void> Function(XtreamCredentials);
+
+class _LoginCancelled implements Exception {
+  const _LoginCancelled();
+}
+
 class LoginScreen extends StatefulWidget {
   final void Function(XtreamCredentials) onLogin;
-  const LoginScreen({super.key, required this.onLogin});
+  final LoginClientFactory? clientFactory;
+  final LoginCredentialSaver? credentialSaver;
+  final Duration connectionTimeout;
+  final Duration storageTimeout;
+
+  const LoginScreen({
+    super.key,
+    required this.onLogin,
+    this.clientFactory,
+    this.credentialSaver,
+    this.connectionTimeout = const Duration(seconds: 18),
+    this.storageTimeout = const Duration(seconds: 6),
+  });
+
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
@@ -20,7 +41,12 @@ class _LoginScreenState extends State<LoginScreen> {
   final _pass = TextEditingController();
   bool _busy = false;
   String? _error;
+  String? _status;
   List<XtreamCredentials> _profiles = [];
+  XtreamClient? _pendingClient;
+  Completer<dynamic>? _pendingWait;
+  Timer? _pendingDeadline;
+  int _connectAttempt = 0;
 
   @override
   void initState() {
@@ -31,10 +57,21 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _connect(XtreamCredentials c) async {
+    final validationError = _validate(c);
+    if (validationError != null) {
+      setState(() => _error = validationError);
+      return;
+    }
+    final attempt = ++_connectAttempt;
+    _pendingClient?.close();
+    final client = (widget.clientFactory ?? XtreamClient.new)(c);
+    _pendingClient = client;
     setState(() {
       _busy = true;
       _error = null;
+      _status = 'Checking provider…';
     });
+    var authenticated = false;
     try {
       final transportError = providerTransportError([
         c.baseUrl,
@@ -42,21 +79,129 @@ class _LoginScreenState extends State<LoginScreen> {
         c.epgUrl,
       ]);
       if (transportError != null) throw XtreamException(transportError);
-      final client = XtreamClient(c);
-      try {
-        await client.authenticate();
-      } finally {
-        client.close();
-      }
-      await Store.setActive(c);
-      if (mounted) widget.onLogin(c);
+      await _bounded(
+        client.authenticate(),
+        widget.connectionTimeout,
+        'The provider did not respond within '
+        '${_durationLabel(widget.connectionTimeout)}. '
+        'Check the server address or try again.',
+      );
+      if (!mounted || attempt != _connectAttempt) return;
+      setState(() => _status = 'Securing this account…');
+      final save = widget.credentialSaver ?? Store.setActive;
+      await _bounded(
+        save(c),
+        widget.storageTimeout,
+        'Lumen reached the provider but could not save this account. '
+        'Restart the app and try again.',
+      );
+      if (!mounted || attempt != _connectAttempt) return;
+      authenticated = true;
+      setState(() => _status = 'Opening your library…');
+      widget.onLogin(c);
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || attempt != _connectAttempt) return;
       setState(() {
-        _error = e.toString();
+        _error = safeProviderError(e);
         _busy = false;
+        _status = null;
       });
+    } finally {
+      client.close();
+      if (identical(_pendingClient, client)) _pendingClient = null;
+      if (!authenticated && mounted && attempt == _connectAttempt && _busy) {
+        setState(() {
+          _busy = false;
+          _status = null;
+        });
+      }
     }
+  }
+
+  String _durationLabel(Duration value) {
+    final seconds = value.inSeconds.clamp(1, 999);
+    return '$seconds ${seconds == 1 ? 'second' : 'seconds'}';
+  }
+
+  Future<T> _bounded<T>(
+    Future<T> operation,
+    Duration timeout,
+    String timeoutMessage,
+  ) {
+    final result = Completer<dynamic>();
+    _pendingWait = result;
+    late final Timer deadline;
+    deadline = Timer(timeout, () {
+      if (!result.isCompleted) {
+        result.completeError(XtreamException(timeoutMessage));
+      }
+    });
+    _pendingDeadline = deadline;
+    operation.then(
+      (value) {
+        if (!result.isCompleted) result.complete(value);
+      },
+      onError: (Object error, StackTrace stack) {
+        if (!result.isCompleted) result.completeError(error, stack);
+      },
+    );
+    return result.future.then((value) => value as T).whenComplete(() {
+      deadline.cancel();
+      if (identical(_pendingDeadline, deadline)) _pendingDeadline = null;
+      if (identical(_pendingWait, result)) _pendingWait = null;
+    });
+  }
+
+  void _cancelPendingWait() {
+    _pendingDeadline?.cancel();
+    _pendingDeadline = null;
+    final wait = _pendingWait;
+    _pendingWait = null;
+    if (wait != null && !wait.isCompleted) {
+      wait.completeError(const _LoginCancelled());
+    }
+  }
+
+  String? _validate(XtreamCredentials credentials) {
+    if (credentials.isM3u) {
+      final value = credentials.m3uUrl?.trim() ?? '';
+      if (value.isEmpty || Uri.tryParse(value)?.host.isEmpty != false) {
+        return 'Enter a valid playlist URL.';
+      }
+      return null;
+    }
+    if (credentials.baseUrl.trim().isEmpty ||
+        Uri.tryParse(credentials.baseUrl)?.host.isEmpty != false) {
+      return 'Enter a valid server address.';
+    }
+    if (credentials.username.trim().isEmpty || credentials.password.isEmpty) {
+      return 'Enter both the username and password.';
+    }
+    return null;
+  }
+
+  void _cancelConnect() {
+    if (!_busy) return;
+    _connectAttempt++;
+    _cancelPendingWait();
+    _pendingClient?.close();
+    _pendingClient = null;
+    setState(() {
+      _busy = false;
+      _status = null;
+      _error = 'Connection cancelled. Check the details and try again.';
+    });
+  }
+
+  @override
+  void dispose() {
+    _connectAttempt++;
+    _cancelPendingWait();
+    _pendingClient?.close();
+    _url.dispose();
+    _user.dispose();
+    _pass.dispose();
+    super.dispose();
   }
 
   /// Add a playlist. Two cases are handled:
@@ -361,8 +506,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   )
                 : const Icon(Icons.arrow_forward_rounded, size: 19),
-            label: const Text(
-              'Enter Lumen',
+            label: Text(
+              _status ?? 'Enter Lumen',
               style: TextStyle(fontWeight: FontWeight.w800),
             ),
           ),
@@ -370,11 +515,18 @@ class _LoginScreenState extends State<LoginScreen> {
         const SizedBox(height: 6),
         Center(
           child: TextButton.icon(
-            onPressed: _busy ? null : _pasteUrl,
-            icon: Icon(Icons.link_rounded, size: 18, color: accentInk),
+            onPressed: _busy ? _cancelConnect : _pasteUrl,
+            icon: Icon(
+              _busy ? Icons.close_rounded : Icons.link_rounded,
+              size: 18,
+              color: _busy ? muted : accentInk,
+            ),
             label: Text(
-              'Connect a playlist URL instead',
-              style: TextStyle(color: accentInk, fontWeight: FontWeight.w700),
+              _busy ? 'Cancel connection' : 'Connect a playlist URL instead',
+              style: TextStyle(
+                color: _busy ? muted : accentInk,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
         ),

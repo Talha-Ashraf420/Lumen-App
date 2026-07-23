@@ -27,6 +27,9 @@ void main() {
     expect(PlaybackPolicy.retryDelay(2, config), const Duration(seconds: 2));
     expect(PlaybackPolicy.retryDelay(3, config), const Duration(seconds: 4));
     expect(PlaybackPolicy.retryDelay(4, config), const Duration(seconds: 4));
+    expect(PlaybackPolicy.stallTimeout(true), const Duration(seconds: 15));
+    expect(PlaybackPolicy.stallTimeout(false), const Duration(seconds: 35));
+    expect(const ReconnectConfig().liveOnly, isFalse);
     expect(
       PlaybackPolicy.showCenterTransport(
         reconnectStatus: 'Opening live channel…',
@@ -81,6 +84,54 @@ void main() {
     expect(media.httpHeaders?['User-Agent'], 'ProviderAgent/1.0');
     expect(media.httpHeaders?['Referer'], 'https://provider.example/');
   });
+
+  test('playback failures are classified into actionable safe codes', () {
+    expect(classifyPlaybackFailure('HTTP 403 forbidden').code, 'ACCESS');
+    expect(classifyPlaybackFailure('HTTP 403 forbidden').retryable, isFalse);
+    expect(classifyPlaybackFailure('404 not found').code, 'SOURCE');
+    expect(classifyPlaybackFailure('network timeout').code, 'TIMEOUT');
+    expect(classifyPlaybackFailure('TLS certificate error').code, 'TLS');
+    expect(classifyPlaybackFailure('decoder codec failed').code, 'CODEC');
+    expect(
+      classifyPlaybackFailure('connection refused by host').code,
+      'NETWORK',
+    );
+    expect(classifyPlaybackFailure('', stalled: true).code, 'STALL');
+    expect(classifyPlaybackFailure('', invalidAddress: true).code, 'ADDRESS');
+  });
+
+  test(
+    'Xtream sources get safe format alternatives without leaking secrets',
+    () {
+      const live = PlayerItem(
+        'https://provider.example/live/viewer/secret/19.ts',
+        'Channel',
+        isLive: true,
+      );
+      final liveSources = playbackSourceCandidates(live);
+      expect(liveSources, hasLength(2));
+      expect(liveSources.first, endsWith('/19.ts'));
+      expect(liveSources.last, endsWith('/19.m3u8'));
+
+      const movie = PlayerItem(
+        'https://provider.example/movie/viewer/secret/8.mp4',
+        'Movie',
+      );
+      expect(playbackSourceCandidates(movie).last, endsWith('/8.mkv'));
+
+      const arbitraryM3u = PlayerItem(
+        'https://cdn.example/channels/news.ts?token=private',
+        'News',
+        isLive: true,
+      );
+      expect(playbackSourceCandidates(arbitraryM3u), [arbitraryM3u.url]);
+
+      final safeEndpoint = playbackEndpointLabel(live.url);
+      expect(safeEndpoint, 'HTTPS · provider.example');
+      expect(safeEndpoint, isNot(contains('viewer')));
+      expect(safeEndpoint, isNot(contains('secret')));
+    },
+  );
 
   test('buffer policy keeps live responsive and VOD resilient', () {
     expect(
