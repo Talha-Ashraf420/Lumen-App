@@ -62,8 +62,24 @@ class PlaybackPolicy {
   }) => reconnectStatus == null && !retryExhausted;
 }
 
+/// Memory-buffer targets for network playback.
+///
+/// Live streams keep a smaller window to avoid drifting too far behind the
+/// broadcast. Movies and episodes trade a little startup time for a deeper
+/// buffer that can absorb normal provider and Wi-Fi jitter.
+class PlaybackBufferPolicy {
+  static const maxMemoryBytes = 64 * 1024 * 1024;
+  static const liveAhead = Duration(seconds: 12);
+  static const vodAhead = Duration(seconds: 30);
+  static const liveResume = Duration(seconds: 3);
+  static const vodResume = Duration(seconds: 5);
+
+  static Duration aheadFor(bool live) => live ? liveAhead : vodAhead;
+  static Duration resumeFor(bool live) => live ? liveResume : vodResume;
+}
+
 const streamingPlayerConfiguration = PlayerConfiguration(
-  bufferSize: 16 * 1024 * 1024,
+  bufferSize: PlaybackBufferPolicy.maxMemoryBytes,
   protocolWhitelist: [
     'udp',
     'rtp',
@@ -116,24 +132,30 @@ Media mediaForPlayerItem(PlayerItem item) => Media(
   },
 );
 
-/// Native defaults are disk-cache oriented. Streaming into memory avoids slow
-/// first-frame disk I/O, especially on Android TV storage.
+/// Keep network packets in memory so slow flash storage on phones and TVs does
+/// not become part of the playback path.
 Future<void> configureStreamingPlayer(Player player) async {
   final platform = player.platform;
   if (platform is! NativePlayer) return;
+  await platform.setProperty('cache', 'yes');
   await platform.setProperty('cache-on-disk', 'no');
-  await platform.setProperty('cache-pause-initial', 'no');
-  await platform.setProperty('cache-pause-wait', '1');
-  await platform.setProperty('demuxer-readahead-secs', '3');
+  await platform.setProperty('cache-pause', 'yes');
+  await platform.setProperty('demuxer-hysteresis-secs', '0');
+  await platform.setProperty('network-timeout', '15');
 }
 
 Future<void> configurePlayerForItem(Player player, PlayerItem item) async {
   final platform = player.platform;
   if (platform is! NativePlayer) return;
-  // Live should paint as soon as playable data arrives. VOD can wait for the
-  // small initial cache that makes seeking and early playback smoother.
-  await platform.setProperty('cache-pause-initial', item.isLive ? 'no' : 'yes');
-  await platform.setProperty('demuxer-readahead-secs', item.isLive ? '1' : '3');
+  final ahead = PlaybackBufferPolicy.aheadFor(item.isLive).inSeconds;
+  final resume = PlaybackBufferPolicy.resumeFor(item.isLive).inSeconds;
+
+  // Starting with a real cushion prevents the common start → stall → resume
+  // cycle. The same refill threshold is used after an underrun.
+  await platform.setProperty('cache-pause-initial', 'yes');
+  await platform.setProperty('cache-secs', '$ahead');
+  await platform.setProperty('demuxer-readahead-secs', '$ahead');
+  await platform.setProperty('cache-pause-wait', '$resume');
 }
 
 /// Root navigator key so the floating mini-player overlay (which lives above the

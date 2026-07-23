@@ -3,6 +3,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen_tv/theme.dart';
 
 void main() {
+  test('ships five distinct named accent directions', () {
+    expect(accentSchemes, hasLength(5));
+    expect(accentSchemes.first.color, defaultAccent);
+    expect(accentSchemes.map((scheme) => scheme.color).toSet(), hasLength(5));
+    expect(accentPresets, hasLength(5));
+  });
+
   test('every accent has readable fill content and neutral-surface ink', () {
     const samples = <Color>[
       ...accentPresets,

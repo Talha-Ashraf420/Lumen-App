@@ -923,7 +923,7 @@ class _ThemeSelector extends StatelessWidget {
   }
 }
 
-/// Accent-colour picker: preset swatches + a custom colour wheel.
+/// Accent picker: five named Lumen directions plus a custom colour wheel.
 class _AccentPicker extends StatelessWidget {
   const _AccentPicker();
 
@@ -969,45 +969,79 @@ class _AccentPicker extends StatelessWidget {
       valueListenable: ThemeController.instance.accent,
       builder: (context, current, _) {
         final cur = current.toARGB32();
-        final isCustom = !accentPresets.any((c) => c.toARGB32() == cur);
+        final isCustom = !accentSchemes.any(
+          (scheme) => scheme.color.toARGB32() == cur,
+        );
         return Wrap(
-          spacing: 14,
-          runSpacing: 14,
+          spacing: 10,
+          runSpacing: 10,
           children: [
-            for (final c in accentPresets)
-              _swatch(
-                color: c,
-                selected: c.toARGB32() == cur,
-                onTap: () => ThemeController.instance.setAccent(c),
+            for (final scheme in accentSchemes)
+              _schemeChoice(
+                label: scheme.name,
+                color: scheme.color,
+                selected: scheme.color.toARGB32() == cur,
+                onTap: () => ThemeController.instance.setAccent(scheme.color),
               ),
-            // custom colour wheel
+            // Custom colour is available without competing visually with the
+            // curated directions above.
             RemoteTap(
               onTap: () => _pickCustom(context, current),
               child: Container(
-                width: 40,
-                height: 40,
+                width: 112,
+                height: 64,
+                padding: const EdgeInsets.symmetric(horizontal: 11),
                 decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: const SweepGradient(
-                    colors: [
-                      Color(0xFFFF0000),
-                      Color(0xFFFFFF00),
-                      Color(0xFF00FF00),
-                      Color(0xFF00FFFF),
-                      Color(0xFF0000FF),
-                      Color(0xFFFF00FF),
-                      Color(0xFFFF0000),
-                    ],
-                  ),
+                  color: isCustom
+                      ? accentInk.withValues(alpha: isDark ? 0.16 : 0.10)
+                      : surfaceHi,
+                  borderRadius: BorderRadius.circular(14),
                   border: Border.all(
-                    color: isCustom ? textHi : Colors.transparent,
-                    width: 3,
+                    color: isCustom ? accentInk : line,
+                    width: isCustom ? 2 : 1,
                   ),
                 ),
-                child: Icon(
-                  isCustom ? Icons.check_rounded : Icons.colorize_rounded,
-                  color: Colors.white,
-                  size: 18,
+                child: Row(
+                  children: [
+                    Container(
+                      width: 24,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: const SweepGradient(
+                          colors: [
+                            Color(0xFFFF0000),
+                            Color(0xFFFFFF00),
+                            Color(0xFF00FF00),
+                            Color(0xFF00FFFF),
+                            Color(0xFF0000FF),
+                            Color(0xFFFF00FF),
+                            Color(0xFFFF0000),
+                          ],
+                        ),
+                      ),
+                      child: isCustom
+                          ? const Icon(
+                              Icons.check_rounded,
+                              color: Colors.white,
+                              size: 15,
+                            )
+                          : null,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Custom',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: isCustom ? textHi : muted,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -1017,7 +1051,8 @@ class _AccentPicker extends StatelessWidget {
     );
   }
 
-  Widget _swatch({
+  Widget _schemeChoice({
+    required String label,
     required Color color,
     required bool selected,
     required VoidCallback onTap,
@@ -1026,14 +1061,17 @@ class _AccentPicker extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 160),
-        width: 40,
-        height: 40,
+        width: 112,
+        height: 64,
+        padding: const EdgeInsets.symmetric(horizontal: 11),
         decoration: BoxDecoration(
-          color: color,
-          shape: BoxShape.circle,
+          color: selected
+              ? accentInk.withValues(alpha: isDark ? 0.16 : 0.10)
+              : surfaceHi,
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: selected ? textHi : Colors.transparent,
-            width: 3,
+            color: selected ? accentInk : line,
+            width: selected ? 2 : 1,
           ),
           boxShadow: selected
               ? [
@@ -1045,9 +1083,36 @@ class _AccentPicker extends StatelessWidget {
                 ]
               : null,
         ),
-        child: selected
-            ? Icon(Icons.check_rounded, color: foregroundFor(color), size: 18)
-            : null,
+        child: Row(
+          children: [
+            Container(
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              child: selected
+                  ? Icon(
+                      Icons.check_rounded,
+                      color: foregroundFor(color),
+                      size: 15,
+                    )
+                  : null,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                label,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 12,
+                  height: 1.1,
+                  fontWeight: FontWeight.w700,
+                  color: selected ? textHi : muted,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
