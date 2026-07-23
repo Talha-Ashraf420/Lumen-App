@@ -39,19 +39,32 @@ class Palette {
 
 const defaultAccent = Color(0xFFC7F36B); // signal lime
 
-/// A few curated accent presets shown in the picker (plus a custom option).
+/// A named, deliberately small set of polished Lumen accents. Keeping this to
+/// five avoids the "rainbow picker" look and makes each choice feel like a
+/// complete visual direction rather than a random colour.
+class AccentScheme {
+  final String name;
+  final Color color;
+
+  const AccentScheme(this.name, this.color);
+}
+
+const accentSchemes = <AccentScheme>[
+  AccentScheme('Signal lime', Color(0xFFC7F36B)),
+  AccentScheme('Tidal teal', Color(0xFF24C7B0)),
+  AccentScheme('Electric blue', Color(0xFF4E7DFF)),
+  AccentScheme('Ultraviolet', Color(0xFFA66BFF)),
+  AccentScheme('Solar gold', Color(0xFFFFB84D)),
+];
+
+/// Colour values remain public for persistence, contrast tests and custom
+/// colour detection. The profile UI presents [accentSchemes] by name.
 const accentPresets = <Color>[
   Color(0xFFC7F36B), // signal lime
-  Color(0xFF22CBA8), // teal
-  Color(0xFF06B6D4), // cyan
-  Color(0xFF3B82F6), // blue
-  Color(0xFF6366F1), // indigo
-  Color(0xFFA855F7), // purple
-  Color(0xFFEC4899), // pink
-  Color(0xFFEF4444), // red
-  Color(0xFFF97316), // orange
-  Color(0xFFF59E0B), // amber
-  Color(0xFF22C55E), // green
+  Color(0xFF24C7B0), // tidal teal
+  Color(0xFF4E7DFF), // electric blue
+  Color(0xFFA66BFF), // ultraviolet
+  Color(0xFFFFB84D), // solar gold
 ];
 
 Color _shade(Color c, double dl) {

@@ -57,8 +57,8 @@ tool, crash reporter, ad service, API, or data flow changes.
 
 - 512 × 512 Play icon, 32-bit PNG, no rounded-corner mask baked in.
 - 1024 × 500 feature graphic, JPEG or 24-bit PNG without alpha.
-- At least two accurate phone screenshots. Use Lumen-owned or licensed demo artwork only.
-- Because the manifest enables Android TV: at least one Android TV screenshot and a 320 × 180 TV banner.
+- At least two accurate phone screenshots are included using Lumen UI and no third-party media artwork.
+- Because the manifest enables Android TV, an Android TV screenshot and a 320 × 180 TV banner are included.
 - Screenshots must match the current UI and must not imply that Lumen includes content.
 
 ## Release gates for every version

@@ -74,6 +74,17 @@ void main() {
     expect(media.httpHeaders?['Referer'], 'https://provider.example/');
   });
 
+  test('buffer policy keeps live responsive and VOD resilient', () {
+    expect(
+      streamingPlayerConfiguration.bufferSize,
+      PlaybackBufferPolicy.maxMemoryBytes,
+    );
+    expect(PlaybackBufferPolicy.aheadFor(true), const Duration(seconds: 12));
+    expect(PlaybackBufferPolicy.resumeFor(true), const Duration(seconds: 3));
+    expect(PlaybackBufferPolicy.aheadFor(false), const Duration(seconds: 30));
+    expect(PlaybackBufferPolicy.resumeFor(false), const Duration(seconds: 5));
+  });
+
   test('Xtream URLs never end with an empty extension', () {
     final client = XtreamClient(
       const XtreamCredentials(

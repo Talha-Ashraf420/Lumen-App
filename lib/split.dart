@@ -30,6 +30,7 @@ class SplitController extends ChangeNotifier {
     }
     item = it;
     await _nativeSetup;
+    await configurePlayerForItem(player!, it);
     await player!.open(mediaForPlayerItem(it));
     await player!.setVolume(0); // secondary is muted
     notifyListeners();
