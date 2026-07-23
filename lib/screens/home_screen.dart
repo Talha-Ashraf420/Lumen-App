@@ -74,12 +74,19 @@ class _HomeScreenState extends State<HomeScreen>
     super.initState();
     _beginLoad();
     contentRefresh.addListener(_onRefresh);
+    CatalogCache.instance.revision.addListener(_onCatalogRevision);
   }
 
   @override
   void dispose() {
     contentRefresh.removeListener(_onRefresh);
+    CatalogCache.instance.revision.removeListener(_onCatalogRevision);
     super.dispose();
+  }
+
+  void _onCatalogRevision() {
+    if (!mounted) return;
+    setState(() => _beginLoad());
   }
 
   void _onRefresh() {
@@ -127,12 +134,16 @@ class _HomeScreenState extends State<HomeScreen>
         setState(() => _liveCats = live);
         return;
       }
-      await Future<void>.delayed(const Duration(milliseconds: 220));
-      final series = await CatalogCache.instance.series(widget.client);
+      // These futures start together but do not block the movie-first paint.
+      // The shared scheduler caps provider concurrency and other screens reuse
+      // the exact same in-flight work.
+      final seriesRequest = CatalogCache.instance.series(widget.client);
+      final liveRequest = CatalogCache.instance.live(widget.client);
+      final series = await seriesRequest;
       if (!mounted || generation != _loadGeneration) return;
       setState(() => _seriesCats = series);
 
-      final live = await CatalogCache.instance.live(widget.client);
+      final live = await liveRequest;
       if (!mounted || generation != _loadGeneration) return;
       setState(() => _liveCats = live);
     } catch (_) {

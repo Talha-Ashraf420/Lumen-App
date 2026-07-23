@@ -1,5 +1,6 @@
 package com.talhaashraf.lumen
 
+import android.content.Intent
 import android.app.PictureInPictureParams
 import android.content.pm.PackageManager
 import android.content.res.Configuration
@@ -11,6 +12,7 @@ import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
     private val channelName = "lumen/pip"
+    private val media3ChannelName = "lumen/media3"
     private var pipAllowed = false
     private var methodChannel: MethodChannel? = null
 
@@ -28,6 +30,41 @@ class MainActivity : FlutterActivity() {
                     Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
                         packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
                 )
+                else -> result.notImplemented()
+            }
+        }
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            media3ChannelName
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "isSupported" -> result.success(true)
+                "open" -> {
+                    val args = call.arguments as? Map<*, *>
+                    val url = args?.get("url") as? String
+                    if (url.isNullOrBlank()) {
+                        result.success(false)
+                        return@setMethodCallHandler
+                    }
+                    val headers = HashMap<String, String>()
+                    (args["headers"] as? Map<*, *>)?.forEach { (key, value) ->
+                        if (key is String && value is String) headers[key] = value
+                    }
+                    val intent = Intent(this, Media3PlayerActivity::class.java).apply {
+                        putExtra(Media3PlayerActivity.EXTRA_URL, url)
+                        putExtra(
+                            Media3PlayerActivity.EXTRA_TITLE,
+                            args["title"] as? String ?: ""
+                        )
+                        putExtra(
+                            Media3PlayerActivity.EXTRA_IS_LIVE,
+                            args["isLive"] as? Boolean ?: false
+                        )
+                        putExtra(Media3PlayerActivity.EXTRA_HEADERS, headers)
+                    }
+                    startActivity(intent)
+                    result.success(true)
+                }
                 else -> result.notImplemented()
             }
         }

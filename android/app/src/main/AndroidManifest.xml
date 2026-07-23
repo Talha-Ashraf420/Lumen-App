@@ -8,13 +8,16 @@
     <!-- Picture-in-Picture (keep video playing when app is backgrounded) -->
     <uses-feature android:name="android.software.picture_in_picture" android:required="false"/>
 
+    <!-- User-supplied IPTV providers frequently expose HTTP-only media
+         endpoints. Media3 must be allowed to open those streams; Lumen never
+         sends app-owned credentials to an HTTP service. -->
     <application
         android:label="Lumen"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:banner="@drawable/tv_banner"
         android:allowBackup="false"
-        android:usesCleartextTraffic="false">
+        android:usesCleartextTraffic="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -41,6 +44,15 @@
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- Native Media3 compatibility player for streams that the
+             cross-platform playback engine cannot decode reliably. -->
+        <activity
+            android:name=".Media3PlayerActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Material.NoActionBar"
+            android:screenOrientation="sensorLandscape"
+            android:configChanges="orientation|screenSize|smallestScreenSize|keyboard|keyboardHidden|uiMode"
+            android:hardwareAccelerated="true" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

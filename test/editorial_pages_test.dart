@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen_tv/catalog_cache.dart';
+import 'package:lumen_tv/catalog_store.dart';
 import 'package:lumen_tv/home_config.dart';
 import 'package:lumen_tv/models.dart';
 import 'package:lumen_tv/screens/customize_home_screen.dart';
@@ -49,9 +50,10 @@ class _EditorialTestClient extends XtreamClient {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  setUp(() {
+  setUp(() async {
     SharedPreferences.setMockInitialValues({});
     activePalette = darkPalette;
+    await CatalogStore.instance.disableForWidgetTests();
   });
 
   Future<void> pumpAt(WidgetTester tester, Widget child, Size size) async {

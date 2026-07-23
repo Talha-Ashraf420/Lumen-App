@@ -8,6 +8,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 import 'package:window_manager/window_manager.dart';
+import '../android_compatibility_player.dart';
 import '../library.dart';
 import '../opensubtitles.dart';
 import '../pip.dart';
@@ -1369,6 +1370,40 @@ class _PlayerHostState extends State<PlayerHost> {
             icon: const Icon(Icons.refresh_rounded, size: 18),
             label: const Text('Try again'),
           ),
+          if (_isAndroid)
+            OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.white,
+                side: BorderSide(color: accent.withValues(alpha: 0.7)),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 12,
+                ),
+              ),
+              onPressed: () async {
+                final opened = await AndroidCompatibilityPlayer.open(
+                  url: _item.url,
+                  title: _item.title,
+                  isLive: _item.isLive,
+                  headers: {
+                    'User-Agent': 'VLC/3.0.20 LibVLC/3.0.20',
+                    'Accept': '*/*',
+                    ..._item.httpHeaders,
+                  },
+                );
+                if (!mounted) return;
+                if (opened) {
+                  _close();
+                } else {
+                  _flashHud(
+                    'Android player is unavailable',
+                    Icons.error_outline_rounded,
+                  );
+                }
+              },
+              icon: const Icon(Icons.android_rounded, size: 18),
+              label: const Text('Android player'),
+            ),
           if (_hasNext)
             OutlinedButton.icon(
               style: OutlinedButton.styleFrom(

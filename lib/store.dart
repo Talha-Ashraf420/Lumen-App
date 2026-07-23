@@ -3,6 +3,7 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'catalog_store.dart';
 import 'models.dart';
 
 /// Local persistence for the active login + saved profiles.
@@ -145,6 +146,10 @@ class Store {
     if (act != null && sameProfile(act, c)) {
       await _delete(_kActive);
     }
+    // Removing an account also erases its indexed browse metadata. The
+    // generation tombstone prevents any older in-flight provider request from
+    // recreating rows after this point.
+    await CatalogStore.instance.deleteProfile(profileScope(c));
     return profiles;
   }
 
