@@ -99,6 +99,7 @@ flutter:
 
   assets:
     - assets/lumen_loader.json
+    - assets/demo/
 
   # Bundle Lumen's editorial typeface so the interface stays consistent on
   # offline TVs and phones instead of relying on a runtime font download.

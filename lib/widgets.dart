@@ -32,6 +32,56 @@ String cleanMediaTitle(String raw) {
   return title.isEmpty ? raw : title;
 }
 
+/// Renders provider artwork and Lumen's bundled demo artwork through one API.
+///
+/// Provider images retain the existing disk/memory cache. `asset://` sources
+/// never touch the network, which keeps Demo Mode genuinely offline.
+class MediaImage extends StatelessWidget {
+  const MediaImage({
+    super.key,
+    required this.source,
+    this.fit = BoxFit.cover,
+    this.alignment = Alignment.center,
+    this.memCacheWidth,
+    this.placeholder,
+    this.error,
+    this.filterQuality = FilterQuality.medium,
+  });
+
+  final String source;
+  final BoxFit fit;
+  final Alignment alignment;
+  final int? memCacheWidth;
+  final Widget? placeholder;
+  final Widget? error;
+  final FilterQuality filterQuality;
+
+  static bool isAsset(String source) => source.startsWith('asset://');
+
+  @override
+  Widget build(BuildContext context) {
+    if (isAsset(source)) {
+      return Image.asset(
+        source.substring('asset://'.length),
+        fit: fit,
+        alignment: alignment,
+        cacheWidth: memCacheWidth,
+        filterQuality: filterQuality,
+        errorBuilder: (_, _, _) => error ?? const SizedBox.shrink(),
+      );
+    }
+    return CachedNetworkImage(
+      imageUrl: source,
+      fit: fit,
+      alignment: alignment,
+      memCacheWidth: memCacheWidth,
+      fadeInDuration: const Duration(milliseconds: 220),
+      placeholder: placeholder == null ? null : (_, _) => placeholder!,
+      errorWidget: (_, _, _) => error ?? const SizedBox.shrink(),
+    );
+  }
+}
+
 /// Wraps a tappable element so it responds to BOTH mouse hover AND TV
 /// remote / D-pad focus. [builder] is given an `active` flag (hovered or
 /// focused) so callers can reuse their existing hover styling as the focus
@@ -1259,12 +1309,7 @@ class PosterCard extends StatelessWidget {
           children: [
             const _Fallback(),
             if (w.image.isNotEmpty)
-              CachedNetworkImage(
-                imageUrl: w.image,
-                fit: BoxFit.cover,
-                fadeInDuration: const Duration(milliseconds: 250),
-                errorWidget: (_, _, _) => const SizedBox.shrink(),
-              ),
+              MediaImage(source: w.image, fit: BoxFit.cover),
             // bottom scrim for the title
             const DecoratedBox(
               decoration: BoxDecoration(
@@ -1457,11 +1502,10 @@ class ChannelCard extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.all(16),
                   child: logo.isNotEmpty
-                      ? CachedNetworkImage(
-                          imageUrl: logo,
+                      ? MediaImage(
+                          source: logo,
                           fit: BoxFit.contain,
-                          fadeInDuration: const Duration(milliseconds: 200),
-                          errorWidget: (_, _, _) => Icon(
+                          error: Icon(
                             Icons.live_tv_rounded,
                             color: subtle,
                             size: 30,

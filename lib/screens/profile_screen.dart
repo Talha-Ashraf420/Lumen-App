@@ -248,6 +248,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   String _expiry() {
+    if (widget.client.creds.isDemo) return 'Not applicable';
     if (_info == null) return _accountInfoLoading ? 'Checking' : '—';
     final e = _info?['exp_date'];
     if (e == null || '$e' == 'null') return 'Unlimited';
@@ -331,12 +332,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _accountCard() {
     final c = widget.client.creds;
-    final status = _accountInfoLoading
+    final status = c.isDemo
+        ? 'Ready'
+        : _accountInfoLoading
         ? 'Checking'
         : _info == null
         ? 'Unavailable'
         : '${_info?['status'] ?? 'Unknown'}';
-    final isActive = status.toLowerCase() == 'active';
+    final isActive =
+        status.toLowerCase() == 'active' || status.toLowerCase() == 'ready';
+    final accountName = c.isDemo ? 'Demo Mode' : c.username;
+    final accountSubtitle = c.isDemo
+        ? 'Offline sample library'
+        : c.baseUrl.replaceFirst(RegExp(r'^https?://'), '');
     return Glass(
       radius: 24,
       padding: const EdgeInsets.all(20),
@@ -356,14 +364,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   borderRadius: BorderRadius.circular(18),
                   boxShadow: glow(accent, blur: 18, y: 7),
                 ),
-                child: Text(
-                  c.username.isEmpty ? '?' : c.username[0].toUpperCase(),
-                  style: TextStyle(
-                    color: onAccent,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
+                child: c.isDemo
+                    ? Icon(
+                        Icons.auto_awesome_rounded,
+                        color: onAccent,
+                        size: 25,
+                      )
+                    : Text(
+                        c.username.isEmpty ? '?' : c.username[0].toUpperCase(),
+                        style: TextStyle(
+                          color: onAccent,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -371,7 +385,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      c.username,
+                      accountName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -381,7 +395,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      c.baseUrl.replaceFirst(RegExp(r'^https?://'), ''),
+                      accountSubtitle,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(color: subtle, fontSize: 12),
@@ -404,12 +418,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
               _metricDivider(),
-              Expanded(child: _accountMetric('EXPIRES', _expiry(), textHi)),
+              Expanded(
+                child: _accountMetric(
+                  c.isDemo ? 'CONTENT' : 'EXPIRES',
+                  c.isDemo ? 'Fictional' : _expiry(),
+                  textHi,
+                ),
+              ),
               _metricDivider(),
               Expanded(
                 child: _accountMetric(
-                  'DEVICES',
-                  _info == null
+                  c.isDemo ? 'NETWORK' : 'DEVICES',
+                  c.isDemo
+                      ? 'Offline'
+                      : _info == null
                       ? '—'
                       : '${_info!['active_cons'] ?? 0} / ${_info!['max_connections'] ?? 1}',
                   textHi,
@@ -842,7 +864,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _profileRow(XtreamCredentials p) {
     final active = _isActive(p);
-    final host = p.baseUrl.replaceFirst(RegExp(r'^https?://'), '');
+    final host = p.isDemo
+        ? 'Offline sample library'
+        : p.baseUrl.replaceFirst(RegExp(r'^https?://'), '');
     return RemoteTap(
       behavior: HitTestBehavior.opaque,
       onTap: active ? null : () => _switch(p),
@@ -858,13 +882,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 color: active ? accent : surfaceHi,
                 shape: BoxShape.circle,
               ),
-              child: Text(
-                p.username.isNotEmpty ? p.username[0].toUpperCase() : '?',
-                style: TextStyle(
-                  fontWeight: FontWeight.w800,
-                  color: active ? onAccent : muted,
-                ),
-              ),
+              child: p.isDemo
+                  ? Icon(
+                      Icons.auto_awesome_rounded,
+                      color: active ? onAccent : muted,
+                      size: 19,
+                    )
+                  : Text(
+                      p.username.isNotEmpty ? p.username[0].toUpperCase() : '?',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        color: active ? onAccent : muted,
+                      ),
+                    ),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -872,7 +902,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    p.username,
+                    p.isDemo ? 'Demo Mode' : p.username,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontWeight: FontWeight.w700),

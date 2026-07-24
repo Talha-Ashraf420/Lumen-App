@@ -1,5 +1,4 @@
 import 'dart:math' as math;
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/scheduler.dart';
@@ -405,12 +404,11 @@ class _GlobeScreenState extends State<GlobeScreen>
           // Only front-facing posters load an image (small-decoded to bound
           // memory across a ~1000-poster globe); the rest are plain tiles.
           child: loadImage
-              ? CachedNetworkImage(
-                  imageUrl: m.icon,
+              ? MediaImage(
+                  source: m.icon,
                   fit: BoxFit.cover,
                   memCacheWidth: 160,
-                  errorWidget: (_, _, _) =>
-                      Icon(Icons.movie_outlined, color: subtle, size: 18),
+                  error: Icon(Icons.movie_outlined, color: subtle, size: 18),
                 )
               : null,
         ),

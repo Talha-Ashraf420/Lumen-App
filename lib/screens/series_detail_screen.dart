@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -44,9 +43,11 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
   void initState() {
     super.initState();
     _future = CatalogCache.instance.seriesInfo(widget.client, widget.seriesId);
-    Tmdb.tv(widget.title).then((value) {
-      if (mounted && value != null) setState(() => _tmdb = value);
-    });
+    if (!widget.client.creds.isDemo) {
+      Tmdb.tv(widget.title).then((value) {
+        if (mounted && value != null) setState(() => _tmdb = value);
+      });
+    }
   }
 
   String get _title => cleanMediaTitle(widget.title);
@@ -95,6 +96,17 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
   }
 
   void _downloadEpisode(Episode episode, SeriesInfo info) {
+    if (widget.client.creds.isDemo) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text('The demo preview is already available offline.'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      return;
+    }
     final title = episode.title.isEmpty
         ? 'Episode ${episode.episodeNum}'
         : episode.title;
@@ -370,15 +382,15 @@ class _SeriesHero extends StatelessWidget {
             loading: loading && backdrop.isEmpty,
           ),
           if (backdrop.isNotEmpty)
-            CachedNetworkImage(
-              imageUrl: backdrop,
+            MediaImage(
+              source: backdrop,
               fit: BoxFit.cover,
               memCacheWidth: wide ? 1800 : 900,
-              placeholder: (_, _) => const DetailBackdropPlaceholder(
+              placeholder: const DetailBackdropPlaceholder(
                 icon: Icons.video_library_rounded,
                 loading: true,
               ),
-              errorWidget: (_, _, _) => const DetailBackdropPlaceholder(
+              error: const DetailBackdropPlaceholder(
                 icon: Icons.video_library_rounded,
               ),
             ),
@@ -550,19 +562,17 @@ class _SeriesHero extends StatelessWidget {
                               borderRadius: BorderRadius.circular(7),
                               child: AspectRatio(
                                 aspectRatio: 2 / 3,
-                                child: CachedNetworkImage(
-                                  imageUrl: cover,
+                                child: MediaImage(
+                                  source: cover,
                                   fit: BoxFit.cover,
                                   memCacheWidth: 500,
-                                  placeholder: (_, _) =>
-                                      const DetailBackdropPlaceholder(
-                                        icon: Icons.tv_rounded,
-                                        loading: true,
-                                      ),
-                                  errorWidget: (_, _, _) =>
-                                      const DetailBackdropPlaceholder(
-                                        icon: Icons.tv_rounded,
-                                      ),
+                                  placeholder: const DetailBackdropPlaceholder(
+                                    icon: Icons.tv_rounded,
+                                    loading: true,
+                                  ),
+                                  error: const DetailBackdropPlaceholder(
+                                    icon: Icons.tv_rounded,
+                                  ),
                                 ),
                               ),
                             ),
@@ -781,11 +791,10 @@ class _EpisodeChapter extends StatelessWidget {
                     children: [
                       _EpisodeFallback(number: episode.episodeNum),
                       if (image.isNotEmpty)
-                        CachedNetworkImage(
-                          imageUrl: image,
+                        MediaImage(
+                          source: image,
                           fit: BoxFit.cover,
                           memCacheWidth: 420,
-                          errorWidget: (_, _, _) => const SizedBox.shrink(),
                         ),
                       DecoratedBox(
                         decoration: BoxDecoration(

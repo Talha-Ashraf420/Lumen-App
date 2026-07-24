@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../catalog_cache.dart';
 import '../epg_cache.dart';
@@ -250,10 +249,10 @@ class _ChannelRow extends StatelessWidget {
                 color: surfaceHi,
                 padding: const EdgeInsets.all(6),
                 child: channel.icon.isNotEmpty
-                    ? CachedNetworkImage(
-                        imageUrl: channel.icon,
+                    ? MediaImage(
+                        source: channel.icon,
                         fit: BoxFit.contain,
-                        errorWidget: (_, _, _) => Icon(
+                        error: Icon(
                           Icons.live_tv_rounded,
                           color: subtle,
                           size: 24,

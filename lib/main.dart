@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:window_manager/window_manager.dart';
 import 'catalog_cache.dart';
+import 'demo_catalog.dart';
 import 'downloads.dart';
 import 'epg_cache.dart';
 import 'home_config.dart';
@@ -31,6 +32,7 @@ Future<void> main() async {
     await windowManager.ensureInitialized();
   }
   MediaKit.ensureInitialized(); // libmpv — native TS/MKV/HLS playback
+  await DemoCatalog.preparePlayback();
 
   // Never show a blank/white error screen — paint errors on the dark canvas.
   ErrorWidget.builder = (details) => Container(

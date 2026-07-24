@@ -69,16 +69,18 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() {
       _busy = true;
       _error = null;
-      _status = 'Checking provider…';
+      _status = c.isDemo ? 'Opening offline demo…' : 'Checking provider…';
     });
     var authenticated = false;
     try {
-      final transportError = providerTransportError([
-        c.baseUrl,
-        c.m3uUrl,
-        c.epgUrl,
-      ]);
-      if (transportError != null) throw XtreamException(transportError);
+      if (!c.isDemo) {
+        final transportError = providerTransportError([
+          c.baseUrl,
+          c.m3uUrl,
+          c.epgUrl,
+        ]);
+        if (transportError != null) throw XtreamException(transportError);
+      }
       await _bounded(
         client.authenticate(),
         widget.connectionTimeout,
@@ -87,7 +89,11 @@ class _LoginScreenState extends State<LoginScreen> {
         'Check the server address or try again.',
       );
       if (!mounted || attempt != _connectAttempt) return;
-      setState(() => _status = 'Securing this account…');
+      setState(
+        () => _status = c.isDemo
+            ? 'Preparing sample library…'
+            : 'Securing this account…',
+      );
       final save = widget.credentialSaver ?? Store.setActive;
       await _bounded(
         save(c),
@@ -163,6 +169,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   String? _validate(XtreamCredentials credentials) {
+    if (credentials.isDemo) return null;
     if (credentials.isM3u) {
       final value = credentials.m3uUrl?.trim() ?? '';
       if (value.isEmpty || Uri.tryParse(value)?.host.isEmpty != false) {
@@ -192,6 +199,8 @@ class _LoginScreenState extends State<LoginScreen> {
       _error = 'Connection cancelled. Check the details and try again.';
     });
   }
+
+  Future<void> _startDemo() => _connect(XtreamCredentials.demoProfile);
 
   @override
   void dispose() {
@@ -530,7 +539,46 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
         ),
-        const SizedBox(height: 5),
+        if (!_busy) ...[
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              children: [
+                Expanded(child: Divider(color: line)),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  child: Text('NO PROVIDER YET?', style: kSection()),
+                ),
+                Expanded(child: Divider(color: line)),
+              ],
+            ),
+          ),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _startDemo,
+              icon: const Icon(Icons.auto_awesome_rounded, size: 18),
+              label: const Text('Explore offline demo'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: accentInk,
+                side: BorderSide(color: accentInk.withValues(alpha: .45)),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Center(
+            child: Text(
+              'A fictional sample library. No account or internet required.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: subtle, fontSize: 11.5),
+            ),
+          ),
+        ],
+        const SizedBox(height: 10),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -612,11 +660,16 @@ class _ProfileTile extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    profile.username,
+                    profile.isDemo ? 'Demo Mode' : profile.username,
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                   Text(
-                    profile.baseUrl.replaceFirst(RegExp(r'^https?://'), ''),
+                    profile.isDemo
+                        ? 'Offline sample library'
+                        : profile.baseUrl.replaceFirst(
+                            RegExp(r'^https?://'),
+                            '',
+                          ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(color: subtle, fontSize: 11.5),

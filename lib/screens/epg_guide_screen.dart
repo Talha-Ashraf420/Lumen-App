@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:linked_scroll_controller/linked_scroll_controller.dart';
 import '../catalog_cache.dart';
@@ -465,10 +464,10 @@ class _EpgGuideScreenState extends State<EpgGuideScreen>
                 color: surfaceHi,
                 padding: const EdgeInsets.all(4),
                 child: c.icon.isNotEmpty
-                    ? CachedNetworkImage(
-                        imageUrl: c.icon,
+                    ? MediaImage(
+                        source: c.icon,
                         fit: BoxFit.contain,
-                        errorWidget: (_, _, _) => Icon(
+                        error: Icon(
                           Icons.live_tv_rounded,
                           color: subtle,
                           size: 20,
