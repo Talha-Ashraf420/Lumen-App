@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:isolate';
 import 'package:http/http.dart' as http;
 import 'package:xml/xml.dart';
+import 'demo_catalog.dart';
 import 'models.dart';
 
 class XtreamException implements Exception {
@@ -518,6 +519,16 @@ class XtreamClient {
 
   /// Validate credentials.
   Future<Map<String, dynamic>> authenticate() async {
+    if (creds.isDemo) {
+      return {
+        'auth': 1,
+        'username': 'Demo profile',
+        'status': 'Ready',
+        'exp_date': null,
+        'active_cons': 0,
+        'max_connections': 0,
+      };
+    }
     if (creds.isM3u) {
       await _ensureM3u();
       return {'auth': 1, 'username': creds.username};
@@ -540,6 +551,7 @@ class XtreamClient {
   }
 
   Future<List<Category>> liveCategories() async {
+    if (creds.isDemo) return DemoCatalog.liveCategories;
     if (creds.isM3u) {
       await _ensureM3u();
       return List.of(_m3uCats);
@@ -551,6 +563,7 @@ class XtreamClient {
   }
 
   Future<List<LiveStream>> liveStreams(String? categoryId) async {
+    if (creds.isDemo) return DemoCatalog.channels(categoryId);
     if (creds.isM3u) {
       await _ensureM3u();
       if (categoryId == null) return List.of(_m3uChannels);
@@ -566,10 +579,14 @@ class XtreamClient {
   }
 
   // Plain M3U playlists carry only live channels — VOD/series are empty.
-  Future<List<Category>> vodCategories() async => creds.isM3u
+  Future<List<Category>> vodCategories() async => creds.isDemo
+      ? DemoCatalog.movieCategories
+      : creds.isM3u
       ? const []
       : _list(await _get({'action': 'get_vod_categories'}), Category.fromJson);
-  Future<List<VodStream>> vodStreams(String? categoryId) async => creds.isM3u
+  Future<List<VodStream>> vodStreams(String? categoryId) async => creds.isDemo
+      ? DemoCatalog.movies(categoryId)
+      : creds.isM3u
       ? const []
       : _list(
           await _get({
@@ -578,20 +595,27 @@ class XtreamClient {
           }),
           VodStream.fromJson,
         );
-  Future<VodInfo> vodInfo(int id) async => VodInfo.fromJson(
-    (await _get({
-      'action': 'get_vod_info',
-      'vod_id': '$id',
-    })).cast<String, dynamic>(),
-  );
+  Future<VodInfo> vodInfo(int id) async {
+    if (creds.isDemo) return DemoCatalog.movieInfo(id);
+    return VodInfo.fromJson(
+      (await _get({
+        'action': 'get_vod_info',
+        'vod_id': '$id',
+      })).cast<String, dynamic>(),
+    );
+  }
 
-  Future<List<Category>> seriesCategories() async => creds.isM3u
+  Future<List<Category>> seriesCategories() async => creds.isDemo
+      ? DemoCatalog.seriesCategories
+      : creds.isM3u
       ? const []
       : _list(
           await _get({'action': 'get_series_categories'}),
           Category.fromJson,
         );
-  Future<List<Series>> series(String? categoryId) async => creds.isM3u
+  Future<List<Series>> series(String? categoryId) async => creds.isDemo
+      ? DemoCatalog.series(categoryId)
+      : creds.isM3u
       ? const []
       : _list(
           await _get({
@@ -600,15 +624,19 @@ class XtreamClient {
           }),
           Series.fromJson,
         );
-  Future<SeriesInfo> seriesInfo(int id) async => SeriesInfo.fromJson(
-    (await _get({
-      'action': 'get_series_info',
-      'series_id': '$id',
-    })).cast<String, dynamic>(),
-  );
+  Future<SeriesInfo> seriesInfo(int id) async {
+    if (creds.isDemo) return DemoCatalog.seriesInfo(id);
+    return SeriesInfo.fromJson(
+      (await _get({
+        'action': 'get_series_info',
+        'series_id': '$id',
+      })).cast<String, dynamic>(),
+    );
+  }
 
   /// Now/next EPG for a live channel (base64 titles decoded in the model).
   Future<List<EpgEntry>> shortEpg(int streamId, {int limit = 4}) async {
+    if (creds.isDemo) return DemoCatalog.epg(streamId, limit: limit);
     if (creds.isM3u) {
       await _ensureM3u();
       final all = _m3uEpgFor(streamId);
@@ -626,6 +654,7 @@ class XtreamClient {
 
   /// Full-day EPG schedule for a live channel (used by the guide + catch-up).
   Future<List<EpgEntry>> simpleDataTable(int streamId) async {
+    if (creds.isDemo) return DemoCatalog.epg(streamId);
     if (creds.isM3u) {
       await _ensureM3u();
       return List.of(_m3uEpgFor(streamId));
@@ -698,13 +727,14 @@ class XtreamClient {
   /// Request headers declared by a plain M3U entry. Xtream streams use the
   /// default player user-agent.
   Map<String, String> streamHeaders(Object id) {
-    if (!creds.isM3u) return const {};
+    if (creds.isDemo || !creds.isM3u) return const {};
     final streamId = id is int ? id : int.tryParse('$id') ?? -1;
     return _m3uHeadersById[streamId] ?? const {};
   }
 
   /// Direct provider media URL — fed straight to the native (mpv) player.
   String streamUrl(String kind, Object id, {String ext = 'ts'}) {
+    if (creds.isDemo) return DemoCatalog.playbackPath;
     if (creds.isM3u) {
       // M3U channels carry their own direct URL (loaded by liveStreams).
       return _m3uUrlById[id is int ? id : int.tryParse('$id') ?? -1] ?? '';

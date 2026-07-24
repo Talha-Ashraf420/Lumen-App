@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -53,9 +52,11 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
         .catchError((_) {
           if (mounted) setState(() => _providerLoading = false);
         });
-    Tmdb.movie(widget.movie.name).then((value) {
-      if (mounted && value != null) setState(() => _tmdb = value);
-    });
+    if (!widget.client.creds.isDemo) {
+      Tmdb.movie(widget.movie.name).then((value) {
+        if (mounted && value != null) setState(() => _tmdb = value);
+      });
+    }
   }
 
   String get _title => cleanMediaTitle(widget.movie.name);
@@ -100,6 +101,17 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
   }
 
   void _download() {
+    if (widget.client.creds.isDemo) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text('The demo preview is already available offline.'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      return;
+    }
     final ext = _extension;
     Downloads.instance.start(
       id: _downloadId,
@@ -365,15 +377,15 @@ class _CinematicHero extends StatelessWidget {
             loading: loadingDetails && backdrop.isEmpty,
           ),
           if (backdrop.isNotEmpty)
-            CachedNetworkImage(
-              imageUrl: backdrop,
+            MediaImage(
+              source: backdrop,
               fit: BoxFit.cover,
               memCacheWidth: wide ? 1800 : 900,
-              placeholder: (_, _) => const DetailBackdropPlaceholder(
+              placeholder: const DetailBackdropPlaceholder(
                 icon: Icons.movie_filter_rounded,
                 loading: true,
               ),
-              errorWidget: (_, _, _) => const DetailBackdropPlaceholder(
+              error: const DetailBackdropPlaceholder(
                 icon: Icons.movie_filter_rounded,
               ),
             ),
@@ -626,16 +638,15 @@ class _PosterArtifact extends StatelessWidget {
         borderRadius: BorderRadius.circular(6),
         child: AspectRatio(
           aspectRatio: 2 / 3,
-          child: CachedNetworkImage(
-            imageUrl: url,
+          child: MediaImage(
+            source: url,
             fit: BoxFit.cover,
             memCacheWidth: 520,
-            placeholder: (_, _) => const DetailBackdropPlaceholder(
+            placeholder: const DetailBackdropPlaceholder(
               icon: Icons.movie_outlined,
               loading: true,
             ),
-            errorWidget: (_, _, _) =>
-                const DetailBackdropPlaceholder(icon: Icons.movie_outlined),
+            error: const DetailBackdropPlaceholder(icon: Icons.movie_outlined),
           ),
         ),
       ),

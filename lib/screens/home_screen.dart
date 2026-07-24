@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'dart:async';
@@ -400,11 +399,10 @@ class _HomeScreenState extends State<HomeScreen>
             children: [
               ColoredBox(color: surfaceHi),
               if (image != null && image.isNotEmpty)
-                CachedNetworkImage(
-                  imageUrl: image,
+                MediaImage(
+                  source: image,
                   fit: BoxFit.cover,
-                  errorWidget: (_, _, _) =>
-                      _bentoFallback(fallbackIcon ?? icon, tint),
+                  error: _bentoFallback(fallbackIcon ?? icon, tint),
                 )
               else
                 _bentoFallback(fallbackIcon ?? icon, tint),
@@ -1044,7 +1042,7 @@ class _HeroCard extends StatelessWidget {
           children: [
             ColoredBox(color: surfaceHi),
             if (item.image.isNotEmpty)
-              CachedNetworkImage(imageUrl: item.image, fit: BoxFit.cover),
+              MediaImage(source: item.image, fit: BoxFit.cover),
             const DecoratedBox(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
@@ -1168,11 +1166,10 @@ class _ContinueCard extends StatelessWidget {
                   fit: StackFit.expand,
                   children: [
                     progress.poster.isNotEmpty
-                        ? CachedNetworkImage(
-                            imageUrl: progress.poster,
+                        ? MediaImage(
+                            source: progress.poster,
                             fit: BoxFit.cover,
-                            errorWidget: (_, _, _) =>
-                                ColoredBox(color: surfaceHi),
+                            error: ColoredBox(color: surfaceHi),
                           )
                         : ColoredBox(color: surfaceHi),
                     const DecoratedBox(
@@ -1443,6 +1440,7 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
   void _fetchMeta(VodStream m) {
     if (_meta.containsKey(m.streamId)) return;
     _meta[m.streamId] = null;
+    if (widget.client.creds.isDemo) return;
     Tmdb.movie(m.name).then((t) {
       if (mounted) setState(() => _meta[m.streamId] = t);
     });
@@ -1525,11 +1523,10 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
                     children: [
                       ColoredBox(color: surfaceHi),
                       if (poster.isNotEmpty)
-                        CachedNetworkImage(
-                          imageUrl: poster,
+                        MediaImage(
+                          source: poster,
                           fit: BoxFit.cover,
                           filterQuality: FilterQuality.high,
-                          errorWidget: (_, _, _) => const SizedBox.shrink(),
                         ),
                       DecoratedBox(
                         decoration: BoxDecoration(
@@ -1744,13 +1741,13 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
                   bottom: 0,
                   child: AnimatedSwitcher(
                     duration: const Duration(milliseconds: 550),
-                    child: CachedNetworkImage(
+                    child: MediaImage(
                       key: ValueKey('focus$poster'),
-                      imageUrl: poster,
+                      source: poster,
                       fit: BoxFit.cover,
                       alignment: Alignment.topCenter,
                       filterQuality: FilterQuality.high,
-                      errorWidget: (_, _, _) => ColoredBox(color: surfaceHi),
+                      error: ColoredBox(color: surfaceHi),
                     ),
                   ),
                 ),
@@ -2001,13 +1998,12 @@ class _RailThumb extends StatelessWidget {
                   fit: StackFit.expand,
                   children: [
                     image.isNotEmpty
-                        ? CachedNetworkImage(
-                            imageUrl: image,
+                        ? MediaImage(
+                            source: image,
                             fit: BoxFit.cover,
                             alignment: Alignment.topCenter,
                             filterQuality: FilterQuality.high,
-                            errorWidget: (_, _, _) =>
-                                ColoredBox(color: surfaceHi),
+                            error: ColoredBox(color: surfaceHi),
                           )
                         : ColoredBox(color: surfaceHi),
                     DecoratedBox(
@@ -2092,18 +2088,14 @@ class _RecentCard extends StatelessWidget {
                                     18,
                                     46,
                                   ),
-                                  child: CachedNetworkImage(
-                                    imageUrl: item.image,
+                                  child: MediaImage(
+                                    source: item.image,
                                     fit: BoxFit.contain,
-                                    errorWidget: (_, _, _) =>
-                                        const SizedBox.shrink(),
                                   ),
                                 )
-                              : CachedNetworkImage(
-                                  imageUrl: item.image,
+                              : MediaImage(
+                                  source: item.image,
                                   fit: BoxFit.cover,
-                                  errorWidget: (_, _, _) =>
-                                      const SizedBox.shrink(),
                                 ),
                         const DecoratedBox(
                           decoration: BoxDecoration(
@@ -2322,11 +2314,10 @@ class _TopTenCard extends StatelessWidget {
                       children: [
                         ColoredBox(color: surfaceHi),
                         if (movie.icon.isNotEmpty)
-                          CachedNetworkImage(
-                            imageUrl: movie.icon,
+                          MediaImage(
+                            source: movie.icon,
                             fit: BoxFit.cover,
-                            errorWidget: (_, _, _) =>
-                                ColoredBox(color: surfaceHi),
+                            error: ColoredBox(color: surfaceHi),
                           ),
                         DecoratedBox(
                           decoration: BoxDecoration(

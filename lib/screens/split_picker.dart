@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../catalog_cache.dart';
 import '../models.dart';
@@ -408,11 +407,10 @@ class _SplitPickerState extends State<SplitPicker> {
       color: Colors.white.withValues(alpha: 0.08),
       padding: const EdgeInsets.all(4),
       child: url.isNotEmpty
-          ? CachedNetworkImage(
-              imageUrl: url,
+          ? MediaImage(
+              source: url,
               fit: BoxFit.contain,
-              errorWidget: (_, _, _) =>
-                  Icon(fallback, color: Colors.white54, size: 20),
+              error: Icon(fallback, color: Colors.white54, size: 20),
             )
           : Icon(fallback, color: Colors.white54, size: 20),
     ),

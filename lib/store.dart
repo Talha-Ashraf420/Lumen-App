@@ -25,7 +25,9 @@ class Store {
   /// Credentials and tokenised M3U URLs must never become part of a preference
   /// key. FNV-1a is sufficient here: this is a namespace, not authentication.
   static String profileScope(XtreamCredentials credentials) {
-    final identity = credentials.isM3u
+    final identity = credentials.isDemo
+        ? 'demo|lumen-offline-v1'
+        : credentials.isM3u
         ? 'm3u|${credentials.m3uUrl?.trim() ?? ''}'
         : 'xtream|${credentials.baseUrl.trim().toLowerCase()}|'
               '${credentials.username.trim()}';

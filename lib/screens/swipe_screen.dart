@@ -1,5 +1,4 @@
 import 'dart:math' as math;
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_card_swiper/flutter_card_swiper.dart';
@@ -91,6 +90,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
   void _fetchMeta(VodStream m) {
     if (_meta.containsKey(m.streamId)) return;
     _meta[m.streamId] = null;
+    if (widget.client.creds.isDemo) return;
     Tmdb.movie(
       m.name,
     ).then((t) => mounted ? setState(() => _meta[m.streamId] = t) : null);
@@ -561,11 +561,11 @@ class _SwipeScreenState extends State<SwipeScreen> {
           children: [
             Container(color: surfaceHi),
             if (m.icon.isNotEmpty)
-              CachedNetworkImage(
-                imageUrl: m.icon,
+              MediaImage(
+                source: m.icon,
                 fit: BoxFit.cover,
                 filterQuality: FilterQuality.high,
-                errorWidget: (_, _, _) => Center(
+                error: Center(
                   child: Icon(Icons.movie_outlined, color: subtle, size: 40),
                 ),
               ),
