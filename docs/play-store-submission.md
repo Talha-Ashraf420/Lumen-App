@@ -6,10 +6,10 @@ This document is a release checklist, not a guarantee of approval. Google review
 
 - App name: `Lumen`
 - Category: `Video Players & Editors`
-- Short description: `A private media player for your authorized HTTPS playlists and services.`
+- Short description: `A private media player for your authorized playlists and services.`
 - Suggested full description:
 
-  > Lumen is a polished media player for services and playlists you already have the legal right to use. Connect an authorized HTTPS Xtream-compatible service or M3U playlist, browse your catalog, view a program guide, save favorites, resume playback, and manage offline copies where your content rights permit it.
+  > Lumen is a polished media player for services and playlists you already have the legal right to use. Connect an authorized Xtream-compatible service or M3U playlist, browse your catalog, view a program guide, save favorites, resume playback, and manage offline copies where your content rights permit it.
   >
   > Lumen does not provide, sell, host, curate, or endorse any channels, subscriptions, playlists, streams, or media. You must supply your own authorized source. Lumen is not affiliated with any content provider.
   >
@@ -24,7 +24,7 @@ Do not use phrases such as “free TV,” “premium channels,” “watch anyth
 - [x] Verify `https://lumen-launch.vercel.app/privacy` is public, active, non-geofenced, and readable without login.
 - [ ] Create the app in Play Console with application ID `com.talhaashraf.lumen`. An application ID cannot be changed after publishing.
 - [ ] Use Google Play App Signing. Upload an Android App Bundle (`.aab`), never the validation bundle signed with the compromised old key.
-- [ ] Build the candidate with `tool/build_play_aab.sh`; it enforces the Play channel's HTTPS-only provider policy and refuses to build when signing credentials are missing or tracked by Git. Direct TV APKs remain compatible with user-authorized HTTP providers.
+- [ ] Build the candidate with `tool/build_play_aab.sh`; it refuses to build when signing credentials are missing or tracked by Git. Verify the HTTP security warning and prefer an HTTPS reviewer source.
 - [ ] Test the exact release bundle on a phone, tablet, and Android TV/Google TV device or emulator with D-pad navigation.
 - [ ] If TMDB enrichment is enabled, supply the key at build time with `--dart-define=TMDB_API_KEY=...`, comply with TMDB's API terms, and keep the in-app attribution. The former embedded key must be treated as exposed.
 
@@ -67,7 +67,7 @@ tool, crash reporter, ad service, API, or data flow changes.
 - [ ] Unit/widget tests pass.
 - [ ] Release AAB builds with the current upload key and increments `versionCode`.
 - [ ] The merged release manifest has no `REQUEST_INSTALL_PACKAGES`, storage, contacts, location, microphone, camera, phone, accessibility, VPN, or other undeclared sensitive permission.
-- [ ] The Play AAB's merged manifest has `usesCleartextTraffic="false"` and all reviewer URLs are HTTPS.
+- [ ] The Play AAB's merged manifest permits user-supplied legacy HTTP sources; the in-app warning and privacy policy disclose that HTTP traffic is not encrypted. Keep all developer-owned and reviewer URLs on HTTPS.
 - [ ] No code downloads or installs APKs; Google Play is the only Android updater.
 - [ ] Privacy policy, Data Safety form, store listing, and in-app disclosures match the exact release behavior.
 - [ ] Reviewer credentials are active and all core flows work without crashes, dead links, or placeholder content.

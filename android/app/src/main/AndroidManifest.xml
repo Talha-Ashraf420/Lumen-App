@@ -17,7 +17,7 @@
         android:icon="@mipmap/ic_launcher"
         android:banner="@drawable/tv_banner"
         android:allowBackup="false"
-        android:usesCleartextTraffic="${usesCleartextTraffic}">
+        android:usesCleartextTraffic="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"

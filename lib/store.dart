@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
@@ -14,6 +15,7 @@ import 'models.dart';
 class Store {
   static const _kActive = 'lumen_active';
   static const _kProfiles = 'lumen_profiles';
+  static const _kSignedOut = 'lumen_signed_out';
   static const _secure = FlutterSecureStorage();
   static final bool _useSecure =
       !kIsWeb && (Platform.isAndroid || Platform.isIOS);
@@ -108,6 +110,12 @@ class Store {
 
   static Future<XtreamCredentials?> active() async {
     await _migrate();
+    final preferences = await SharedPreferences.getInstance();
+    // This non-sensitive tombstone is intentionally outside secure storage.
+    // Some Android keystore implementations finish a delete slowly; the
+    // tombstone makes sign-out authoritative immediately and prevents a stale
+    // encrypted credential from restoring the session after a quick restart.
+    if (preferences.getBool(_kSignedOut) ?? false) return null;
     final raw = await _read(_kActive);
     if (raw == null) return null;
     try {
@@ -119,6 +127,8 @@ class Store {
 
   static Future<void> setActive(XtreamCredentials c) async {
     await _write(_kActive, jsonEncode(c.toJson()));
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setBool(_kSignedOut, false);
     final profiles = await savedProfiles();
     if (!profiles.any((x) => sameProfile(x, c))) {
       profiles.insert(0, c);
@@ -130,7 +140,17 @@ class Store {
   }
 
   static Future<void> logout() async {
-    await _delete(_kActive);
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setBool(_kSignedOut, true);
+    // The marker above is the source of truth. Remove the encrypted payload as
+    // best-effort cleanup without holding the UI on a loader.
+    unawaited(
+      _delete(_kActive).timeout(const Duration(seconds: 3)).catchError((
+        Object error,
+      ) {
+        debugPrint('Secure credential cleanup was deferred: $error');
+      }),
+    );
   }
 
   static Future<List<XtreamCredentials>> removeProfile(

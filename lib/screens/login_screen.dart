@@ -648,6 +648,42 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ],
         ),
+        if (_url.text.trim().toLowerCase().startsWith('http://')) ...[
+          const SizedBox(height: 10),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFB84D).withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: const Color(0xFFFFB84D).withValues(alpha: 0.24),
+              ),
+            ),
+            child: const Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  Icons.warning_amber_rounded,
+                  color: Color(0xFFFFC66B),
+                  size: 18,
+                ),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Legacy HTTP is supported, but it does not encrypt your '
+                    'provider credentials or viewing traffic.',
+                    style: TextStyle(
+                      color: Color(0xFFFFD9A0),
+                      fontSize: 11.5,
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
         if (_error != null) ...[
           const SizedBox(height: 12),
           Container(
@@ -795,6 +831,7 @@ class _LoginScreenState extends State<LoginScreen> {
       autocorrect: false,
       enableSuggestions: false,
       textInputAction: TextInputAction.next,
+      onChanged: (_) => setState(() {}),
       onSubmitted: (_) => nextFocus.requestFocus(),
       decoration: InputDecoration(labelText: label, hintText: hint),
     );

@@ -137,6 +137,33 @@ void main() {
     },
   );
 
+  testWidgets('HTTP provider login is accepted with a transport warning', (
+    tester,
+  ) async {
+    XtreamCredentials? received;
+    await pumpLogin(
+      tester,
+      clientFactory: (credentials) {
+        received = credentials;
+        return _SuccessfulLoginClient(credentials);
+      },
+      credentialSaver: (_) async {},
+    );
+    await tester.enterText(
+      find.byType(TextField).first,
+      'http://legacy-provider.example:8080',
+    );
+    await tester.pump();
+
+    expect(find.textContaining('Legacy HTTP is supported'), findsOneWidget);
+    await tester.tap(find.text('Enter Lumen'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(received?.baseUrl, 'http://legacy-provider.example:8080');
+    expect(find.textContaining('HTTPS sources only'), findsNothing);
+  });
+
   testWidgets('post-login host failure is not shown as a provider failure', (
     tester,
   ) async {

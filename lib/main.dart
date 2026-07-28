@@ -267,6 +267,7 @@ class _SessionGateState extends State<SessionGate> {
 
   Future<void> _onLogout() async {
     final change = ++_sessionChange;
+    final previousClient = _client;
     if (mounted) {
       setState(() {
         _loading = true;
@@ -282,24 +283,32 @@ class _SessionGateState extends State<SessionGate> {
       rethrow;
     }
 
-    _client?.close();
-    activeClient = null;
-    PlaybackController.instance.stop();
-    SplitController.instance.close();
-    CatalogCache.instance.clear();
-    EpgCache.instance.clear();
     if (!mounted || change != _sessionChange) return;
 
-    // Every account-bound controller clears its in-memory view synchronously,
-    // then completes any slower download persistence in the background. Move
-    // to Login immediately so sign-out never appears stuck behind that work.
-    final clearProfileState = _activateProfileState(null);
+    // The persisted signed-out marker is now authoritative. Commit the visible
+    // session transition before any player, cache, or profile cleanup. Those
+    // operations are deliberately best-effort so one slow plugin cannot leave
+    // the user staring at an endless loader even though logout succeeded.
     setState(() {
       _creds = null;
       _client = null;
       _loading = false;
+      _loadingLabel = 'RESTORING YOUR SESSION';
     });
-    unawaited(clearProfileState);
+    activeClient = null;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _guardSessionStep('previous client', () => previousClient?.close());
+      _guardSessionStep('playback', PlaybackController.instance.stop);
+      unawaited(_guardProfileState(SplitController.instance.close()));
+      _guardSessionStep('catalog cache', CatalogCache.instance.clear);
+      _guardSessionStep('EPG cache', EpgCache.instance.clear);
+      unawaited(
+        _guardProfileState(
+          Future<void>.sync(() => _activateProfileState(null)),
+        ),
+      );
+    });
   }
 
   @override
