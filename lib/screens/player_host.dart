@@ -40,6 +40,13 @@ class PlayerHost extends StatefulWidget {
 class _PlayerHostState extends State<PlayerHost> {
   final pc = PlaybackController.instance;
   final FocusNode _focus = FocusNode();
+  final FocusNode _transportFocus = FocusNode(debugLabel: 'player transport');
+  final FocusScopeNode _playerFocusScope = FocusScopeNode(
+    debugLabel: 'player controls',
+  );
+  final FocusScopeNode _panelFocusScope = FocusScopeNode(
+    debugLabel: 'player panel',
+  );
 
   bool _controls = true;
   bool _fullscreen = false;
@@ -136,7 +143,10 @@ class _PlayerHostState extends State<PlayerHost> {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     }
     _subQueryCtrl.dispose();
+    _transportFocus.dispose();
     _focus.dispose();
+    _panelFocusScope.dispose();
+    _playerFocusScope.dispose();
     super.dispose();
   }
 
@@ -224,7 +234,10 @@ class _PlayerHostState extends State<PlayerHost> {
       _panelKind = 'split';
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) FocusScope.of(context).nextFocus();
+      if (mounted) {
+        _panelFocusScope.requestFocus();
+        _panelFocusScope.nextFocus();
+      }
     });
   }
 
@@ -474,6 +487,8 @@ class _PlayerHostState extends State<PlayerHost> {
                 return MouseRegion(
                   cursor: SystemMouseCursors.click,
                   child: RemoteTap(
+                    focusNode: _transportFocus,
+                    semanticLabel: playing ? 'Pause' : 'Play',
                     onTap: () {
                       if (_splitMainIsPc) {
                         pc.togglePlayPause();
@@ -588,6 +603,12 @@ class _PlayerHostState extends State<PlayerHost> {
     if (has && itemUrl != _lastItemUrl) {
       _resetForItem();
       _scheduleHide();
+      // PlayerHost is mounted in the app overlay before media exists, so its
+      // autofocus has already run. Claim remote focus whenever a new item opens
+      // instead of leaving D-pad events on the page behind the video.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && pc.hasMedia && !pc.minimized) _focus.requestFocus();
+      });
     } else if (!has && _hadMedia) {
       _exitFullscreen();
       _restoreBrightness();
@@ -638,12 +659,14 @@ class _PlayerHostState extends State<PlayerHost> {
     _panelKind = null;
     _restoreBrightness();
     pc.minimize();
+    _focus.unfocus();
   }
 
   void _close() {
     if (sc.active) sc.close();
     _exitFullscreen();
     pc.stop();
+    _focus.unfocus();
   }
 
   bool _handleSystemBack() {
@@ -665,6 +688,22 @@ class _PlayerHostState extends State<PlayerHost> {
     _controls = true;
     _scheduleHide();
     _focus.requestFocus();
+  }
+
+  void _enterControlFocus() {
+    _hideTimer?.cancel();
+    if (!_controls) setState(() => _controls = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || pc.minimized) return;
+      if (_panelKind != null) {
+        _panelFocusScope.requestFocus();
+        _panelFocusScope.nextFocus();
+      } else if (_transportFocus.context != null) {
+        _transportFocus.requestFocus();
+      } else {
+        _playerFocusScope.nextFocus();
+      }
+    });
   }
 
   void _go(int i) {
@@ -731,83 +770,96 @@ class _PlayerHostState extends State<PlayerHost> {
     // and drop all chrome so only the picture is visible.
     final pip = Pip.instance.active.value;
     final mini = pc.minimized && !pip;
-    return Focus(
-      focusNode: _focus,
-      autofocus: true,
-      onKeyEvent: _onKey,
-      child: LayoutBuilder(
-        builder: (context, con) {
-          final w = con.maxWidth, h = con.maxHeight;
-          final wide = w >= 900;
-          final mw = wide ? 340.0 : 200.0, mh = (wide ? 340.0 : 200.0) * 9 / 16;
-          final margin = wide ? 24.0 : 12.0, bottomGap = wide ? 24.0 : 108.0;
-          _miniPos ??= Offset(w - mw - margin, h - mh - bottomGap);
-          final mx = _miniPos!.dx.clamp(8.0, (w - mw - 8).clamp(8.0, w));
-          final my = _miniPos!.dy.clamp(8.0, (h - mh - 8).clamp(8.0, h));
+    return FocusScope(
+      node: _playerFocusScope,
+      child: FocusTraversalGroup(
+        policy: ReadingOrderTraversalPolicy(),
+        child: Focus(
+          focusNode: _focus,
+          autofocus: true,
+          onKeyEvent: _onKey,
+          child: LayoutBuilder(
+            builder: (context, con) {
+              final w = con.maxWidth, h = con.maxHeight;
+              final wide = w >= 900;
+              final mw = wide ? 340.0 : 200.0,
+                  mh = (wide ? 340.0 : 200.0) * 9 / 16;
+              final margin = wide ? 24.0 : 12.0,
+                  bottomGap = wide ? 24.0 : 108.0;
+              _miniPos ??= Offset(w - mw - margin, h - mh - bottomGap);
+              final mx = _miniPos!.dx.clamp(8.0, (w - mw - 8).clamp(8.0, w));
+              final my = _miniPos!.dy.clamp(8.0, (h - mh - 8).clamp(8.0, h));
 
-          // Split-screen: two videos side by side (big = audio + controls).
-          if (sc.active && !mini && !pip) return _splitStack(w, h);
+              // Split-screen: two videos side by side (big = audio + controls).
+              if (sc.active && !mini && !pip) return _splitStack(w, h);
 
-          return Stack(
-            children: [
-              if (!mini)
-                const Positioned.fill(child: ColoredBox(color: Colors.black)),
-              // The single persistent video — only its rect/shape animate.
-              AnimatedPositioned(
-                duration: const Duration(milliseconds: 280),
-                curve: Curves.easeOutCubic,
-                left: mini ? mx : 0,
-                top: mini ? my : 0,
-                width: mini ? mw : w,
-                height: mini ? mh : h,
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 280),
-                  curve: Curves.easeOutCubic,
-                  decoration: BoxDecoration(
-                    color: Colors.black,
-                    borderRadius: BorderRadius.circular(mini ? 14 : 0),
-                    border: mini ? Border.all(color: Colors.white24) : null,
-                    boxShadow: mini
-                        ? const [
-                            BoxShadow(
-                              color: Colors.black54,
-                              blurRadius: 22,
-                              offset: Offset(0, 10),
+              return Stack(
+                children: [
+                  if (!mini)
+                    const Positioned.fill(
+                      child: ColoredBox(color: Colors.black),
+                    ),
+                  // The single persistent video — only its rect/shape animate.
+                  AnimatedPositioned(
+                    duration: const Duration(milliseconds: 280),
+                    curve: Curves.easeOutCubic,
+                    left: mini ? mx : 0,
+                    top: mini ? my : 0,
+                    width: mini ? mw : w,
+                    height: mini ? mh : h,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 280),
+                      curve: Curves.easeOutCubic,
+                      decoration: BoxDecoration(
+                        color: Colors.black,
+                        borderRadius: BorderRadius.circular(mini ? 14 : 0),
+                        border: mini ? Border.all(color: Colors.white24) : null,
+                        boxShadow: mini
+                            ? const [
+                                BoxShadow(
+                                  color: Colors.black54,
+                                  blurRadius: 22,
+                                  offset: Offset(0, 10),
+                                ),
+                              ]
+                            : null,
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: Transform.scale(
+                        scale: mini ? 1.0 : _zoomScale,
+                        child: Video(
+                          controller: pc.controller!,
+                          controls: NoVideoControls,
+                          fit: mini ? BoxFit.cover : _fit,
+                          subtitleViewConfiguration: SubtitleViewConfiguration(
+                            visible: !mini,
+                            style: TextStyle(
+                              height: 1.4,
+                              fontSize: 32.0 * _subScale,
+                              color: Colors.white,
+                              backgroundColor: _subBg
+                                  ? Colors.black54
+                                  : Colors.transparent,
+                              fontWeight: FontWeight.w600,
+                              shadows: const [
+                                Shadow(color: Colors.black, blurRadius: 6),
+                              ],
                             ),
-                          ]
-                        : null,
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: Transform.scale(
-                    scale: mini ? 1.0 : _zoomScale,
-                    child: Video(
-                      controller: pc.controller!,
-                      controls: NoVideoControls,
-                      fit: mini ? BoxFit.cover : _fit,
-                      subtitleViewConfiguration: SubtitleViewConfiguration(
-                        visible: !mini,
-                        style: TextStyle(
-                          height: 1.4,
-                          fontSize: 32.0 * _subScale,
-                          color: Colors.white,
-                          backgroundColor: _subBg
-                              ? Colors.black54
-                              : Colors.transparent,
-                          fontWeight: FontWeight.w600,
-                          shadows: const [
-                            Shadow(color: Colors.black, blurRadius: 6),
-                          ],
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                          ),
                         ),
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
                       ),
                     ),
                   ),
-                ),
-              ),
-              if (mini) _miniLayer(mx, my, mw, mh) else if (!pip) _fullLayer(),
-            ],
-          );
-        },
+                  if (mini)
+                    _miniLayer(mx, my, mw, mh)
+                  else if (!pip)
+                    _fullLayer(),
+                ],
+              );
+            },
+          ),
+        ),
       ),
     );
   }
@@ -845,7 +897,10 @@ class _PlayerHostState extends State<PlayerHost> {
               AnimatedOpacity(
                 opacity: _controls ? 1 : 0,
                 duration: const Duration(milliseconds: 220),
-                child: IgnorePointer(ignoring: !_controls, child: _overlay()),
+                child: ExcludeFocus(
+                  excluding: !_controls,
+                  child: IgnorePointer(ignoring: !_controls, child: _overlay()),
+                ),
               ),
               // Healthy buffering is informational, not a competing centre
               // action. Keep it in a compact lane below the title bar.
@@ -1003,13 +1058,18 @@ class _PlayerHostState extends State<PlayerHost> {
       );
 
   KeyEventResult _onKey(FocusNode node, KeyEvent e) {
-    if (pc.minimized || (e is! KeyDownEvent && e is! KeyRepeatEvent))
+    if (pc.minimized || (e is! KeyDownEvent && e is! KeyRepeatEvent)) {
       return KeyEventResult.ignored;
+    }
     final k = e.logicalKey;
     final isBack =
         k == LogicalKeyboardKey.escape ||
         k == LogicalKeyboardKey.goBack ||
         k == LogicalKeyboardKey.browserBack;
+    final isMediaPlayPause =
+        k == LogicalKeyboardKey.mediaPlayPause ||
+        k == LogicalKeyboardKey.mediaPlay ||
+        k == LogicalKeyboardKey.mediaPause;
     // Once a visible control owns focus, let Flutter's directional traversal
     // and ActivateIntent handle the D-pad. Back first exits the panel/control
     // focus mode, then a second Back minimizes the player.
@@ -1024,6 +1084,16 @@ class _PlayerHostState extends State<PlayerHost> {
         }
         return KeyEventResult.handled;
       }
+      if (isMediaPlayPause) {
+        // Some inexpensive TV remotes report D-pad centre as Play/Pause. In
+        // button-focus mode it must activate the highlighted button.
+        final target = FocusManager.instance.primaryFocus?.context;
+        if (target != null) {
+          Actions.maybeInvoke<ActivateIntent>(target, const ActivateIntent());
+          _scheduleHide();
+          return KeyEventResult.handled;
+        }
+      }
       return KeyEventResult.ignored;
     }
     // TV remote / D-pad center, gamepad A, keyboard space/enter → show controls
@@ -1034,6 +1104,8 @@ class _PlayerHostState extends State<PlayerHost> {
         k == LogicalKeyboardKey.enter ||
         k == LogicalKeyboardKey.numpadEnter ||
         k == LogicalKeyboardKey.space ||
+        k == LogicalKeyboardKey.accept ||
+        k == LogicalKeyboardKey.execute ||
         k == LogicalKeyboardKey.gameButtonA;
     if (isSelect) {
       if (!_controls) {
@@ -1042,39 +1114,46 @@ class _PlayerHostState extends State<PlayerHost> {
         pc.togglePlayPause();
       }
       _scheduleHide();
-    } else if (k == LogicalKeyboardKey.mediaPlayPause) {
+    } else if (isMediaPlayPause) {
       pc.togglePlayPause();
       setState(() => _controls = true);
       _scheduleHide();
-    } else if (k == LogicalKeyboardKey.arrowRight ||
-        k == LogicalKeyboardKey.mediaTrackNext) {
+    } else if (k == LogicalKeyboardKey.mediaTrackNext ||
+        k == LogicalKeyboardKey.channelUp) {
+      if (_hasNext) _go(pc.index + 1);
+    } else if (k == LogicalKeyboardKey.mediaTrackPrevious ||
+        k == LogicalKeyboardKey.channelDown) {
+      if (_hasPrev) _go(pc.index - 1);
+    } else if (k == LogicalKeyboardKey.mediaFastForward ||
+        k == LogicalKeyboardKey.mediaSkipForward) {
       if (!_isLive) {
         _seekBy(10);
         _flashHud('+10s', Icons.forward_10_rounded);
       } else if (_hasNext) {
         _go(pc.index + 1);
       }
-    } else if (k == LogicalKeyboardKey.arrowLeft ||
-        k == LogicalKeyboardKey.mediaTrackPrevious) {
+    } else if (k == LogicalKeyboardKey.mediaRewind ||
+        k == LogicalKeyboardKey.mediaSkipBackward) {
       if (!_isLive) {
         _seekBy(-10);
         _flashHud('−10s', Icons.replay_10_rounded);
       } else if (_hasPrev) {
         _go(pc.index - 1);
       }
-    } else if (k == LogicalKeyboardKey.arrowUp) {
-      // Reveal the chrome, then enter button-focus mode. From here all four
-      // D-pad directions traverse every control and center activates it.
-      setState(() => _controls = true);
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) FocusScope.of(context).nextFocus();
-      });
-      _scheduleHide();
+    } else if (k == LogicalKeyboardKey.arrowUp ||
+        k == LogicalKeyboardKey.arrowDown ||
+        k == LogicalKeyboardKey.arrowLeft ||
+        k == LogicalKeyboardKey.arrowRight) {
+      // First direction enters the player focus group. Subsequent directions
+      // are handled by Flutter's spatial traversal on the focused control.
+      _enterControlFocus();
     } else if (k == LogicalKeyboardKey.keyF) {
       _toggleFullscreen();
     } else if (k == LogicalKeyboardKey.keyM) {
       _toggleMute();
-    } else if (isBack || k == LogicalKeyboardKey.arrowDown) {
+    } else if (k == LogicalKeyboardKey.mediaStop) {
+      _close();
+    } else if (isBack) {
       _minimize();
     } else {
       return KeyEventResult.ignored;
@@ -1912,6 +1991,8 @@ class _PlayerHostState extends State<PlayerHost> {
             return MouseRegion(
               cursor: SystemMouseCursors.click,
               child: RemoteTap(
+                focusNode: _transportFocus,
+                semanticLabel: playing ? 'Pause' : 'Play',
                 onTap: () {
                   pc.togglePlayPause();
                   _scheduleHide();
@@ -1987,85 +2068,99 @@ class _PlayerHostState extends State<PlayerHost> {
         child: Column(
           children: [
             if (!_isLive) _seekBar(),
-            Row(
-              children: [
-                IconButton(
-                  onPressed: _toggleMute,
-                  icon: Icon(
-                    _muted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
-                    color: Colors.white,
-                  ),
-                ),
-                IconButton(
-                  onPressed: _pickSubtitles,
-                  icon: const Icon(
-                    Icons.closed_caption_rounded,
-                    color: Colors.white,
-                  ),
-                ),
-                if (activeClient != null)
-                  IconButton(
-                    onPressed: _openSplitPicker,
-                    tooltip: 'Split view',
-                    icon: const Icon(
-                      Icons.splitscreen_rounded,
-                      color: Colors.white,
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final compact = constraints.maxWidth < 520;
+                return Row(
+                  children: [
+                    _bottomIcon(
+                      _muted
+                          ? Icons.volume_off_rounded
+                          : Icons.volume_up_rounded,
+                      _toggleMute,
+                      compact: compact,
                     ),
-                  ),
-                IconButton(
-                  onPressed: _openSettings,
-                  tooltip: 'Playback settings',
-                  icon: const Icon(Icons.tune_rounded, color: Colors.white),
-                ),
-                IconButton(
-                  onPressed: _openDiagnostics,
-                  tooltip: 'Playback information',
-                  icon: const Icon(
-                    Icons.info_outline_rounded,
-                    color: Colors.white,
-                  ),
-                ),
-                if (_isAndroid)
-                  IconButton(
-                    tooltip: 'Picture-in-picture',
-                    onPressed: () => Pip.instance.enter(),
-                    icon: const Icon(
-                      Icons.picture_in_picture_alt_rounded,
-                      color: Colors.white,
+                    _bottomIcon(
+                      Icons.closed_caption_rounded,
+                      _pickSubtitles,
+                      compact: compact,
                     ),
-                  ),
-                const Spacer(),
-                if (_isLive)
-                  const Padding(
-                    padding: EdgeInsets.only(right: 8),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.circle, color: Color(0xFFFF3B5C), size: 9),
-                        SizedBox(width: 6),
-                        Text(
-                          'LIVE',
-                          style: TextStyle(fontWeight: FontWeight.w700),
+                    if (activeClient != null && !compact)
+                      _bottomIcon(
+                        Icons.splitscreen_rounded,
+                        _openSplitPicker,
+                        tooltip: 'Split view',
+                      ),
+                    _bottomIcon(
+                      Icons.tune_rounded,
+                      _openSettings,
+                      tooltip: 'Playback settings',
+                      compact: compact,
+                    ),
+                    if (!compact)
+                      _bottomIcon(
+                        Icons.info_outline_rounded,
+                        _openDiagnostics,
+                        tooltip: 'Playback information',
+                      ),
+                    if (_isAndroid && !compact)
+                      _bottomIcon(
+                        Icons.picture_in_picture_alt_rounded,
+                        () => Pip.instance.enter(),
+                        tooltip: 'Picture-in-picture',
+                      ),
+                    const Spacer(),
+                    if (_isLive)
+                      Padding(
+                        padding: EdgeInsets.only(right: compact ? 2 : 8),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.circle,
+                              color: Color(0xFFFF3B5C),
+                              size: 9,
+                            ),
+                            SizedBox(width: 6),
+                            Text(
+                              'LIVE',
+                              style: TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                          ],
                         ),
-                      ],
+                      ),
+                    _bottomIcon(
+                      _fullscreen
+                          ? Icons.fullscreen_exit_rounded
+                          : Icons.fullscreen_rounded,
+                      _toggleFullscreen,
+                      compact: compact,
                     ),
-                  ),
-                IconButton(
-                  onPressed: _toggleFullscreen,
-                  icon: Icon(
-                    _fullscreen
-                        ? Icons.fullscreen_exit_rounded
-                        : Icons.fullscreen_rounded,
-                    color: Colors.white,
-                  ),
-                ),
-              ],
+                  ],
+                );
+              },
             ),
           ],
         ),
       ),
     );
   }
+
+  Widget _bottomIcon(
+    IconData icon,
+    VoidCallback onPressed, {
+    String? tooltip,
+    bool compact = false,
+  }) => IconButton(
+    tooltip: tooltip,
+    onPressed: onPressed,
+    padding: EdgeInsets.all(compact ? 7 : 8),
+    constraints: BoxConstraints.tightFor(
+      width: compact ? 40 : 48,
+      height: compact ? 40 : 48,
+    ),
+    icon: Icon(icon, color: Colors.white, size: compact ? 24 : 26),
+  );
 
   Widget _seekBar() {
     return StreamBuilder<Duration>(
@@ -2137,7 +2232,10 @@ class _PlayerHostState extends State<PlayerHost> {
       _panelKind = 'subs';
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) FocusScope.of(context).nextFocus();
+      if (mounted) {
+        _panelFocusScope.requestFocus();
+        _panelFocusScope.nextFocus();
+      }
     });
   }
 
@@ -2227,7 +2325,10 @@ class _PlayerHostState extends State<PlayerHost> {
       _panelKind = 'settings';
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) FocusScope.of(context).nextFocus();
+      if (mounted) {
+        _panelFocusScope.requestFocus();
+        _panelFocusScope.nextFocus();
+      }
     });
   }
 
@@ -2238,12 +2339,16 @@ class _PlayerHostState extends State<PlayerHost> {
       _panelKind = 'diagnostics';
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) FocusScope.of(context).nextFocus();
+      if (mounted) {
+        _panelFocusScope.requestFocus();
+        _panelFocusScope.nextFocus();
+      }
     });
   }
 
   void _closePanel() {
     setState(() => _panelKind = null);
+    _focus.requestFocus();
     _scheduleHide();
   }
 
@@ -2252,68 +2357,73 @@ class _PlayerHostState extends State<PlayerHost> {
     final panelW = w < 640 ? w * 0.88 : 380.0;
     // A dark, glassy side panel over the video (never the app's light surface),
     // with a hidden scrollbar and white content.
-    return Stack(
-      children: [
-        Positioned.fill(
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: _closePanel,
-            child: const ColoredBox(color: Colors.black54),
-          ),
-        ),
-        Positioned(
-          top: 0,
-          bottom: 0,
-          right: 0,
-          width: panelW,
-          child: ClipRRect(
-            borderRadius: const BorderRadius.horizontal(
-              left: Radius.circular(22),
+    return FocusScope(
+      node: _panelFocusScope,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _closePanel,
+              child: const ColoredBox(color: Colors.black54),
             ),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
-              child: Container(
-                decoration: const BoxDecoration(
-                  color: Color(0xF00C1512),
-                  border: Border(left: BorderSide(color: Colors.white24)),
-                ),
-                child: SafeArea(
-                  child: DefaultTextStyle.merge(
-                    style: const TextStyle(color: Colors.white),
-                    child: IconTheme.merge(
-                      data: const IconThemeData(color: Colors.white),
-                      child: ListTileTheme(
-                        data: const ListTileThemeData(
-                          textColor: Colors.white,
-                          iconColor: Colors.white,
-                        ),
-                        child: _panelKind == 'split'
-                            ? (activeClient == null
-                                  ? const Center(
-                                      child: Text(
-                                        'Not available.',
-                                        style: TextStyle(color: Colors.white54),
-                                      ),
-                                    )
-                                  : SplitPicker(
-                                      client: activeClient!,
-                                      onPick: (it) {
-                                        _closePanel();
-                                        _openSplitWith(it);
-                                      },
-                                    ))
-                            : ScrollConfiguration(
-                                behavior: ScrollConfiguration.of(
-                                  context,
-                                ).copyWith(scrollbars: false),
-                                child: SingleChildScrollView(
-                                  child: _panelKind == 'subs'
-                                      ? _subsContent()
-                                      : _panelKind == 'diagnostics'
-                                      ? _diagnosticsContent()
-                                      : _settingsContent(),
+          ),
+          Positioned(
+            top: 0,
+            bottom: 0,
+            right: 0,
+            width: panelW,
+            child: ClipRRect(
+              borderRadius: const BorderRadius.horizontal(
+                left: Radius.circular(22),
+              ),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+                child: Container(
+                  decoration: const BoxDecoration(
+                    color: Color(0xF00C1512),
+                    border: Border(left: BorderSide(color: Colors.white24)),
+                  ),
+                  child: SafeArea(
+                    child: DefaultTextStyle.merge(
+                      style: const TextStyle(color: Colors.white),
+                      child: IconTheme.merge(
+                        data: const IconThemeData(color: Colors.white),
+                        child: ListTileTheme(
+                          data: const ListTileThemeData(
+                            textColor: Colors.white,
+                            iconColor: Colors.white,
+                          ),
+                          child: _panelKind == 'split'
+                              ? (activeClient == null
+                                    ? const Center(
+                                        child: Text(
+                                          'Not available.',
+                                          style: TextStyle(
+                                            color: Colors.white54,
+                                          ),
+                                        ),
+                                      )
+                                    : SplitPicker(
+                                        client: activeClient!,
+                                        onPick: (it) {
+                                          _closePanel();
+                                          _openSplitWith(it);
+                                        },
+                                      ))
+                              : ScrollConfiguration(
+                                  behavior: ScrollConfiguration.of(
+                                    context,
+                                  ).copyWith(scrollbars: false),
+                                  child: SingleChildScrollView(
+                                    child: _panelKind == 'subs'
+                                        ? _subsContent()
+                                        : _panelKind == 'diagnostics'
+                                        ? _diagnosticsContent()
+                                        : _settingsContent(),
+                                  ),
                                 ),
-                              ),
+                        ),
                       ),
                     ),
                   ),
@@ -2321,8 +2431,8 @@ class _PlayerHostState extends State<PlayerHost> {
               ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 

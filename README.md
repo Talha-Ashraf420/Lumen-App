@@ -62,9 +62,9 @@ advertising third-party channels, provider credentials, or copyrighted catalogs.
 |---------|---------------|
 | ![Lumen Live TV categories](store_assets/play_store/tv/03_live_tv.jpg) | ![Lumen series and episodes](store_assets/play_store/tv/04_series_detail.jpg) |
 
-| Discover | Personalization |
-|----------|-----------------|
-| ![Lumen Discover](store_assets/play_store/tv/05_discover.jpg) | ![Lumen appearance and personalization](store_assets/play_store/tv/06_profile.jpg) |
+| Personalization |
+|-----------------|
+| ![Lumen appearance and personalization](store_assets/play_store/tv/06_profile.jpg) |
 
 The complete 1920×1080 Android TV upload set and specifications are available in
 **[store_assets/play_store/tv](store_assets/play_store/tv/README.md)**.
@@ -77,7 +77,7 @@ The complete 1920×1080 Android TV upload set and specifications are available i
 - **Movies & Series** with TMDB-enriched art, ratings, cast and trailers
 - **Immersive home** — full-bleed spotlight hero + scrollable shelves
 - **My List**, Continue Watching, Recently watched, and watch stats
-- **Discover globe**, search with sort/filter, multi-profile
+- **Fast library search** with content filters, sorting, and multi-profile support
 - **Premium player** — A/V track & subtitle controls, subtitle styling & sync,
   speed, sleep timer, picture-in-picture mini-player, hold-for-2×
 - **TV remote / D-pad** navigation on Android TV (focus highlights, direct transport)

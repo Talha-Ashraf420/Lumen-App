@@ -402,6 +402,9 @@ class _HomeScreenState extends State<HomeScreen>
                 MediaImage(
                   source: image,
                   fit: BoxFit.cover,
+                  memCacheWidth: (420 * MediaQuery.devicePixelRatioOf(context))
+                      .round()
+                      .clamp(540, 1000),
                   error: _bentoFallback(fallbackIcon ?? icon, tint),
                 )
               else
@@ -1042,7 +1045,13 @@ class _HeroCard extends StatelessWidget {
           children: [
             ColoredBox(color: surfaceHi),
             if (item.image.isNotEmpty)
-              MediaImage(source: item.image, fit: BoxFit.cover),
+              MediaImage(
+                source: item.image,
+                fit: BoxFit.cover,
+                memCacheWidth: (420 * MediaQuery.devicePixelRatioOf(context))
+                    .round()
+                    .clamp(540, 1000),
+              ),
             const DecoratedBox(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
@@ -1169,6 +1178,10 @@ class _ContinueCard extends StatelessWidget {
                         ? MediaImage(
                             source: progress.poster,
                             fit: BoxFit.cover,
+                            memCacheWidth:
+                                (260 * MediaQuery.devicePixelRatioOf(context))
+                                    .round()
+                                    .clamp(360, 720),
                             error: ColoredBox(color: surfaceHi),
                           )
                         : ColoredBox(color: surfaceHi),
@@ -1428,7 +1441,9 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
   }
 
   void _advance() {
-    if (_items.length < 2) return;
+    // IndexedStack preserves Home while another tab is open. TickerMode is
+    // disabled there, so do not rotate artwork or fetch metadata off-screen.
+    if (!TickerMode.of(context) || _items.length < 2) return;
     _select((_index + 1) % _items.length);
   }
 
@@ -1526,7 +1541,10 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
                         MediaImage(
                           source: poster,
                           fit: BoxFit.cover,
-                          filterQuality: FilterQuality.high,
+                          memCacheWidth:
+                              (180 * MediaQuery.devicePixelRatioOf(context))
+                                  .round()
+                                  .clamp(320, 560),
                         ),
                       DecoratedBox(
                         decoration: BoxDecoration(
@@ -1746,7 +1764,10 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
                       source: poster,
                       fit: BoxFit.cover,
                       alignment: Alignment.topCenter,
-                      filterQuality: FilterQuality.high,
+                      memCacheWidth:
+                          (760 * MediaQuery.devicePixelRatioOf(context))
+                              .round()
+                              .clamp(900, 1800),
                       error: ColoredBox(color: surfaceHi),
                     ),
                   ),
@@ -2002,7 +2023,10 @@ class _RailThumb extends StatelessWidget {
                             source: image,
                             fit: BoxFit.cover,
                             alignment: Alignment.topCenter,
-                            filterQuality: FilterQuality.high,
+                            memCacheWidth:
+                                (220 * MediaQuery.devicePixelRatioOf(context))
+                                    .round()
+                                    .clamp(320, 640),
                             error: ColoredBox(color: surfaceHi),
                           )
                         : ColoredBox(color: surfaceHi),
@@ -2091,11 +2115,25 @@ class _RecentCard extends StatelessWidget {
                                   child: MediaImage(
                                     source: item.image,
                                     fit: BoxFit.contain,
+                                    memCacheWidth:
+                                        (190 *
+                                                MediaQuery.devicePixelRatioOf(
+                                                  context,
+                                                ))
+                                            .round()
+                                            .clamp(256, 540),
                                   ),
                                 )
                               : MediaImage(
                                   source: item.image,
                                   fit: BoxFit.cover,
+                                  memCacheWidth:
+                                      (220 *
+                                              MediaQuery.devicePixelRatioOf(
+                                                context,
+                                              ))
+                                          .round()
+                                          .clamp(320, 640),
                                 ),
                         const DecoratedBox(
                           decoration: BoxDecoration(
@@ -2317,6 +2355,10 @@ class _TopTenCard extends StatelessWidget {
                           MediaImage(
                             source: movie.icon,
                             fit: BoxFit.cover,
+                            memCacheWidth:
+                                (260 * MediaQuery.devicePixelRatioOf(context))
+                                    .round()
+                                    .clamp(360, 720),
                             error: ColoredBox(color: surfaceHi),
                           ),
                         DecoratedBox(

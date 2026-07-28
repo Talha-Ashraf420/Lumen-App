@@ -38,6 +38,18 @@ void main() {
     await tester.pump();
     expect(firstActivations, 1);
 
+    final remote = tester.widget<FocusableActionDetector>(
+      find.byType(FocusableActionDetector).first,
+    );
+    expect(
+      remote.shortcuts!.keys,
+      contains(const SingleActivator(LogicalKeyboardKey.accept)),
+    );
+    expect(
+      remote.shortcuts!.keys,
+      contains(const SingleActivator(LogicalKeyboardKey.execute)),
+    );
+
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
     await tester.pumpAndSettle();
     await tester.sendKeyEvent(LogicalKeyboardKey.select);

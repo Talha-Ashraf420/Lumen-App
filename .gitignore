@@ -48,3 +48,6 @@ app.*.map.json
 /android/key.properties
 /android/app/*.keystore
 /android/app/*.jks
+
+# Private Play Console tester lists must remain local.
+/store_assets/play_store/internal_testers.csv

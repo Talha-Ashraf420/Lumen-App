@@ -252,6 +252,10 @@ class _ChannelRow extends StatelessWidget {
                     ? MediaImage(
                         source: channel.icon,
                         fit: BoxFit.contain,
+                        memCacheWidth:
+                            (72 * MediaQuery.devicePixelRatioOf(context))
+                                .round()
+                                .clamp(96, 240),
                         error: Icon(
                           Icons.live_tv_rounded,
                           color: subtle,

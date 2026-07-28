@@ -6,8 +6,7 @@ Upload the numbered JPEG files in this order:
 2. `02_home.jpg` — Home and continue watching
 3. `03_live_tv.jpg` — Live TV categories
 4. `04_series_detail.jpg` — Series and episodes
-5. `05_discover.jpg` — Discover
-6. `06_profile.jpg` — Appearance and personalization
+5. `06_profile.jpg` — Appearance and personalization
 
 All final files are:
 

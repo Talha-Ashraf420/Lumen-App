@@ -14,7 +14,6 @@ import '../widgets.dart';
 import '../xtream.dart';
 import 'downloads_screen.dart';
 import 'epg_guide_screen.dart';
-import 'globe_screen.dart';
 import 'home_screen.dart';
 import 'update_dialog.dart';
 import 'mylist_screen.dart';
@@ -48,9 +47,11 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   // (e.g. the Live guide loading EPG) that can trip the provider.
   final Set<int> _visited = {0};
 
-  // Total destinations (mobile shows 0–4; desktop sidebar adds Movies/Series/
-  // Live/TV-Guide/Downloads = 5/6/7/8/9 — see _pageFor and _Sidebar).
-  static const _pageCount = 10;
+  // Mobile destinations occupy 0–3. Desktop adds Movies, Series, Live,
+  // TV Guide, and Downloads at 4–8.
+  static const _pageCount = 9;
+
+  bool _allows(int page) => _capabilities.allows(page);
 
   @override
   void initState() {
@@ -110,7 +111,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   void _setCapabilities(_CatalogCapabilities value) {
     setState(() {
       _capabilities = value;
-      if (!value.allows(_index)) {
+      if (!_allows(_index)) {
         _index = 0;
         _visited.add(0);
       }
@@ -151,31 +152,40 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   }
 
   Widget _pageFor(int i) => switch (i) {
-    0 => HomeScreen(client: widget.client, onBrowse: () => _select(2)),
-    1 => GlobeScreen(client: widget.client),
-    2 => SearchScreen(key: _searchKey, client: widget.client),
-    3 => MyListScreen(client: widget.client),
-    4 => ProfileScreen(
+    0 => HomeScreen(client: widget.client, onBrowse: () => _select(1)),
+    1 => SearchScreen(key: _searchKey, client: widget.client),
+    2 => MyListScreen(client: widget.client),
+    3 => ProfileScreen(
       client: widget.client,
       onLogout: widget.onLogout,
       onSwitch: widget.onSwitch,
     ),
-    5 => SearchScreen(client: widget.client, initialSection: 'movie'),
-    6 => SearchScreen(client: widget.client, initialSection: 'series'),
-    7 => SearchScreen(client: widget.client, initialSection: 'live'),
-    8 => EpgGuideScreen(client: widget.client),
+    4 => SearchScreen(client: widget.client, initialSection: 'movie'),
+    5 => SearchScreen(client: widget.client, initialSection: 'series'),
+    6 => SearchScreen(client: widget.client, initialSection: 'live'),
+    7 => EpgGuideScreen(client: widget.client),
     _ => DownloadsScreen(client: widget.client),
   };
 
   void _select(int i) {
-    if (!_capabilities.allows(i)) return;
+    if (!_allows(i)) return;
     if (i != _index) HapticFeedback.selectionClick();
     setState(() => _index = i);
-    if (i == 2) {
+    if (i == 1) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _searchKey.currentState?.focusSearch();
       });
     }
+  }
+
+  void _handleMobileBack(bool didPop) {
+    if (didPop) return;
+    // A back swipe inside the main shell is navigation, not an instruction to
+    // tear down the Flutter engine. Returning to Home also avoids the native
+    // video surface being disposed mid-gesture on some Android/Google TV
+    // devices. A second swipe on Home is intentionally ignored; the Android
+    // Home/Recents controls remain the safe way to leave the player.
+    if (_index != 0) _select(0);
   }
 
   @override
@@ -183,23 +193,33 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     _visited.add(_index);
     final pages = [
       for (var i = 0; i < _pageCount; i++)
-        _visited.contains(i) ? _pageFor(i) : const SizedBox.shrink(),
+        TickerMode(
+          // IndexedStack preserves visited pages for instant tab switching.
+          // Explicitly pause their animations while offstage so every Aurora,
+          // shimmer and transition does not continue consuming frames.
+          enabled: i == _index,
+          child: _visited.contains(i) ? _pageFor(i) : const SizedBox.shrink(),
+        ),
     ];
     final wide = isWide(context);
-    return CallbackShortcuts(
-      bindings: {
-        const SingleActivator(LogicalKeyboardKey.keyK, meta: true): () =>
-            _select(2),
-        const SingleActivator(LogicalKeyboardKey.keyK, control: true): () =>
-            _select(2),
-      },
-      child: Focus(
-        child: Scaffold(
-          body: Stack(
-            children: [
-              Aurora(),
-              if (wide) _wideLayout(pages) else _mobileLayout(pages),
-            ],
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) => _handleMobileBack(didPop),
+      child: CallbackShortcuts(
+        bindings: {
+          const SingleActivator(LogicalKeyboardKey.keyK, meta: true): () =>
+              _select(1),
+          const SingleActivator(LogicalKeyboardKey.keyK, control: true): () =>
+              _select(1),
+        },
+        child: Focus(
+          child: Scaffold(
+            body: Stack(
+              children: [
+                Aurora(),
+                if (wide) _wideLayout(pages) else _mobileLayout(pages),
+              ],
+            ),
           ),
         ),
       ),
@@ -231,8 +251,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                     children: [
                       _CommandBar(
                         index: _index,
-                        onSearch: () => _select(2),
-                        onProfile: () => _select(4),
+                        onSearch: () => _select(1),
+                        onProfile: () => _select(3),
                       ),
                       Expanded(
                         child: IndexedStack(index: _index, children: pages),
@@ -288,17 +308,17 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
 
   List<_Nav> get _mobileDock => [
     const _Nav(Icons.home_rounded, 'Home', 0),
-    if (_capabilities.hasDiscovery)
-      const _Nav(Icons.auto_awesome_rounded, 'Discover', 1),
-    const _Nav(Icons.search_rounded, 'Search', 2),
-    const _Nav(Icons.favorite_rounded, 'My List', 3),
-    const _Nav(Icons.person_rounded, 'Profile', 4),
+    const _Nav(Icons.search_rounded, 'Search', 1),
+    const _Nav(Icons.favorite_rounded, 'My List', 2),
+    const _Nav(Icons.person_rounded, 'Profile', 3),
   ];
 
   Widget _item(_Nav nav) {
     final sel = nav.page == _index;
     return RemoteTap(
-      autofocus: nav.page == 0,
+      // The phone dock communicates selection itself. A persistent focus ring
+      // made Home look selected after tapping another destination.
+      showFocusRing: false,
       behavior: HitTestBehavior.opaque,
       onTap: () => _select(nav.page),
       child: AnimatedContainer(
@@ -346,13 +366,10 @@ class _CatalogCapabilities {
     this.live = false,
   });
 
-  bool get hasDiscovery => movies || series;
-
   bool allows(int page) => switch (page) {
-    1 => hasDiscovery,
-    5 => movies,
-    6 => series,
-    7 || 8 => live,
+    4 => movies,
+    5 => series,
+    6 || 7 => live,
     _ => true,
   };
 }
@@ -372,18 +389,17 @@ class _Nav {
 
 const List<_Nav> _mainDock = [
   _Nav(Icons.home_rounded, 'Home', 0),
-  _Nav(Icons.blur_circular_rounded, 'Discover', 1),
-  _Nav(Icons.movie_filter_rounded, 'Movies', 5),
-  _Nav(Icons.amp_stories_rounded, 'Series', 6),
-  _Nav(Icons.sensors_rounded, 'Live', 7),
-  _Nav(Icons.calendar_view_week_rounded, 'Guide', 8),
-  _Nav(Icons.search_rounded, 'Search', 2),
+  _Nav(Icons.movie_filter_rounded, 'Movies', 4),
+  _Nav(Icons.amp_stories_rounded, 'Series', 5),
+  _Nav(Icons.sensors_rounded, 'Live', 6),
+  _Nav(Icons.calendar_view_week_rounded, 'Guide', 7),
+  _Nav(Icons.search_rounded, 'Search', 1),
 ];
 
 const List<_Nav> _utilityDock = [
-  _Nav(Icons.favorite_rounded, 'My List', 3),
-  _Nav(Icons.download_rounded, 'Downloads', 9, trailingIsDownloads: true),
-  _Nav(Icons.person_rounded, 'Profile', 4),
+  _Nav(Icons.favorite_rounded, 'My List', 2),
+  _Nav(Icons.download_rounded, 'Downloads', 8, trailingIsDownloads: true),
+  _Nav(Icons.person_rounded, 'Profile', 3),
 ];
 
 class _SignalDock extends StatelessWidget {
@@ -535,15 +551,14 @@ class _CommandBar extends StatelessWidget {
 
   static const _titles = <int, String>{
     0: 'Tonight',
-    1: 'Discover',
-    2: 'Search library',
-    3: 'My list',
-    4: 'Profile',
-    5: 'Movies',
-    6: 'Series',
-    7: 'Live signal',
-    8: 'TV guide',
-    9: 'Downloads',
+    1: 'Search library',
+    2: 'My list',
+    3: 'Profile',
+    4: 'Movies',
+    5: 'Series',
+    6: 'Live signal',
+    7: 'TV guide',
+    8: 'Downloads',
   };
 
   @override
@@ -565,7 +580,7 @@ class _CommandBar extends StatelessWidget {
               ),
             ),
             const Spacer(),
-            if (index != 2) ...[
+            if (index != 1) ...[
               FocusableTap(
                 onTap: onSearch,
                 builder: (_, active) => AnimatedContainer(

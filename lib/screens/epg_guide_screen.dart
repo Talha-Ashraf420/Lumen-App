@@ -467,6 +467,10 @@ class _EpgGuideScreenState extends State<EpgGuideScreen>
                     ? MediaImage(
                         source: c.icon,
                         fit: BoxFit.contain,
+                        memCacheWidth:
+                            (56 * MediaQuery.devicePixelRatioOf(context))
+                                .round()
+                                .clamp(80, 180),
                         error: Icon(
                           Icons.live_tv_rounded,
                           color: subtle,

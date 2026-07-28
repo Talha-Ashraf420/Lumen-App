@@ -21,10 +21,10 @@ Do not use phrases such as “free TV,” “premium channels,” “watch anyth
 
 - [x] Rotate the upload keystore. The former key was committed to Git history and is retired. The new upload key is outside Git with an owner-only local backup.
 - [ ] Purge `android/app/lumen.keystore` and `android/key.properties` from all public Git history. This is still recommended because the retired credential remains visible in old commits, but history rewriting must not delay adoption of the new key and must never rewrite a key that has already been enrolled with Play.
-- [ ] Enable GitHub Pages with the `/docs` folder as its source and verify `https://talha-ashraf420.github.io/Lumen-App/privacy-policy.html` is public, active, non-geofenced, and readable without login.
+- [x] Verify `https://lumen-launch.vercel.app/privacy` is public, active, non-geofenced, and readable without login.
 - [ ] Create the app in Play Console with application ID `com.talhaashraf.lumen`. An application ID cannot be changed after publishing.
 - [ ] Use Google Play App Signing. Upload an Android App Bundle (`.aab`), never the validation bundle signed with the compromised old key.
-- [ ] Build the candidate with `tool/build_play_aab.sh`; it refuses to create a Play bundle when signing credentials are missing or tracked by Git.
+- [ ] Build the candidate with `tool/build_play_aab.sh`; it enforces the Play channel's HTTPS-only provider policy and refuses to build when signing credentials are missing or tracked by Git. Direct TV APKs remain compatible with user-authorized HTTP providers.
 - [ ] Test the exact release bundle on a phone, tablet, and Android TV/Google TV device or emulator with D-pad navigation.
 - [ ] If TMDB enrichment is enabled, supply the key at build time with `--dart-define=TMDB_API_KEY=...`, comply with TMDB's API terms, and keep the in-app attribution. The former embedded key must be treated as exposed.
 
@@ -67,7 +67,7 @@ tool, crash reporter, ad service, API, or data flow changes.
 - [ ] Unit/widget tests pass.
 - [ ] Release AAB builds with the current upload key and increments `versionCode`.
 - [ ] The merged release manifest has no `REQUEST_INSTALL_PACKAGES`, storage, contacts, location, microphone, camera, phone, accessibility, VPN, or other undeclared sensitive permission.
-- [ ] Android cleartext traffic remains disabled and all reviewer URLs are HTTPS.
+- [ ] The Play AAB's merged manifest has `usesCleartextTraffic="false"` and all reviewer URLs are HTTPS.
 - [ ] No code downloads or installs APKs; Google Play is the only Android updater.
 - [ ] Privacy policy, Data Safety form, store listing, and in-app disclosures match the exact release behavior.
 - [ ] Reviewer credentials are active and all core flows work without crashes, dead links, or placeholder content.
@@ -77,7 +77,7 @@ tool, crash reporter, ad service, API, or data flow changes.
 Run this checklist on a physical Android TV/Google TV device before production:
 
 - [ ] Cold launch: complete the legal screen, login, and playlist dialogs using only D-pad, center/select, Back, and the TV keyboard.
-- [ ] Navigate from the left signal dock to Home, Discover, Movies, Series, Live, Guide, Search, My List, Downloads, and Profile.
+- [ ] Navigate from the left signal dock to Home, Movies, Series, Live, Guide, Search, My List, Downloads, and Profile.
 - [ ] Traverse every horizontal rail and grid; the focused card must show a clear accent ring/scale and scroll fully into view.
 - [ ] Open movie and series details, switch seasons, favorite an item, start playback, and use download controls.
 - [ ] Open categories, schedules, customization, appearance, privacy, and confirmation dialogs; Back must dismiss the topmost page or dialog.

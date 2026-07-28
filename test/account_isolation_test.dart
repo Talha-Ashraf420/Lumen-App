@@ -45,6 +45,28 @@ class _LiveOnlyClient extends XtreamClient {
   Future<List<Category>> liveCategories() async => [Category('live', 'News')];
 }
 
+class _FullCatalogClient extends XtreamClient {
+  _FullCatalogClient()
+    : super(
+        const XtreamCredentials(
+          baseUrl: 'https://full.example',
+          username: 'viewer',
+          password: 'secret',
+        ),
+      );
+
+  @override
+  Future<List<Category>> vodCategories() async => [Category('movie', 'Movies')];
+
+  @override
+  Future<List<Category>> seriesCategories() async => [
+    Category('series', 'Series'),
+  ];
+
+  @override
+  Future<List<Category>> liveCategories() async => [Category('live', 'Live')];
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -152,7 +174,7 @@ void main() {
     expect((await CatalogCache.instance.vod(second)).single.name, 'Account B');
   });
 
-  testWidgets('live-only M3U hides movie, series, and discovery destinations', (
+  testWidgets('live-only M3U hides unavailable movie and series destinations', (
     tester,
   ) async {
     tester.view.devicePixelRatio = 1;
@@ -171,13 +193,82 @@ void main() {
       ),
     );
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(seconds: 2));
 
     expect(find.byTooltip('Live'), findsOneWidget);
     expect(find.byTooltip('Guide'), findsOneWidget);
     expect(find.byTooltip('Movies'), findsNothing);
     expect(find.byTooltip('Series'), findsNothing);
     expect(find.byTooltip('Discover'), findsNothing);
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+  });
+
+  testWidgets('full catalog has no Discover destination', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1920, 1080);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    final client = _FullCatalogClient();
+    await tester.runAsync(
+      () => Future.wait([
+        CatalogCache.instance.vod(client, priority: true),
+        CatalogCache.instance.series(client, priority: true),
+        CatalogCache.instance.live(client, priority: true),
+      ]),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildTheme(darkPalette),
+        home: HomeShell(
+          client: client,
+          onLogout: () async {},
+          onSwitch: (_) {},
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 2));
+
+    expect(find.byTooltip('Home'), findsOneWidget);
+    expect(find.byTooltip('Search'), findsOneWidget);
+    expect(find.byTooltip('Discover'), findsNothing);
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+  });
+
+  testWidgets('phone dock contains only the four supported root destinations', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    final client = _FullCatalogClient();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildTheme(darkPalette),
+        home: HomeShell(
+          client: client,
+          onLogout: () async {},
+          onSwitch: (_) {},
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 2));
+
+    expect(find.text('Home'), findsOneWidget);
+    expect(find.text('Search'), findsOneWidget);
+    expect(find.text('My List'), findsOneWidget);
+    expect(find.text('Profile'), findsOneWidget);
+    expect(find.text('Discover'), findsNothing);
     expect(tester.takeException(), isNull);
 
     await tester.pumpWidget(const SizedBox.shrink());

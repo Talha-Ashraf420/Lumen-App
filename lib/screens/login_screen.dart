@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../models.dart';
 import '../distribution.dart';
 import '../responsive.dart';
@@ -39,6 +40,13 @@ class _LoginScreenState extends State<LoginScreen> {
   final _url = TextEditingController();
   final _user = TextEditingController();
   final _pass = TextEditingController();
+  late final FocusNode _urlFocus;
+  late final FocusNode _userFocus;
+  late final FocusNode _passFocus;
+  late final FocusNode _submitFocus;
+  late final FocusNode _playlistFocus;
+  late final FocusNode _demoFocus;
+  final Map<String, FocusNode> _profileFocus = {};
   bool _busy = false;
   String? _error;
   String? _status;
@@ -51,9 +59,130 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
+    _urlFocus = _createFocusNode('login-url');
+    _userFocus = _createFocusNode('login-username');
+    _passFocus = _createFocusNode('login-password');
+    _submitFocus = _createFocusNode('login-submit');
+    _playlistFocus = _createFocusNode('login-playlist');
+    _demoFocus = _createFocusNode('login-demo');
+    _urlFocus.onKeyEvent = (_, event) =>
+        _moveFromField(event, up: _lastProfileFocus, down: _userFocus);
+    _userFocus.onKeyEvent = (_, event) => _moveFromField(
+      event,
+      up: _urlFocus,
+      right: _passFocus,
+      down: _submitFocus,
+    );
+    _passFocus.onKeyEvent = (_, event) => _moveFromField(
+      event,
+      up: _urlFocus,
+      left: _userFocus,
+      down: _submitFocus,
+    );
+    _submitFocus.onKeyEvent = (_, event) =>
+        _moveFromControl(event, up: _userFocus, down: _playlistFocus);
+    _playlistFocus.onKeyEvent = (_, event) =>
+        _moveFromControl(event, up: _submitFocus, down: _demoFocus);
+    _demoFocus.onKeyEvent = (_, event) =>
+        _moveFromControl(event, up: _playlistFocus);
     Store.savedProfiles().then((profiles) {
-      if (mounted) setState(() => _profiles = profiles);
+      if (!mounted) return;
+      _syncProfileFocus(profiles);
+      setState(() => _profiles = profiles);
     });
+  }
+
+  FocusNode _createFocusNode(String label) {
+    late final FocusNode node;
+    node = FocusNode(debugLabel: label);
+    node.addListener(() {
+      if (!node.hasFocus) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final focusContext = node.context;
+        if (!mounted || focusContext == null) return;
+        Scrollable.ensureVisible(
+          focusContext,
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+        );
+      });
+    });
+    return node;
+  }
+
+  FocusNode? get _lastProfileFocus =>
+      _profiles.isEmpty ? null : _profileFocus[_profileKey(_profiles.last)];
+
+  String _profileKey(XtreamCredentials profile) =>
+      '${profile.baseUrl}|${profile.username}|${profile.m3uUrl}|${profile.demo}';
+
+  void _syncProfileFocus(List<XtreamCredentials> profiles) {
+    final liveKeys = profiles.map(_profileKey).toSet();
+    final removed = _profileFocus.keys
+        .where((key) => !liveKeys.contains(key))
+        .toList();
+    for (final key in removed) {
+      _profileFocus.remove(key)?.dispose();
+    }
+    for (var index = 0; index < profiles.length; index++) {
+      final key = _profileKey(profiles[index]);
+      final node = _profileFocus.putIfAbsent(
+        key,
+        () => _createFocusNode('saved-profile-$index'),
+      );
+      node.onKeyEvent = (_, event) => _moveFromControl(
+        event,
+        up: index == 0 ? null : _profileFocus[_profileKey(profiles[index - 1])],
+        down: index == profiles.length - 1
+            ? _urlFocus
+            : _profileFocus[_profileKey(profiles[index + 1])],
+      );
+    }
+  }
+
+  bool _isNavigationKeyEvent(KeyEvent event) =>
+      event is KeyDownEvent || event is KeyRepeatEvent;
+
+  KeyEventResult _moveFromField(
+    KeyEvent event, {
+    FocusNode? up,
+    FocusNode? down,
+    FocusNode? left,
+    FocusNode? right,
+  }) {
+    if (!_isNavigationKeyEvent(event)) return KeyEventResult.ignored;
+    final key = event.logicalKey;
+    FocusNode? target;
+    if (key == LogicalKeyboardKey.arrowUp) {
+      target = up;
+    } else if (key == LogicalKeyboardKey.arrowDown) {
+      target = down;
+    } else if (key == LogicalKeyboardKey.arrowLeft) {
+      target = left;
+    } else if (key == LogicalKeyboardKey.arrowRight) {
+      target = right;
+    }
+    if (target == null) return KeyEventResult.ignored;
+    target.requestFocus();
+    return KeyEventResult.handled;
+  }
+
+  KeyEventResult _moveFromControl(
+    KeyEvent event, {
+    FocusNode? up,
+    FocusNode? down,
+  }) {
+    if (!_isNavigationKeyEvent(event)) return KeyEventResult.ignored;
+    FocusNode? target;
+    if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+      target = up;
+    } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+      target = down;
+    }
+    if (target == null) return KeyEventResult.ignored;
+    target.requestFocus();
+    return KeyEventResult.handled;
   }
 
   Future<void> _connect(XtreamCredentials c) async {
@@ -105,8 +234,27 @@ class _LoginScreenState extends State<LoginScreen> {
       authenticated = true;
       setState(() => _status = 'Opening your library…');
       widget.onLogin(c);
-    } catch (e) {
+      if (mounted && attempt == _connectAttempt) {
+        setState(() {
+          _busy = false;
+          _status = null;
+        });
+      }
+    } catch (e, stack) {
       if (!mounted || attempt != _connectAttempt) return;
+      // Authentication and persistence have already succeeded. A failure in
+      // the host's screen transition is not a provider/login failure, and
+      // reporting it as one leaves users retrying valid credentials that will
+      // appear signed in after restart.
+      if (authenticated) {
+        debugPrint('Post-login transition failed: $e\n$stack');
+        setState(() {
+          _busy = false;
+          _status = null;
+          _error = null;
+        });
+        return;
+      }
       setState(() {
         _error = safeProviderError(e);
         _busy = false;
@@ -210,6 +358,15 @@ class _LoginScreenState extends State<LoginScreen> {
     _url.dispose();
     _user.dispose();
     _pass.dispose();
+    _urlFocus.dispose();
+    _userFocus.dispose();
+    _passFocus.dispose();
+    _submitFocus.dispose();
+    _playlistFocus.dispose();
+    _demoFocus.dispose();
+    for (final node in _profileFocus.values) {
+      node.dispose();
+    }
     super.dispose();
   }
 
@@ -442,6 +599,7 @@ class _LoginScreenState extends State<LoginScreen> {
               child: _ProfileTile(
                 profile: profile,
                 busy: _busy,
+                focusNode: _profileFocus[_profileKey(profile)],
                 onTap: () => _connect(profile),
               ),
             ),
@@ -460,13 +618,34 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
         ],
-        _field(_url, 'Server URL', hint: 'https://host:443'),
+        _field(
+          _url,
+          'Server URL',
+          focusNode: _urlFocus,
+          nextFocus: _userFocus,
+          hint: 'https://host:443',
+        ),
         const SizedBox(height: 11),
         Row(
           children: [
-            Expanded(child: _field(_user, 'Username')),
+            Expanded(
+              child: _field(
+                _user,
+                'Username',
+                focusNode: _userFocus,
+                nextFocus: _passFocus,
+              ),
+            ),
             const SizedBox(width: 10),
-            Expanded(child: _field(_pass, 'Password', obscure: true)),
+            Expanded(
+              child: _field(
+                _pass,
+                'Password',
+                focusNode: _passFocus,
+                nextFocus: _submitFocus,
+                obscure: true,
+              ),
+            ),
           ],
         ),
         if (_error != null) ...[
@@ -488,6 +667,8 @@ class _LoginScreenState extends State<LoginScreen> {
         SizedBox(
           width: double.infinity,
           child: FilledButton.icon(
+            focusNode: _submitFocus,
+            autofocus: true,
             style: FilledButton.styleFrom(
               backgroundColor: accent,
               foregroundColor: onAccent,
@@ -524,6 +705,7 @@ class _LoginScreenState extends State<LoginScreen> {
         const SizedBox(height: 6),
         Center(
           child: TextButton.icon(
+            focusNode: _playlistFocus,
             onPressed: _busy ? _cancelConnect : _pasteUrl,
             icon: Icon(
               _busy ? Icons.close_rounded : Icons.link_rounded,
@@ -556,6 +738,7 @@ class _LoginScreenState extends State<LoginScreen> {
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
+              focusNode: _demoFocus,
               onPressed: _startDemo,
               icon: const Icon(Icons.auto_awesome_rounded, size: 18),
               label: const Text('Explore offline demo'),
@@ -600,14 +783,19 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget _field(
     TextEditingController c,
     String label, {
+    required FocusNode focusNode,
+    required FocusNode nextFocus,
     String? hint,
     bool obscure = false,
   }) {
     return TextField(
       controller: c,
+      focusNode: focusNode,
       obscureText: obscure,
       autocorrect: false,
       enableSuggestions: false,
+      textInputAction: TextInputAction.next,
+      onSubmitted: (_) => nextFocus.requestFocus(),
       decoration: InputDecoration(labelText: label, hintText: hint),
     );
   }
@@ -625,16 +813,19 @@ class _LoginScreenState extends State<LoginScreen> {
 class _ProfileTile extends StatelessWidget {
   final XtreamCredentials profile;
   final bool busy;
+  final FocusNode? focusNode;
   final VoidCallback onTap;
   const _ProfileTile({
     required this.profile,
     required this.busy,
+    required this.focusNode,
     required this.onTap,
   });
   @override
   Widget build(BuildContext context) {
     return RemoteTap(
       onTap: busy ? null : onTap,
+      focusNode: focusNode,
       focusRadius: 15,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),

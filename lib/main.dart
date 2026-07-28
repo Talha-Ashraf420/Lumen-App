@@ -7,6 +7,7 @@ import 'package:window_manager/window_manager.dart';
 import 'catalog_cache.dart';
 import 'demo_catalog.dart';
 import 'downloads.dart';
+import 'device_profile.dart';
 import 'epg_cache.dart';
 import 'home_config.dart';
 import 'models.dart';
@@ -18,21 +19,33 @@ import 'store.dart';
 import 'library.dart';
 import 'legal.dart';
 import 'theme.dart';
-import 'widgets.dart';
 import 'xtream.dart';
 import 'screens/login_screen.dart';
 import 'screens/legal_screen.dart';
 import 'screens/player_host.dart';
 import 'screens/shell.dart';
+import 'screens/splash_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await DeviceProfile.detect();
+  // Catalog artwork is decoded to tile-sized buffers. Keep a generous but
+  // bounded cache so large libraries cannot crowd video playback out of RAM.
+  final imageCache = PaintingBinding.instance.imageCache;
+  if (!kIsWeb && Platform.isAndroid) {
+    imageCache.maximumSize = DeviceProfile.isTelevision ? 220 : 400;
+    imageCache.maximumSizeBytes =
+        (DeviceProfile.isTelevision ? 64 : 128) * 1024 * 1024;
+  } else {
+    imageCache.maximumSize = 700;
+    imageCache.maximumSizeBytes = 224 * 1024 * 1024;
+  }
   // Desktop: enable window control (used for real fullscreen in the player).
   if (!kIsWeb && (Platform.isMacOS || Platform.isWindows || Platform.isLinux)) {
     await windowManager.ensureInitialized();
   }
   MediaKit.ensureInitialized(); // libmpv — native TS/MKV/HLS playback
-  await DemoCatalog.preparePlayback();
+  final startup = DemoCatalog.preparePlayback();
 
   // Never show a blank/white error screen — paint errors on the dark canvas.
   ErrorWidget.builder = (details) => Container(
@@ -46,14 +59,22 @@ Future<void> main() async {
     ),
   );
 
-  runApp(const LumenApp());
+  runApp(LumenApp(startup: startup));
   WidgetsBinding.instance.addPostFrameCallback(
     (_) => PlaybackController.instance.prewarm(),
   );
 }
 
 class LumenApp extends StatelessWidget {
-  const LumenApp({super.key});
+  const LumenApp({
+    super.key,
+    this.startup,
+    this.minimumSplashDuration = const Duration(milliseconds: 1850),
+  });
+
+  final Future<void>? startup;
+  final Duration minimumSplashDuration;
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -115,7 +136,11 @@ class LumenApp extends StatelessWidget {
               );
             },
           ),
-          home: _Gate(),
+          home: LaunchGate(
+            startup: startup,
+            minimumDuration: minimumSplashDuration,
+            child: const SessionGate(),
+          ),
         );
       },
     );
@@ -123,16 +148,23 @@ class LumenApp extends StatelessWidget {
 }
 
 /// Decides login vs main shell based on stored credentials.
-class _Gate extends StatefulWidget {
-  const _Gate();
+typedef ProfileStateActivator =
+    Future<void> Function(XtreamCredentials? credentials);
+
+class SessionGate extends StatefulWidget {
+  final ProfileStateActivator? profileActivator;
+
+  const SessionGate({super.key, this.profileActivator});
+
   @override
-  State<_Gate> createState() => _GateState();
+  State<SessionGate> createState() => _SessionGateState();
 }
 
-class _GateState extends State<_Gate> {
+class _SessionGateState extends State<SessionGate> {
   XtreamCredentials? _creds;
   bool _legalAccepted = false;
   bool _loading = true;
+  String _loadingLabel = 'RESTORING YOUR SESSION';
   int _sessionChange = 0;
 
   @override
@@ -148,13 +180,14 @@ class _GateState extends State<_Gate> {
       ThemeController.instance.load(),
     ]);
     final credentials = values[0] as XtreamCredentials?;
-    await _activateProfileState(credentials);
+    final profileState = _activateProfileState(credentials);
     if (!mounted) return;
     setState(() {
       _creds = credentials;
       _legalAccepted = values[1] as bool;
       _loading = false;
     });
+    unawaited(_guardProfileState(profileState));
   }
 
   Future<void> _acceptLegal() async {
@@ -164,32 +197,63 @@ class _GateState extends State<_Gate> {
 
   XtreamClient? _client; // cached so theme rebuilds don't recreate it
 
-  Future<void> _activateProfileState(XtreamCredentials? credentials) =>
-      Future.wait([
-        Library.instance.activate(credentials),
-        HomeConfig.instance.activate(credentials),
-        WatchStats.instance.activate(credentials),
-        Downloads.instance.activate(credentials),
-      ]);
+  Future<void> _activateProfileState(XtreamCredentials? credentials) {
+    final override = widget.profileActivator;
+    if (override != null) return override(credentials);
+    return Future.wait([
+      Library.instance.activate(credentials),
+      HomeConfig.instance.activate(credentials),
+      WatchStats.instance.activate(credentials),
+      Downloads.instance.activate(credentials),
+    ]);
+  }
+
+  Future<void> _guardProfileState(Future<void> activation) async {
+    try {
+      await activation;
+    } catch (error, stack) {
+      debugPrint('Profile state hydration failed: $error\n$stack');
+    }
+  }
 
   /// Make these credentials active: stop account-bound work, atomically switch
   /// persisted state, then rebuild with a fresh client and catalog namespace.
-  Future<void> _activate(XtreamCredentials? credentials) async {
-    final change = ++_sessionChange;
-    _client?.close();
-    activeClient = null;
-    PlaybackController.instance.stop();
-    SplitController.instance.close();
-    CatalogCache.instance.clear();
-    EpgCache.instance.clear();
-    if (mounted) setState(() => _loading = true);
-    await _activateProfileState(credentials);
-    if (!mounted || change != _sessionChange) return;
+  void _activate(XtreamCredentials? credentials) {
+    ++_sessionChange;
+    final previousClient = _client;
+
+    // Commit the authenticated session first. Cleanup and profile hydration
+    // must never be able to strand a successfully saved account on Login.
+    if (!mounted) return;
     setState(() {
       _creds = credentials;
       _client = null;
       _loading = false;
     });
+
+    _guardSessionStep('previous client', () => previousClient?.close());
+    activeClient = null;
+    _guardSessionStep('playback', PlaybackController.instance.stop);
+    unawaited(_guardProfileState(SplitController.instance.close()));
+    _guardSessionStep('catalog cache', CatalogCache.instance.clear);
+    _guardSessionStep('EPG cache', EpgCache.instance.clear);
+
+    // Each controller clears its previous profile synchronously before its
+    // first await. Let slower secure-storage and download-folder hydration
+    // finish behind Home instead of trapping the user on a loading screen.
+    unawaited(
+      _guardProfileState(
+        Future<void>.sync(() => _activateProfileState(credentials)),
+      ),
+    );
+  }
+
+  void _guardSessionStep(String label, void Function() action) {
+    try {
+      action();
+    } catch (error, stack) {
+      debugPrint('Session $label cleanup failed: $error\n$stack');
+    }
   }
 
   void _onLogin(XtreamCredentials c) {
@@ -198,12 +262,17 @@ class _GateState extends State<_Gate> {
 
   Future<void> _switchTo(XtreamCredentials c) async {
     await Store.setActive(c);
-    if (mounted) await _activate(c);
+    if (mounted) _activate(c);
   }
 
   Future<void> _onLogout() async {
     final change = ++_sessionChange;
-    if (mounted) setState(() => _loading = true);
+    if (mounted) {
+      setState(() {
+        _loading = true;
+        _loadingLabel = 'SIGNING OUT SECURELY';
+      });
+    }
     try {
       await Store.logout().timeout(const Duration(seconds: 6));
     } catch (_) {
@@ -250,7 +319,7 @@ class _GateState extends State<_Gate> {
       builder: (context, mode, _) {
         resolvePalette(mode, MediaQuery.platformBrightnessOf(context));
         if (_loading) {
-          return const Scaffold(body: BrandedLoading(background: true));
+          return SessionLoading(message: _loadingLabel);
         }
         if (!_legalAccepted) {
           return LegalWelcomeScreen(onAccepted: _acceptLegal);
