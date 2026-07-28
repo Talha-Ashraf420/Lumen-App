@@ -53,7 +53,18 @@ class HItem {
 class HomeScreen extends StatefulWidget {
   final XtreamClient client;
   final VoidCallback onBrowse;
-  const HomeScreen({super.key, required this.client, required this.onBrowse});
+
+  /// Test seam for exercising refresh transitions without opening the
+  /// persistent catalog database. Production callers always use the shared
+  /// cached provider loader below.
+  final Future<List<Category>> Function()? categoryLoader;
+
+  const HomeScreen({
+    super.key,
+    required this.client,
+    required this.onBrowse,
+    this.categoryLoader,
+  });
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
@@ -61,9 +72,11 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen>
     with AutomaticKeepAliveClientMixin {
   late Future<_HomeData> _future;
+  _HomeData? _visibleData;
   List<Category> _seriesCats = const [];
   List<Category> _liveCats = const [];
   int _loadGeneration = 0;
+  Timer? _catalogRevisionDebounce;
 
   @override
   bool get wantKeepAlive => true;
@@ -78,23 +91,28 @@ class _HomeScreenState extends State<HomeScreen>
 
   @override
   void dispose() {
+    _catalogRevisionDebounce?.cancel();
     contentRefresh.removeListener(_onRefresh);
     CatalogCache.instance.revision.removeListener(_onCatalogRevision);
     super.dispose();
   }
 
   void _onCatalogRevision() {
-    if (!mounted) return;
-    setState(() => _beginLoad());
+    _catalogRevisionDebounce?.cancel();
+    // One provider refresh may update categories and several item buckets in
+    // quick succession. Coalesce those notifications into one quiet upgrade
+    // instead of remounting Home repeatedly and flashing its artwork.
+    _catalogRevisionDebounce = Timer(const Duration(milliseconds: 350), () {
+      if (!mounted) return;
+      setState(_beginLoad);
+    });
   }
 
   void _onRefresh() {
     if (!mounted) return;
-    setState(() {
-      _seriesCats = const [];
-      _liveCats = const [];
-      _beginLoad();
-    });
+    // Keep the currently rendered catalogs in place while fresh data arrives.
+    // Pull-to-refresh should feel like an in-place update, not a cold launch.
+    setState(_beginLoad);
   }
 
   Future<void> _pullRefresh() async {
@@ -103,6 +121,8 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Future<_HomeData> _loadHome() async {
+    final categoryLoader = widget.categoryLoader;
+    if (categoryLoader != null) return _HomeData(await categoryLoader());
     // Plain M3U profiles are live-only. Do not spend multiple retry windows on
     // movie/series endpoints they can never have before showing their channels.
     if (widget.client.creds.isM3u) return _HomeData(const []);
@@ -114,7 +134,10 @@ class _HomeScreenState extends State<HomeScreen>
 
   void _beginLoad() {
     final generation = ++_loadGeneration;
-    _future = _loadHome();
+    _future = _loadHome().then((data) {
+      if (mounted && generation == _loadGeneration) _visibleData = data;
+      return data;
+    });
     unawaited(_loadSecondaryCatalogs(generation, _future));
   }
 
@@ -124,6 +147,7 @@ class _HomeScreenState extends State<HomeScreen>
   ) async {
     try {
       await firstPaint;
+      if (widget.categoryLoader != null) return;
       if (widget.client.creds.isM3u) {
         final live = await CatalogCache.instance.live(
           widget.client,
@@ -636,11 +660,12 @@ class _HomeScreenState extends State<HomeScreen>
     super.build(context);
     return FutureBuilder<_HomeData>(
       future: _future,
+      initialData: _visibleData,
       builder: (context, snap) {
-        if (snap.connectionState != ConnectionState.done) {
+        if (!snap.hasData) {
           return BrandedLoading();
         }
-        if (snap.hasError || snap.data == null) {
+        if (snap.hasError && _visibleData == null) {
           return Center(
             child: Padding(
               padding: const EdgeInsets.all(24),
@@ -743,8 +768,9 @@ class _HomeScreenState extends State<HomeScreen>
               _bentoRow(c, _liveCats, trendFuture),
               if (heroCat != null)
                 _Shelf(
-                  key: ValueKey('$_loadGeneration:fresh:$heroCat'),
+                  key: ValueKey('fresh:$heroCat'),
                   title: 'Fresh picks',
+                  revision: _loadGeneration,
                   load: () => primarySource.then((items) {
                     final ranked =
                         items.where((m) => m.icon.isNotEmpty).toList()..sort(
@@ -770,6 +796,7 @@ class _HomeScreenState extends State<HomeScreen>
                 ),
               _TopTenShelf(
                 future: trendFuture,
+                revision: _loadGeneration,
                 onTap: (m) => _push(MovieDetailScreen(client: c, movie: m)),
               ),
               AnimatedBuilder(
@@ -780,9 +807,10 @@ class _HomeScreenState extends State<HomeScreen>
             ];
 
             final hero = _SpotlightHero(
-              key: ValueKey('hero:$_loadGeneration'),
+              key: ValueKey('hero:$heroCat'),
               client: c,
               future: heroFuture,
+              revision: _loadGeneration,
               onOpen: (m) => _push(MovieDetailScreen(client: c, movie: m)),
             );
 
@@ -855,8 +883,9 @@ class _HomeScreenState extends State<HomeScreen>
       children: [
         for (final cat in cats)
           _Shelf(
-            key: ValueKey('$_loadGeneration:taste:${cat.id}'),
+            key: ValueKey('taste:${cat.id}'),
             title: 'Because you like ${cat.name}',
+            revision: _loadGeneration,
             load: () => CatalogCache.instance
                 .vodStreams(c, cat.id)
                 .then(
@@ -891,8 +920,9 @@ class _HomeScreenState extends State<HomeScreen>
     switch (s.type) {
       case 'movie':
         return _Shelf(
-          key: ValueKey('$_loadGeneration:movie:${s.id}'),
+          key: ValueKey('movie:${s.id}'),
           title: s.name,
+          revision: _loadGeneration,
           load: () => CatalogCache.instance
               .vodStreams(c, s.id)
               .then((l) => l.take(16).map(_movie).toList())
@@ -901,8 +931,9 @@ class _HomeScreenState extends State<HomeScreen>
         );
       case 'series':
         return _Shelf(
-          key: ValueKey('$_loadGeneration:series:${s.id}'),
+          key: ValueKey('series:${s.id}'),
           title: s.name,
+          revision: _loadGeneration,
           load: () => CatalogCache.instance
               .seriesItems(c, s.id)
               .then((l) => l.take(16).map(_series).toList())
@@ -911,8 +942,9 @@ class _HomeScreenState extends State<HomeScreen>
         );
       default:
         return _Shelf(
-          key: ValueKey('$_loadGeneration:live:${s.id}'),
+          key: ValueKey('live:${s.id}'),
           title: 'Live · ${s.name}',
+          revision: _loadGeneration,
           load: () => CatalogCache.instance
               .liveStreams(c, s.id)
               .then((l) => _liveShelf(l.take(40).toList()))
@@ -1243,12 +1275,14 @@ class _ContinueCard extends StatelessWidget {
 class _Shelf extends StatefulWidget {
   final String title;
   final Future<List<HItem>> Function() load;
+  final int revision;
   final bool live;
   final VoidCallback? onMore;
   const _Shelf({
     super.key,
     required this.title,
     required this.load,
+    required this.revision,
     this.live = false,
     this.onMore,
   });
@@ -1259,7 +1293,16 @@ class _Shelf extends StatefulWidget {
 
 class _ShelfState extends State<_Shelf> {
   Future<List<HItem>>? _future;
+  List<HItem> _visibleItems = const [];
   ScrollPosition? _position;
+
+  @override
+  void didUpdateWidget(covariant _Shelf oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.revision != widget.revision && _future != null) {
+      _startLoad();
+    }
+  }
 
   @override
   void didChangeDependencies() {
@@ -1290,11 +1333,22 @@ class _ShelfState extends State<_Shelf> {
     // avoiding network work for shelves the viewer may never reach.
     if (_position == null ||
         (top < viewport * 1.65 && bottom > -viewport * .4)) {
-      final future = widget.load();
-      setState(() {
-        _future = future;
-      });
+      _startLoad();
     }
+  }
+
+  void _startLoad() {
+    final future = widget.load();
+    _future = future;
+    future
+        .then((items) {
+          if (!mounted || !identical(_future, future)) return;
+          setState(() => _visibleItems = items);
+        })
+        .catchError((_) {
+          // FutureBuilder renders the existing items (if any) on failure.
+        });
+    if (mounted) setState(() {});
   }
 
   @override
@@ -1332,8 +1386,9 @@ class _ShelfState extends State<_Shelf> {
     }
     return FutureBuilder<List<HItem>>(
       future: future,
+      initialData: _visibleItems,
       builder: (context, snap) {
-        final items = snap.data ?? [];
+        final items = snap.data ?? _visibleItems;
         if (snap.connectionState == ConnectionState.done && items.isEmpty)
           return const SizedBox.shrink();
         return Padding(
@@ -1391,11 +1446,13 @@ class _ShelfState extends State<_Shelf> {
 class _SpotlightHero extends StatefulWidget {
   final XtreamClient client;
   final Future<List<VodStream>> future;
+  final int revision;
   final void Function(VodStream) onOpen;
   const _SpotlightHero({
     super.key,
     required this.client,
     required this.future,
+    required this.revision,
     required this.onOpen,
   });
   @override
@@ -1408,29 +1465,48 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
   bool _loaded = false;
   Timer? _timer;
   final Map<int, TmdbInfo?> _meta = {};
+  int _request = 0;
 
   @override
   void initState() {
     super.initState();
-    widget.future
+    _load(widget.future);
+  }
+
+  @override
+  void didUpdateWidget(covariant _SpotlightHero oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.revision != widget.revision) _load(widget.future);
+  }
+
+  void _load(Future<List<VodStream>> future) {
+    final request = ++_request;
+    future
         .then((l) {
-          if (!mounted) return;
+          if (!mounted || request != _request) return;
+          // A transient empty provider response must not blank a hero that is
+          // already on screen. The next refresh can replace it once reliable
+          // content arrives.
+          if (l.isEmpty && _items.isNotEmpty) return;
           setState(() {
             _items = l;
+            if (_index >= l.length) _index = 0;
             _loaded = true;
           });
           if (l.isNotEmpty) {
             // Enrich only what is visible. The next item loads when selected rather
             // than issuing two TMDB requests for every hero card at startup.
             _fetchMeta(l.first);
-            _timer = Timer.periodic(
+            _timer ??= Timer.periodic(
               const Duration(seconds: 8),
               (_) => _advance(),
             );
           }
         })
         .catchError((_) {
-          if (mounted) setState(() => _loaded = true);
+          if (mounted && request == _request && _items.isEmpty) {
+            setState(() => _loaded = true);
+          }
         });
   }
 
@@ -2239,16 +2315,56 @@ class _RecentCard extends StatelessWidget {
 }
 
 /// "Top 10" shelf — big hollow rank numerals with the poster overlapping.
-class _TopTenShelf extends StatelessWidget {
+class _TopTenShelf extends StatefulWidget {
   final Future<List<VodStream>> future;
+  final int revision;
   final void Function(VodStream) onTap;
-  const _TopTenShelf({required this.future, required this.onTap});
+  const _TopTenShelf({
+    required this.future,
+    required this.revision,
+    required this.onTap,
+  });
+
+  @override
+  State<_TopTenShelf> createState() => _TopTenShelfState();
+}
+
+class _TopTenShelfState extends State<_TopTenShelf> {
+  late Future<List<VodStream>> _future;
+  List<VodStream> _visibleItems = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load(widget.future);
+  }
+
+  @override
+  void didUpdateWidget(covariant _TopTenShelf oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.revision != widget.revision) _load(widget.future);
+  }
+
+  void _load(Future<List<VodStream>> future) {
+    _future = future;
+    future
+        .then((items) {
+          if (!mounted || !identical(_future, future)) return;
+          if (items.isEmpty && _visibleItems.isNotEmpty) return;
+          setState(() => _visibleItems = items);
+        })
+        .catchError((_) {
+          // Keep the previous ranking visible if a refresh fails.
+        });
+  }
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<List<VodStream>>(
-      future: future,
+      future: _future,
+      initialData: _visibleItems,
       builder: (context, snap) {
-        final items = snap.data ?? const <VodStream>[];
+        final items = snap.data ?? _visibleItems;
         if (snap.connectionState == ConnectionState.done && items.isEmpty)
           return const SizedBox.shrink();
         return Padding(
@@ -2274,7 +2390,7 @@ class _TopTenShelf extends StatelessWidget {
                         itemBuilder: (_, i) => _TopTenCard(
                           rank: i + 1,
                           movie: items[i],
-                          onTap: () => onTap(items[i]),
+                          onTap: () => widget.onTap(items[i]),
                         ),
                       ),
               ),

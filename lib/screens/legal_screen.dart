@@ -62,7 +62,7 @@ class _LegalWelcomeScreenState extends State<LegalWelcomeScreen> {
                         const _Point(
                           icon: Icons.lock_outline_rounded,
                           text:
-                              'Android requires HTTPS sources and stores credentials in encrypted device storage.',
+                              'HTTPS is recommended. HTTP sources are supported for legacy providers but do not encrypt credentials or viewing traffic in transit.',
                         ),
                         const _Point(
                           icon: Icons.gavel_rounded,

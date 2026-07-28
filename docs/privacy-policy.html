@@ -33,7 +33,7 @@
     <li><strong>OpenSubtitles:</strong> may receive media search details when you choose to search for subtitles and the integration is configured.</li>
     <li><strong>GitHub:</strong> desktop builds may contact the public Lumen releases page to check for a newer desktop version. Google Play builds do not download or install app updates outside Google Play.</li>
   </ul>
-  <p>Each third party processes data under its own privacy policy and terms. Google Play editions of Lumen require HTTPS service URLs to protect credentials in transit.</p>
+  <p>Each third party processes data under its own privacy policy and terms. Lumen supports HTTP for user-authorized legacy providers, but HTTP does not encrypt credentials or viewing traffic in transit. HTTPS is strongly recommended whenever the provider supports it.</p>
 
   <h2>Advertising, analytics, and sale of data</h2>
   <p>Lumen contains no advertising SDK and no analytics SDK. The developer does not sell personal data or use it for targeted advertising.</p>
@@ -45,7 +45,7 @@
   <p>Lumen is not directed to children. The Google Play listing should not include children in its target audience. Users are responsible for the suitability and legality of their configured media.</p>
 
   <h2>Security</h2>
-  <p>Lumen uses reasonable device security controls and encrypted storage for sensitive Android and iOS app state. No system can guarantee absolute security. Keep your device updated and use only trusted HTTPS services.</p>
+  <p>Lumen uses reasonable device security controls and encrypted storage for sensitive Android and iOS app state. No system can guarantee absolute security. Keep your device updated, prefer HTTPS, and connect only to services you trust.</p>
 
   <h2>Changes</h2>
   <p>Material changes will be reflected by updating this page and its effective date.</p>

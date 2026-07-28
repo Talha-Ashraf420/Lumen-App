@@ -1,19 +1,7 @@
-import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart';
-
-/// True only for the Android App Bundle submitted to Google Play.
-///
-/// Android TV APKs distributed directly are a separate channel because many
-/// user-authorized IPTV providers still expose HTTP-only endpoints. Play
-/// bundles must opt in with:
-/// `--dart-define=GOOGLE_PLAY_BUILD=true`.
-const bool isGooglePlayBuild = bool.fromEnvironment(
-  'GOOGLE_PLAY_BUILD',
-  defaultValue: false,
-);
-
-bool get requiresSecureProviderTransport =>
-    !kIsWeb && Platform.isAndroid && isGooglePlayBuild;
+/// Lumen accepts both HTTP and HTTPS because many user-authorized legacy media
+/// providers do not offer TLS. HTTPS remains strongly recommended, but the app
+/// must not reject a source the user explicitly supplies.
+bool get requiresSecureProviderTransport => false;
 
 bool isAllowedProviderUrl(String value, {bool? requireSecureTransport}) {
   final uri = Uri.tryParse(value.trim());
@@ -32,7 +20,7 @@ String? providerTransportError(
   for (final value in values) {
     if (value == null || value.trim().isEmpty) continue;
     if (!isAllowedProviderUrl(value, requireSecureTransport: true)) {
-      return 'For your security, the Google Play build accepts HTTPS sources only.';
+      return 'This distribution channel accepts HTTPS sources only.';
     }
   }
   return null;

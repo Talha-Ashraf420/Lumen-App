@@ -17,8 +17,6 @@ if (hasKeystore) keystoreProperties.load(FileInputStream(keystorePropertiesFile)
 val requiresPlaySigning = gradle.startParameter.taskNames.any {
     it.contains("bundleRelease", ignoreCase = true)
 }
-val isGooglePlayBuild =
-    providers.gradleProperty("googlePlayBuild").orNull.equals("true", ignoreCase = true)
 if (requiresPlaySigning && !hasKeystore) {
     throw GradleException(
         "Release app bundles require android/key.properties and a private upload keystore."
@@ -47,10 +45,6 @@ android {
         targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-        // The Play channel accepts HTTPS providers only. Direct APK builds
-        // remain compatible with user-authorized legacy HTTP IPTV services.
-        manifestPlaceholders["usesCleartextTraffic"] =
-            if (isGooglePlayBuild) "false" else "true"
     }
 
     signingConfigs {
