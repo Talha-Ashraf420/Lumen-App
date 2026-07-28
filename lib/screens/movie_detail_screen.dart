@@ -364,7 +364,9 @@ class _CinematicHero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final wide = isWide(context);
-    final height = wide ? 650.0 : 590.0;
+    // Phone copy can wrap to several metadata/action rows. The old 590px
+    // desktop-derived box clipped those controls on common 360–430px phones.
+    final height = wide ? 650.0 : 700.0;
     final progress = Library.instance.progress['movie:${movie.streamId}'];
 
     return SizedBox(

@@ -120,6 +120,8 @@ void main() {
 
     expect(loggedIn?.isDemo, isTrue);
     expect(loggedIn?.password, isEmpty);
+    expect(find.text('Opening your library…'), findsNothing);
+    expect(find.text('Explore offline demo'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

@@ -1,8 +1,10 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+import 'package:lumen_tv/models.dart';
 import 'package:lumen_tv/screens/login_screen.dart';
 import 'package:lumen_tv/theme.dart';
 import 'package:lumen_tv/xtream.dart';
@@ -36,6 +38,7 @@ void main() {
   Future<void> pumpLogin(
     WidgetTester tester, {
     required LoginClientFactory clientFactory,
+    void Function(XtreamCredentials)? onLogin,
     LoginCredentialSaver? credentialSaver,
     Duration connectionTimeout = const Duration(milliseconds: 100),
     Duration storageTimeout = const Duration(milliseconds: 100),
@@ -48,7 +51,7 @@ void main() {
       MaterialApp(
         theme: buildTheme(darkPalette),
         home: LoginScreen(
-          onLogin: (_) {},
+          onLogin: onLogin ?? (_) {},
           clientFactory: clientFactory,
           credentialSaver: credentialSaver,
           connectionTimeout: connectionTimeout,
@@ -108,6 +111,101 @@ void main() {
 
     expect(find.textContaining('could not save this account'), findsOneWidget);
     expect(find.text('Enter Lumen'), findsOneWidget);
+  });
+
+  testWidgets(
+    'successful login releases its spinner after notifying the host',
+    (tester) async {
+      XtreamCredentials? loggedIn;
+      await pumpLogin(
+        tester,
+        clientFactory: _SuccessfulLoginClient.new,
+        credentialSaver: (_) async {},
+        onLogin: (credentials) => loggedIn = credentials,
+      );
+
+      await tester.tap(find.text('Enter Lumen'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      expect(loggedIn?.username, 'viewer');
+      expect(find.text('Opening your library…'), findsNothing);
+      final submit = tester.widget<FilledButton>(
+        find.bySubtype<FilledButton>(),
+      );
+      expect(submit.onPressed, isNotNull);
+    },
+  );
+
+  testWidgets('post-login host failure is not shown as a provider failure', (
+    tester,
+  ) async {
+    await pumpLogin(
+      tester,
+      clientFactory: _SuccessfulLoginClient.new,
+      credentialSaver: (_) async {},
+      onLogin: (_) => throw StateError('host transition failed'),
+    );
+
+    await tester.tap(find.text('Enter Lumen'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(
+      find.textContaining('could not connect to this provider'),
+      findsNothing,
+    );
+    expect(find.text('Checking provider…'), findsNothing);
+    expect(find.text('Enter Lumen'), findsOneWidget);
+  });
+
+  testWidgets('TV D-pad follows the complete login route', (tester) async {
+    await pumpLogin(tester, clientFactory: _SuccessfulLoginClient.new);
+
+    final fields = tester
+        .widgetList<TextField>(find.byType(TextField))
+        .toList();
+    final submit = tester.widget<FilledButton>(find.bySubtype<FilledButton>());
+    final playlist = tester.widget<TextButton>(find.bySubtype<TextButton>());
+    final demo = tester.widget<OutlinedButton>(
+      find.bySubtype<OutlinedButton>(),
+    );
+
+    submit.focusNode!.requestFocus();
+    await tester.pump();
+    expect(submit.focusNode!.hasFocus, isTrue);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+    await tester.pump(const Duration(milliseconds: 220));
+    expect(fields[1].focusNode!.hasFocus, isTrue);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump(const Duration(milliseconds: 220));
+    expect(fields[2].focusNode!.hasFocus, isTrue);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+    await tester.pump(const Duration(milliseconds: 220));
+    expect(fields[0].focusNode!.hasFocus, isTrue);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump(const Duration(milliseconds: 220));
+    expect(fields[1].focusNode!.hasFocus, isTrue);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump(const Duration(milliseconds: 220));
+    expect(submit.focusNode!.hasFocus, isTrue);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump(const Duration(milliseconds: 220));
+    expect(playlist.focusNode!.hasFocus, isTrue);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump(const Duration(milliseconds: 220));
+    expect(demo.focusNode!.hasFocus, isTrue);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+    await tester.pump(const Duration(milliseconds: 220));
+    expect(playlist.focusNode!.hasFocus, isTrue);
   });
 
   test('provider errors never expose a credential-bearing URI', () {

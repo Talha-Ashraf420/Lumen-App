@@ -75,7 +75,12 @@ class MediaImage extends StatelessWidget {
       fit: fit,
       alignment: alignment,
       memCacheWidth: memCacheWidth,
-      fadeInDuration: const Duration(milliseconds: 220),
+      // Catalog cards already have an entrance transition. Starting another
+      // fade controller for every image arriving during a fast fling creates a
+      // burst of concurrent animations and visible frame misses.
+      fadeInDuration: Duration.zero,
+      fadeOutDuration: Duration.zero,
+      useOldImageOnUrlChange: true,
       placeholder: placeholder == null ? null : (_, _) => placeholder!,
       errorWidget: (_, _, _) => error ?? const SizedBox.shrink(),
     );
@@ -111,6 +116,8 @@ class _FocusableTapState extends State<FocusableTap> {
     SingleActivator(LogicalKeyboardKey.numpadEnter): ActivateIntent(),
     SingleActivator(LogicalKeyboardKey.space): ActivateIntent(),
     SingleActivator(LogicalKeyboardKey.select): ActivateIntent(),
+    SingleActivator(LogicalKeyboardKey.accept): ActivateIntent(),
+    SingleActivator(LogicalKeyboardKey.execute): ActivateIntent(),
     SingleActivator(LogicalKeyboardKey.gameButtonA): ActivateIntent(),
   };
 
@@ -163,6 +170,7 @@ class _FocusableTapState extends State<FocusableTap> {
 class RemoteTap extends StatefulWidget {
   final Widget child;
   final VoidCallback? onTap;
+  final FocusNode? focusNode;
   final HitTestBehavior? behavior;
   final bool autofocus;
   final String? semanticLabel;
@@ -173,6 +181,7 @@ class RemoteTap extends StatefulWidget {
     super.key,
     required this.child,
     required this.onTap,
+    this.focusNode,
     this.behavior,
     this.autofocus = false,
     this.semanticLabel,
@@ -244,6 +253,7 @@ class _RemoteTapState extends State<RemoteTap> {
     final active = enabled && (_focused || _hovered);
     return FocusableActionDetector(
       enabled: enabled,
+      focusNode: widget.focusNode,
       autofocus: widget.autofocus,
       mouseCursor: enabled ? SystemMouseCursors.click : MouseCursor.defer,
       shortcuts: _FocusableTapState._activators,
@@ -360,11 +370,18 @@ class Wordmark extends StatelessWidget {
 /// Standalone mark used in the compact navigation dock.
 class LumenMark extends StatelessWidget {
   final double size; // height of the mark
-  const LumenMark({super.key, this.size = 24});
+  final Color? signal;
+  final Color? frame;
+
+  const LumenMark({super.key, this.size = 24, this.signal, this.frame});
+
   @override
   Widget build(BuildContext context) => CustomPaint(
     size: Size.square(size),
-    painter: _LumenMarkPainter(signal: accentInk, frame: textHi),
+    painter: _LumenMarkPainter(
+      signal: signal ?? accentInk,
+      frame: frame ?? textHi,
+    ),
   );
 }
 
@@ -883,46 +900,53 @@ class Aurora extends StatelessWidget {
   const Aurora({super.key});
   @override
   Widget build(BuildContext context) {
-    return IgnorePointer(
-      child: Stack(
-        children: [
-          Positioned.fill(child: ColoredBox(color: bg)),
-          Positioned(
-            top: -160,
-            left: -120,
-            child: _blob(accent.withValues(alpha: 0.22), 380),
-          ),
-          Positioned(
-            top: 80,
-            right: -140,
-            child: _blob(accent2.withValues(alpha: 0.14), 340),
-          ),
-          Positioned(
-            bottom: -160,
-            left: 20,
-            child: _blob(const Color(0xFF11433A).withValues(alpha: 0.4), 320),
-          ),
-        ],
+    return RepaintBoundary(
+      child: IgnorePointer(
+        child: Stack(
+          children: [
+            Positioned.fill(child: ColoredBox(color: bg)),
+            Positioned(
+              top: -160,
+              left: -120,
+              child: _blob(accent.withValues(alpha: 0.22), 380, animated: true),
+            ),
+            Positioned(
+              top: 80,
+              right: -140,
+              child: _blob(accent2.withValues(alpha: 0.14), 340),
+            ),
+            Positioned(
+              bottom: -160,
+              left: 20,
+              child: _blob(const Color(0xFF11433A).withValues(alpha: 0.4), 320),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _blob(Color c, double s) =>
-      Container(
-            width: s,
-            height: s,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: RadialGradient(colors: [c, c.withValues(alpha: 0)]),
-            ),
-          )
-          .animate(onPlay: (c) => c.repeat(reverse: true))
-          .moveY(
-            begin: -18,
-            end: 18,
-            duration: 7.seconds,
-            curve: Curves.easeInOut,
-          );
+  Widget _blob(Color c, double s, {bool animated = false}) {
+    final blob = Container(
+      width: s,
+      height: s,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: RadialGradient(colors: [c, c.withValues(alpha: 0)]),
+      ),
+    );
+    if (!animated) return blob;
+    // One compositor animation is enough to keep the background alive. The old
+    // version ran three perpetual tickers per visited page.
+    return blob
+        .animate(onPlay: (controller) => controller.repeat(reverse: true))
+        .moveY(
+          begin: -18,
+          end: 18,
+          duration: 7.seconds,
+          curve: Curves.easeInOut,
+        );
+  }
 }
 
 /// Branded loading splash.
@@ -1050,7 +1074,7 @@ class DetailMetadataSkeleton extends StatelessWidget {
 
 /// A shimmer skeleton loader — a hero block + poster rows with a light sweep
 /// gliding across. No spinner, no logo, no text; it reads as the page
-/// materialising. Used for full pages (Home, Discover, detail).
+/// materialising. Used for full pages such as Home and media details.
 class BrandedLoading extends StatelessWidget {
   final bool background;
   const BrandedLoading({super.key, this.background = false});
@@ -1115,7 +1139,7 @@ class GridLoading extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: cols,
-              childAspectRatio: channel ? 0.82 : 0.66,
+              childAspectRatio: channel ? 0.76 : 0.66,
               crossAxisSpacing: 13,
               mainAxisSpacing: 20,
             ),
@@ -1288,13 +1312,16 @@ class PosterCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return FocusableTap(
-          autofocus: autofocus,
-          onTap: onTap,
-          builder: (context, active) => _visual(context, active),
-        )
+    final interactive = FocusableTap(
+      autofocus: autofocus,
+      onTap: onTap,
+      builder: (context, active) => _visual(context, active),
+    );
+    // Animate the first viewport, not an entire 50+ item result page at once.
+    if (index >= 12) return interactive;
+    return interactive
         .animate()
-        .fadeIn(duration: 320.ms, delay: (index.clamp(0, 12) * 30).ms)
+        .fadeIn(duration: 320.ms, delay: (index * 30).ms)
         .slideY(begin: 0.1, end: 0, curve: Curves.easeOutCubic);
   }
 
@@ -1309,7 +1336,16 @@ class PosterCard extends StatelessWidget {
           children: [
             const _Fallback(),
             if (w.image.isNotEmpty)
-              MediaImage(source: w.image, fit: BoxFit.cover),
+              MediaImage(
+                source: w.image,
+                fit: BoxFit.cover,
+                // Provider posters are frequently multi-megapixel files. Decode
+                // them near their on-screen size to avoid memory churn and GC
+                // pauses while a catalog is flung.
+                memCacheWidth: (220 * MediaQuery.devicePixelRatioOf(context))
+                    .round()
+                    .clamp(320, 640),
+              ),
             // bottom scrim for the title
             const DecoratedBox(
               decoration: BoxDecoration(
@@ -1361,12 +1397,15 @@ class PosterCard extends StatelessWidget {
               Positioned(
                 left: 8,
                 top: 8,
-                child: Glass(
-                  radius: 7,
-                  blur: 6,
+                child: Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 6,
                     vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xD9141719),
+                    borderRadius: BorderRadius.circular(7),
+                    border: Border.all(color: Colors.white12),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -1505,6 +1544,10 @@ class ChannelCard extends StatelessWidget {
                       ? MediaImage(
                           source: logo,
                           fit: BoxFit.contain,
+                          memCacheWidth:
+                              (180 * MediaQuery.devicePixelRatioOf(context))
+                                  .round()
+                                  .clamp(256, 512),
                           error: Icon(
                             Icons.live_tv_rounded,
                             color: subtle,
@@ -1557,32 +1600,34 @@ class ChannelCard extends StatelessWidget {
         ),
       ],
     );
-    return FocusableTap(
-          onTap: onTap,
-          builder: (context, active) => AnimatedScale(
-            scale: active ? 1.05 : 1.0,
-            duration: const Duration(milliseconds: 150),
-            curve: Curves.easeOut,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 150),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: active
-                    ? [
-                        BoxShadow(
-                          color: accent.withValues(alpha: 0.4),
-                          blurRadius: 22,
-                          offset: const Offset(0, 10),
-                        ),
-                      ]
-                    : null,
-              ),
-              child: tile,
-            ),
+    final interactive = FocusableTap(
+      onTap: onTap,
+      builder: (context, active) => AnimatedScale(
+        scale: active ? 1.05 : 1.0,
+        duration: const Duration(milliseconds: 150),
+        curve: Curves.easeOut,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: active
+                ? [
+                    BoxShadow(
+                      color: accent.withValues(alpha: 0.4),
+                      blurRadius: 22,
+                      offset: const Offset(0, 10),
+                    ),
+                  ]
+                : null,
           ),
-        )
+          child: tile,
+        ),
+      ),
+    );
+    if (index >= 12) return interactive;
+    return interactive
         .animate()
-        .fadeIn(duration: 300.ms, delay: (index.clamp(0, 12) * 28).ms)
+        .fadeIn(duration: 300.ms, delay: (index * 28).ms)
         .slideY(begin: 0.08, end: 0, curve: Curves.easeOutCubic);
   }
 }

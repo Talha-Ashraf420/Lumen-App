@@ -1,7 +1,6 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
-const privacyPolicyUrl =
-    'https://talha-ashraf420.github.io/Lumen-App/privacy-policy.html';
+const privacyPolicyUrl = 'https://lumen-launch.vercel.app/privacy';
 const supportEmail = 'talhaashraf81@gmail.com';
 
 class LegalAcceptance {

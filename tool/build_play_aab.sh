@@ -42,7 +42,10 @@ if git -C "$repo_dir" ls-files --error-unmatch \
 fi
 
 cd "$repo_dir"
-flutter build appbundle --release "$@"
+ORG_GRADLE_PROJECT_googlePlayBuild=true flutter build appbundle \
+  --release \
+  "$@" \
+  --dart-define=GOOGLE_PLAY_BUILD=true
 
 bundle="$repo_dir/build/app/outputs/bundle/release/app-release.aab"
 if [[ ! -f "$bundle" ]]; then

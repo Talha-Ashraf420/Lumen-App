@@ -27,6 +27,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.ui.PlayerView
+import androidx.media3.ui.R as Media3UiR
 
 /**
  * Full-screen native fallback for provider streams that libmpv cannot open.
@@ -345,6 +346,9 @@ class Media3PlayerActivity : Activity() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (::errorPanel.isInitialized && errorPanel.visibility == View.VISIBLE) {
+            return super.dispatchKeyEvent(event)
+        }
         if (
             event.action == KeyEvent.ACTION_DOWN &&
             event.keyCode in listOf(
@@ -353,12 +357,19 @@ class Media3PlayerActivity : Activity() {
                 KeyEvent.KEYCODE_DPAD_LEFT,
                 KeyEvent.KEYCODE_DPAD_RIGHT,
                 KeyEvent.KEYCODE_DPAD_CENTER,
-                KeyEvent.KEYCODE_ENTER
+                KeyEvent.KEYCODE_ENTER,
+                KeyEvent.KEYCODE_NUMPAD_ENTER,
+                KeyEvent.KEYCODE_BUTTON_A,
+                KeyEvent.KEYCODE_SPACE
             ) &&
             !playerView.isControllerFullyVisible
         ) {
             playerView.showController()
-            playerView.requestFocus()
+            playerView.post {
+                playerView.findViewById<View>(Media3UiR.id.exo_play_pause)
+                    ?.requestFocus()
+                    ?: playerView.requestFocus()
+            }
             return true
         }
         return super.dispatchKeyEvent(event)

@@ -14,7 +14,7 @@ as a policy issue.
 - Package name: `com.talhaashraf.lumen`
 - Contact email: `talhaashraf81@gmail.com`
 - Privacy policy:
-  `https://talha-ashraf420.github.io/Lumen-App/privacy-policy.html`
+  `https://lumen-launch.vercel.app/privacy`
 
 ## Store listing
 

@@ -10,7 +10,7 @@ class MediaRef {
   final String name;
   final String image;
   final String url; // direct play url (used for live channels)
-  final String cat; // category id (used to infer taste for Discover)
+  final String cat; // category id retained for library context and statistics
   const MediaRef({
     required this.kind,
     required this.id,

@@ -960,7 +960,10 @@ class SearchScreenState extends State<SearchScreen>
                   constraints.maxWidth,
                   tile: live ? 150 : 136,
                 ),
-                childAspectRatio: live ? 0.82 : 0.66,
+                // A channel tile is square artwork plus its label. At three
+                // columns on a phone, .82 left less room than the label's
+                // actual line box and produced a repeating 1.5px overflow.
+                childAspectRatio: live ? 0.76 : 0.66,
                 crossAxisSpacing: 13,
                 mainAxisSpacing: 20,
               ),
