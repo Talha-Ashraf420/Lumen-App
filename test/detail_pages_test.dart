@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen_tv/catalog_cache.dart';
 import 'package:lumen_tv/catalog_store.dart';
 import 'package:lumen_tv/models.dart';
+import 'package:lumen_tv/playback.dart';
 import 'package:lumen_tv/screens/home_screen.dart';
 import 'package:lumen_tv/screens/movie_detail_screen.dart';
 import 'package:lumen_tv/screens/search_screen.dart';
@@ -391,6 +392,48 @@ void main() {
       const Size(46, 46),
     );
     expect(client.seriesInfoCalls, 1);
+    expect(tester.takeException(), isNull);
+    await disposeUi(tester);
+  });
+
+  testWidgets('series episodes render on a phone without layout failures', (
+    tester,
+  ) async {
+    final client = _DetailClient();
+    List<PlayerItem>? openedItems;
+    int? openedIndex;
+    await pumpAt(
+      tester,
+      SeriesDetailScreen(
+        client: client,
+        seriesId: 91,
+        title: 'Signal House',
+        episodeOpener: (items, index) {
+          openedItems = items;
+          openedIndex = index;
+        },
+      ),
+      const Size(390, 844),
+    );
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(find.text('CHOOSE A CHAPTER'), findsOneWidget);
+    expect(find.text('EPISODE 01'), findsWidgets);
+    expect(find.text('The Signal'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.ensureVisible(find.text('The Signal'));
+    await tester.pump();
+    await tester.tap(find.text('The Signal'));
+    await tester.pump();
+
+    expect(openedIndex, 0);
+    expect(openedItems, hasLength(2));
+    expect(openedItems!.first.title, 'Signal House · The Signal');
+    expect(
+      openedItems!.first.url,
+      endsWith('/series/viewer/test-only/101.mp4'),
+    );
     expect(tester.takeException(), isNull);
     await disposeUi(tester);
   });

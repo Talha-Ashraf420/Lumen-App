@@ -13,6 +13,9 @@ import '../tmdb.dart';
 import '../widgets.dart';
 import '../xtream.dart';
 
+typedef EpisodePlaylistOpener =
+    void Function(List<PlayerItem> items, int index);
+
 class SeriesDetailScreen extends StatefulWidget {
   const SeriesDetailScreen({
     super.key,
@@ -20,6 +23,7 @@ class SeriesDetailScreen extends StatefulWidget {
     required this.seriesId,
     required this.title,
     this.preview,
+    this.episodeOpener,
   });
 
   final XtreamClient client;
@@ -29,6 +33,10 @@ class SeriesDetailScreen extends StatefulWidget {
   /// Lightweight catalog data lets the page paint before the much larger
   /// episode response arrives.
   final Series? preview;
+
+  /// Optional playback seam used by embedders and widget tests. Production
+  /// defaults to the app-level player so episode playback remains continuous.
+  final EpisodePlaylistOpener? episodeOpener;
 
   @override
   State<SeriesDetailScreen> createState() => _SeriesDetailScreenState();
@@ -79,7 +87,7 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
         favRef: reference,
       );
     }).toList();
-    PlaybackController.instance.open(items, index);
+    (widget.episodeOpener ?? PlaybackController.instance.open)(items, index);
   }
 
   int _nextEpisodeIndex(List<Episode> episodes) {
@@ -772,109 +780,113 @@ class _EpisodeChapter extends StatelessWidget {
         : episode.title;
     final progress = Library.instance.progress['ep:${episode.id}'];
 
-    return RemoteTap(
-          onTap: onPlay,
-          child: Container(
-            clipBehavior: Clip.antiAlias,
-            decoration: BoxDecoration(
-              color: surface,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: line),
-            ),
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 150,
-                  height: double.infinity,
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      _EpisodeFallback(number: episode.episodeNum),
-                      if (image.isNotEmpty)
-                        MediaImage(
-                          source: image,
-                          fit: BoxFit.cover,
-                          memCacheWidth: 420,
+    // SliverList gives phone children an unbounded vertical constraint. A
+    // finite chapter height keeps the artwork Stack measurable there, while a
+    // desktop SliverGrid can still tighten this to its 152px main-axis extent.
+    final chapter = SizedBox(
+      height: 142,
+      child: RemoteTap(
+        onTap: onPlay,
+        child: Container(
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            color: surface,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: line),
+          ),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 150,
+                height: double.infinity,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    _EpisodeFallback(number: episode.episodeNum),
+                    if (image.isNotEmpty)
+                      MediaImage(
+                        source: image,
+                        fit: BoxFit.cover,
+                        memCacheWidth: 420,
+                      ),
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.centerRight,
+                          end: Alignment.centerLeft,
+                          colors: [surface, Colors.transparent],
                         ),
-                      DecoratedBox(
+                      ),
+                    ),
+                    Center(
+                      child: Container(
+                        width: 38,
+                        height: 38,
                         decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.centerRight,
-                            end: Alignment.centerLeft,
-                            colors: [surface, Colors.transparent],
-                          ),
+                          color: Colors.black.withValues(alpha: .48),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white24),
+                        ),
+                        child: const Icon(
+                          Icons.play_arrow_rounded,
+                          color: Colors.white,
                         ),
                       ),
-                      Center(
-                        child: Container(
-                          width: 38,
-                          height: 38,
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: .48),
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white24),
-                          ),
-                          child: const Icon(
-                            Icons.play_arrow_rounded,
-                            color: Colors.white,
-                          ),
+                    ),
+                    if (progress != null)
+                      Align(
+                        alignment: Alignment.bottomCenter,
+                        child: LinearProgressIndicator(
+                          value: progress.fraction,
+                          minHeight: 3,
+                          backgroundColor: Colors.white24,
+                          valueColor: AlwaysStoppedAnimation(accent),
                         ),
                       ),
-                      if (progress != null)
-                        Align(
-                          alignment: Alignment.bottomCenter,
-                          child: LinearProgressIndicator(
-                            value: progress.fraction,
-                            minHeight: 3,
-                            backgroundColor: Colors.white24,
-                            valueColor: AlwaysStoppedAnimation(accent),
-                          ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'EPISODE ${episode.episodeNum.toString().padLeft(2, '0')}',
+                        style: kSection(),
+                      ),
+                      const SizedBox(height: 7),
+                      Text(
+                        title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          height: 1.22,
+                          fontWeight: FontWeight.w700,
                         ),
+                      ),
+                      if (progress != null) ...[
+                        const SizedBox(height: 7),
+                        Text(
+                          '${(progress.fraction * 100).round()}% watched',
+                          style: TextStyle(color: accentInk, fontSize: 11.5),
+                        ),
+                      ],
                     ],
                   ),
                 ),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'EPISODE ${episode.episodeNum.toString().padLeft(2, '0')}',
-                          style: kSection(),
-                        ),
-                        const SizedBox(height: 7),
-                        Text(
-                          title,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 15,
-                            height: 1.22,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        if (progress != null) ...[
-                          const SizedBox(height: 7),
-                          Text(
-                            '${(progress.fraction * 100).round()}% watched',
-                            style: TextStyle(color: accentInk, fontSize: 11.5),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
-                _EpisodeDownload(
-                  id: 'ep:${episode.id}',
-                  onDownload: onDownload,
-                ),
-                const SizedBox(width: 8),
-              ],
-            ),
+              ),
+              _EpisodeDownload(id: 'ep:${episode.id}', onDownload: onDownload),
+              const SizedBox(width: 8),
+            ],
           ),
-        )
+        ),
+      ),
+    );
+    return chapter
         .animate()
         .fadeIn(duration: 260.ms, delay: (index.clamp(0, 10) * 20).ms)
         .slideY(begin: .05, end: 0);

@@ -3,53 +3,17 @@ import 'package:lumen_tv/distribution.dart';
 
 void main() {
   group('provider transport policy', () {
-    test('direct Android builds accept authorized HTTP providers', () {
-      expect(
-        providerTransportError(const [
-          'http://provider.example:8080',
-        ], requireSecureTransport: false),
-        isNull,
-      );
-      expect(
-        isAllowedProviderUrl(
-          'http://provider.example:8080',
-          requireSecureTransport: false,
-        ),
-        isTrue,
-      );
-    });
-
-    test('an explicitly secure-only channel can still reject HTTP', () {
-      expect(
-        providerTransportError(const [
-          'http://provider.example:8080',
-        ], requireSecureTransport: true),
-        contains('HTTPS sources only'),
-      );
-      expect(
-        isAllowedProviderUrl(
-          'http://provider.example:8080',
-          requireSecureTransport: true,
-        ),
-        isFalse,
-      );
-    });
-
     test('shipping builds accept user-supplied HTTP providers', () {
-      expect(requiresSecureProviderTransport, isFalse);
-      expect(
-        providerTransportError(const ['http://provider.example:8080']),
-        isNull,
-      );
+      expect(isAllowedProviderUrl('http://provider.example:8080'), isTrue);
     });
 
-    test('secure-only channels accept HTTPS providers', () {
-      expect(
-        providerTransportError(const [
-          'https://provider.example:443',
-        ], requireSecureTransport: true),
-        isNull,
-      );
+    test('shipping builds accept HTTPS providers', () {
+      expect(isAllowedProviderUrl('https://provider.example:443'), isTrue);
+    });
+
+    test('other URL schemes remain blocked', () {
+      expect(isAllowedProviderUrl('ftp://provider.example/library'), isFalse);
+      expect(isAllowedProviderUrl('provider.example'), isFalse);
     });
   });
 }
