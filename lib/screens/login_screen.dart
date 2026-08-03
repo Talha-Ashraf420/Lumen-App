@@ -202,14 +202,6 @@ class _LoginScreenState extends State<LoginScreen> {
     });
     var authenticated = false;
     try {
-      if (!c.isDemo) {
-        final transportError = providerTransportError([
-          c.baseUrl,
-          c.m3uUrl,
-          c.epgUrl,
-        ]);
-        if (transportError != null) throw XtreamException(transportError);
-      }
       await _bounded(
         client.authenticate(),
         widget.connectionTimeout,
@@ -443,11 +435,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   return;
                 }
                 if (!isAllowedProviderUrl(raw)) {
-                  setLocal(
-                    () => err = requiresSecureProviderTransport
-                        ? 'Enter a valid HTTPS URL.'
-                        : 'Enter a valid HTTP or HTTPS URL.',
-                  );
+                  setLocal(() => err = 'Enter a valid HTTP or HTTPS URL.');
                   return;
                 }
                 // Xtream-backed link → full login.
@@ -459,11 +447,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 // Plain M3U playlist.
                 final epg = epgCtrl.text.trim();
                 if (epg.isNotEmpty && !isAllowedProviderUrl(epg)) {
-                  setLocal(
-                    () => err = requiresSecureProviderTransport
-                        ? 'Enter a valid HTTPS EPG URL.'
-                        : 'Enter a valid HTTP or HTTPS EPG URL.',
-                  );
+                  setLocal(() => err = 'Enter a valid HTTP or HTTPS EPG URL.');
                   return;
                 }
                 Navigator.pop(
