@@ -957,7 +957,9 @@ class _HomeScreenState extends State<HomeScreen>
 
   Widget _searchBar() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+      // The shell owns the persistent account control in the top-right corner.
+      // Reserve its footprint so the search affordance never sits underneath.
+      padding: const EdgeInsets.fromLTRB(16, 4, 76, 0),
       child: SearchField(
         hint: 'Movies, series, channels…',
         readOnly: true,

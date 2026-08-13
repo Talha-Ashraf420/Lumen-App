@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import '../downloads.dart';
 import '../home_config.dart';
 import '../library.dart';
@@ -24,11 +23,13 @@ class ProfileScreen extends StatefulWidget {
   final XtreamClient client;
   final Future<void> Function() onLogout;
   final void Function(XtreamCredentials) onSwitch;
+  final FocusNode? shellRailFocusNode;
   const ProfileScreen({
     super.key,
     required this.client,
     required this.onLogout,
     required this.onSwitch,
+    this.shellRailFocusNode,
   });
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -39,6 +40,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
   List<XtreamCredentials> _profiles = [];
   bool _accountInfoLoading = true;
   bool _signingOut = false;
+
+  KeyEventResult _handlePageKey(FocusNode _, KeyEvent event) {
+    if ((event is! KeyDownEvent && event is! KeyRepeatEvent) ||
+        event.logicalKey != LogicalKeyboardKey.arrowLeft) {
+      return KeyEventResult.ignored;
+    }
+    final rail = widget.shellRailFocusNode;
+    final focusedContext = FocusManager.instance.primaryFocus?.context;
+    final pageBox = context.findRenderObject();
+    final focusedBox = focusedContext?.findRenderObject();
+    if (rail == null ||
+        !rail.canRequestFocus ||
+        pageBox is! RenderBox ||
+        focusedBox is! RenderBox) {
+      return KeyEventResult.ignored;
+    }
+    final pageLeft = pageBox.localToGlobal(Offset.zero).dx;
+    final focusedCenter = focusedBox
+        .localToGlobal(focusedBox.size.center(Offset.zero))
+        .dx;
+    // The left profile column (or the single column on smaller TVs) exits to
+    // the stable shell rail. Controls in the right column retain normal Left
+    // navigation between theme/accent choices and the account column.
+    if (focusedCenter <= pageLeft + pageBox.size.width * .42) {
+      rail.requestFocus();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
 
   @override
   void initState() {
@@ -98,6 +128,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         actions: [
           TextButton(
+            autofocus: true,
             onPressed: () => Navigator.pop(ctx, false),
             child: Text('Cancel', style: TextStyle(color: muted)),
           ),
@@ -138,6 +169,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         actions: [
           TextButton(
+            autofocus: true,
             onPressed: () => Navigator.pop(ctx, false),
             child: Text('Cancel', style: TextStyle(color: muted)),
           ),
@@ -285,43 +317,48 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ],
         );
 
-        return SingleChildScrollView(
-          padding: EdgeInsets.fromLTRB(
-            shellIsWide ? 28 : 18,
-            shellIsWide ? 18 : 12,
-            shellIsWide ? 28 : 18,
-            120,
-          ),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 1160),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (!shellIsWide) ...[
-                    Text('Profile', style: kTitle()),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Your account, your Lumen.',
-                      style: TextStyle(color: muted, fontSize: 13),
-                    ),
-                    const SizedBox(height: 18),
+        return Focus(
+          canRequestFocus: false,
+          skipTraversal: true,
+          onKeyEvent: _handlePageKey,
+          child: SingleChildScrollView(
+            padding: EdgeInsets.fromLTRB(
+              shellIsWide ? 28 : 18,
+              shellIsWide ? 18 : 12,
+              shellIsWide ? 28 : 18,
+              120,
+            ),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 1160),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (!shellIsWide) ...[
+                      Text('Profile', style: kTitle()),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Your account, your Lumen.',
+                        style: TextStyle(color: muted, fontSize: 13),
+                      ),
+                      const SizedBox(height: 18),
+                    ],
+                    if (twoColumn)
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SizedBox(width: 350, child: accountColumn),
+                          const SizedBox(width: 18),
+                          Expanded(child: settingsColumn),
+                        ],
+                      )
+                    else ...[
+                      accountColumn,
+                      const SizedBox(height: 16),
+                      settingsColumn,
+                    ],
                   ],
-                  if (twoColumn)
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        SizedBox(width: 350, child: accountColumn),
-                        const SizedBox(width: 18),
-                        Expanded(child: settingsColumn),
-                      ],
-                    )
-                  else ...[
-                    accountColumn,
-                    const SizedBox(height: 16),
-                    settingsColumn,
-                  ],
-                ],
+                ),
               ),
             ),
           ),
@@ -1022,45 +1059,124 @@ class _ThemeSelector extends StatelessWidget {
   }
 }
 
-/// Accent picker: five named Lumen directions plus a custom colour wheel.
+/// Accent picker: five named Lumen directions plus D-pad-friendly sliders.
 class _AccentPicker extends StatelessWidget {
   const _AccentPicker();
 
   Future<void> _pickCustom(BuildContext context, Color initial) async {
     var picked = initial;
+    var hsv = HSVColor.fromColor(initial);
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: surface,
-        title: const Text('Custom accent'),
-        content: SingleChildScrollView(
-          child: ColorPicker(
-            pickerColor: initial,
-            onColorChanged: (c) => picked = c,
-            enableAlpha: false,
-            displayThumbColor: true,
-            labelTypes: const [],
-            pickerAreaHeightPercent: 0.7,
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancel', style: TextStyle(color: muted)),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: picked,
-              foregroundColor: foregroundFor(picked),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          backgroundColor: surface,
+          title: const Text('Custom accent'),
+          content: SizedBox(
+            width: 430,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  height: 54,
+                  decoration: BoxDecoration(
+                    color: picked,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: Colors.white24),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  'Use Left/Right on the remote to adjust each value.',
+                  style: TextStyle(color: muted, fontSize: 12),
+                ),
+                const SizedBox(height: 8),
+                _colorSlider(
+                  label: 'Hue',
+                  value: hsv.hue,
+                  max: 360,
+                  divisions: 360,
+                  onChanged: (value) => setLocal(() {
+                    hsv = hsv.withHue(value);
+                    picked = hsv.toColor();
+                  }),
+                ),
+                _colorSlider(
+                  label: 'Saturation',
+                  value: hsv.saturation * 100,
+                  max: 100,
+                  divisions: 100,
+                  onChanged: (value) => setLocal(() {
+                    hsv = hsv.withSaturation(value / 100);
+                    picked = hsv.toColor();
+                  }),
+                ),
+                _colorSlider(
+                  label: 'Brightness',
+                  value: hsv.value * 100,
+                  max: 100,
+                  divisions: 100,
+                  onChanged: (value) => setLocal(() {
+                    hsv = hsv.withValue(value / 100);
+                    picked = hsv.toColor();
+                  }),
+                ),
+              ],
             ),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Apply'),
           ),
-        ],
+          actions: [
+            TextButton(
+              autofocus: true,
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text('Cancel', style: TextStyle(color: muted)),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: picked,
+                foregroundColor: foregroundFor(picked),
+              ),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Apply'),
+            ),
+          ],
+        ),
       ),
     );
     if (ok == true) ThemeController.instance.setAccent(picked);
   }
+
+  Widget _colorSlider({
+    required String label,
+    required double value,
+    required double max,
+    required int divisions,
+    required ValueChanged<double> onChanged,
+  }) => Row(
+    children: [
+      SizedBox(
+        width: 82,
+        child: Text(label, style: TextStyle(color: textHi, fontSize: 12)),
+      ),
+      Expanded(
+        child: Slider(
+          value: value.clamp(0, max),
+          min: 0,
+          max: max,
+          divisions: divisions,
+          label: value.round().toString(),
+          onChanged: onChanged,
+        ),
+      ),
+      SizedBox(
+        width: 36,
+        child: Text(
+          value.round().toString(),
+          textAlign: TextAlign.right,
+          style: TextStyle(color: muted, fontSize: 11),
+        ),
+      ),
+    ],
+  );
 
   @override
   Widget build(BuildContext context) {

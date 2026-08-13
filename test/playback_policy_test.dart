@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen_tv/models.dart';
 import 'package:lumen_tv/playback.dart';
@@ -142,6 +143,42 @@ void main() {
     expect(PlaybackBufferPolicy.resumeFor(true), const Duration(seconds: 3));
     expect(PlaybackBufferPolicy.aheadFor(false), const Duration(seconds: 30));
     expect(PlaybackBufferPolicy.resumeFor(false), const Duration(seconds: 5));
+  });
+
+  test('Android playback uses an embedded hardware surface', () {
+    final android = videoConfigurationFor(TargetPlatform.android);
+    expect(android.vo, 'mediacodec_embed');
+    expect(android.hwdec, 'mediacodec');
+    expect(android.enableHardwareAcceleration, isTrue);
+    expect(android.androidAttachSurfaceAfterVideoParameters, isFalse);
+  });
+
+  test('Android streaming follows the audio clock to prevent drift', () {
+    final properties = streamingPropertiesFor(TargetPlatform.android);
+    expect(properties['video-sync'], 'audio');
+    expect(properties['autosync'], '30');
+    expect(properties['framedrop'], 'vo');
+    expect(properties['untimed'], 'no');
+
+    const live = PlayerItem(
+      'http://provider.example/live.ts',
+      'Live',
+      isLive: true,
+    );
+    const vod = PlayerItem('http://provider.example/movie.mp4', 'Movie');
+    final liveProperties = streamingPropertiesForItem(
+      TargetPlatform.android,
+      live,
+    );
+    final vodProperties = streamingPropertiesForItem(
+      TargetPlatform.android,
+      vod,
+    );
+    expect(liveProperties['audio-delay'], '0');
+    expect(liveProperties['cache-secs'], '12');
+    expect(liveProperties['cache-pause-wait'], '3');
+    expect(vodProperties['cache-secs'], '30');
+    expect(vodProperties['cache-pause-wait'], '5');
   });
 
   test('Xtream URLs never end with an empty extension', () {

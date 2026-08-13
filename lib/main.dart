@@ -19,6 +19,7 @@ import 'store.dart';
 import 'library.dart';
 import 'legal.dart';
 import 'theme.dart';
+import 'widgets.dart';
 import 'xtream.dart';
 import 'screens/login_screen.dart';
 import 'screens/legal_screen.dart';
@@ -60,9 +61,14 @@ Future<void> main() async {
   );
 
   runApp(LumenApp(startup: startup));
-  WidgetsBinding.instance.addPostFrameCallback(
-    (_) => PlaybackController.instance.prewarm(),
-  );
+  // Android TV playback uses the native Media3 SurfaceView. Avoid waking the
+  // secondary libmpv decoder at launch; that saves memory and removes a burst
+  // of native setup work while the first catalog is becoming focusable.
+  if (!DeviceProfile.isTelevision) {
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => PlaybackController.instance.prewarm(),
+    );
+  }
 }
 
 class LumenApp extends StatelessWidget {
@@ -74,6 +80,8 @@ class LumenApp extends StatelessWidget {
 
   final Future<void>? startup;
   final Duration minimumSplashDuration;
+  static final RemoteFocusTraversalPolicy _remoteFocusPolicy =
+      RemoteFocusTraversalPolicy();
 
   @override
   Widget build(BuildContext context) {
@@ -103,38 +111,54 @@ class LumenApp extends StatelessWidget {
           // slider) and a text style, while passing clicks through wherever the
           // player isn't painting — so the app stays interactive (e.g. while the
           // mini is docked).
-          builder: (context, child) => AnimatedBuilder(
-            animation: PlaybackController.instance,
-            child: Stack(
-              children: [
-                child ?? const SizedBox.shrink(),
-                Positioned.fill(
-                  child: Material(
-                    type: MaterialType.transparency,
-                    child: Overlay(
-                      initialEntries: [
-                        OverlayEntry(
-                          maintainState: true,
-                          opaque: false,
-                          builder: (_) => PlayerHost.overlay(),
-                        ),
-                      ],
+          builder: (context, child) => FocusTraversalGroup(
+            policy: _remoteFocusPolicy,
+            child: RemoteFocusVisibility(
+              child: AnimatedBuilder(
+                animation: PlaybackController.instance,
+                child: Stack(
+                  children: [
+                    AnimatedBuilder(
+                      animation: PlaybackController.instance,
+                      child: child ?? const SizedBox.shrink(),
+                      builder: (context, app) {
+                        final playback = PlaybackController.instance;
+                        return ExcludeFocus(
+                          excluding: playback.hasMedia && !playback.minimized,
+                          child: app!,
+                        );
+                      },
                     ),
-                  ),
+                    Positioned.fill(
+                      child: Material(
+                        type: MaterialType.transparency,
+                        child: Overlay(
+                          initialEntries: [
+                            OverlayEntry(
+                              maintainState: true,
+                              opaque: false,
+                              builder: (_) => PlayerHost.overlay(),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-            builder: (context, stack) {
-              final playback = PlaybackController.instance;
-              final playerOwnsBack = playback.hasMedia && !playback.minimized;
-              return PopScope(
-                canPop: !playerOwnsBack,
-                onPopInvokedWithResult: (didPop, _) {
-                  if (!didPop) PlayerHost.handleSystemBack();
+                builder: (context, stack) {
+                  final playback = PlaybackController.instance;
+                  final playerOwnsBack =
+                      playback.hasMedia && !playback.minimized;
+                  return PopScope(
+                    canPop: !playerOwnsBack,
+                    onPopInvokedWithResult: (didPop, _) {
+                      if (!didPop) PlayerHost.handleSystemBack();
+                    },
+                    child: stack!,
+                  );
                 },
-                child: stack!,
-              );
-            },
+              ),
+            ),
           ),
           home: LaunchGate(
             startup: startup,

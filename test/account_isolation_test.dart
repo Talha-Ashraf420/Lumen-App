@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen_tv/catalog_cache.dart';
 import 'package:lumen_tv/home_config.dart';
@@ -65,6 +66,13 @@ class _FullCatalogClient extends XtreamClient {
 
   @override
   Future<List<Category>> liveCategories() async => [Category('live', 'Live')];
+
+  @override
+  Future<Map<String, dynamic>> authenticate() async => {
+    'status': 'Active',
+    'active_cons': 1,
+    'max_connections': 2,
+  };
 }
 
 void main() {
@@ -242,7 +250,222 @@ void main() {
     await tester.pump();
   });
 
-  testWidgets('phone dock contains only the four supported root destinations', (
+  testWidgets('focusing Search in the TV rail does not steal focus', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1920, 1080);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    final client = _FullCatalogClient();
+    addTearDown(client.close);
+    await tester.runAsync(
+      () => Future.wait([
+        CatalogCache.instance.vod(client, priority: true),
+        CatalogCache.instance.series(client, priority: true),
+        CatalogCache.instance.live(client, priority: true),
+      ]),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildTheme(darkPalette),
+        home: HomeShell(
+          client: client,
+          onLogout: () async {},
+          onSwitch: (_) {},
+        ),
+      ),
+    );
+    await tester.pump(const Duration(seconds: 2));
+
+    final searchControl = tester.widget<FocusableActionDetector>(
+      find
+          .descendant(
+            of: find.byTooltip('Search'),
+            matching: find.byType(FocusableActionDetector),
+          )
+          .first,
+    );
+    searchControl.focusNode!.requestFocus();
+    await tester.pump(const Duration(milliseconds: 180));
+    expect(find.byKey(const ValueKey('shell-page-1')), findsOneWidget);
+    expect(searchControl.focusNode!.hasFocus, isTrue);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump(const Duration(milliseconds: 180));
+    final myListControl = tester.widget<FocusableActionDetector>(
+      find
+          .descendant(
+            of: find.byTooltip('My List'),
+            matching: find.byType(FocusableActionDetector),
+          )
+          .first,
+    );
+    expect(myListControl.focusNode!.hasFocus, isTrue);
+
+    searchControl.focusNode!.requestFocus();
+    await tester.pump(const Duration(milliseconds: 180));
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await tester.pump();
+    expect(searchControl.focusNode!.hasFocus, isFalse);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+  });
+
+  testWidgets(
+    'TV utility tabs enter content and return to the rail with D-pad',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1920, 1080);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+      final client = _FullCatalogClient();
+      addTearDown(client.close);
+      await Library.instance.activate(client.creds);
+      Library.instance.toggleFav(
+        const MediaRef(kind: 'movie', id: 71, name: 'Remote focus movie'),
+      );
+      await tester.runAsync(
+        () => Future.wait([
+          CatalogCache.instance.vod(client, priority: true),
+          CatalogCache.instance.series(client, priority: true),
+          CatalogCache.instance.live(client, priority: true),
+        ]),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildTheme(darkPalette),
+          home: HomeShell(
+            client: client,
+            onLogout: () async {},
+            onSwitch: (_) {},
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final myListControl = tester.widget<FocusableActionDetector>(
+        find
+            .descendant(
+              of: find.byTooltip('My List'),
+              matching: find.byType(FocusableActionDetector),
+            )
+            .first,
+      );
+      myListControl.focusNode!.requestFocus();
+      await tester.pump();
+      expect(myListControl.focusNode!.hasFocus, isTrue);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      await tester.pump();
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        'My List filter 0',
+      );
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pump();
+      expect(FocusManager.instance.primaryFocus?.debugLabel, 'My List tile 0');
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      await tester.pump();
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        'My List filter 0',
+      );
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      await tester.pump();
+      expect(myListControl.focusNode!.hasFocus, isTrue);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pump();
+      final profileControl = tester.widget<FocusableActionDetector>(
+        find
+            .descendant(
+              of: find.byTooltip('Profile'),
+              matching: find.byType(FocusableActionDetector),
+            )
+            .first,
+      );
+      expect(profileControl.focusNode!.hasFocus, isTrue);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      await tester.pump();
+      expect(profileControl.focusNode!.hasFocus, isFalse);
+      expect(FocusManager.instance.primaryFocus, isNotNull);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(seconds: 1));
+    },
+  );
+
+  testWidgets('remote Back follows shell history then asks before exit', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1920, 1080);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    final client = _FullCatalogClient();
+    addTearDown(client.close);
+    await tester.runAsync(
+      () => Future.wait([
+        CatalogCache.instance.vod(client, priority: true),
+        CatalogCache.instance.series(client, priority: true),
+        CatalogCache.instance.live(client, priority: true),
+      ]),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildTheme(darkPalette),
+        home: HomeShell(
+          client: client,
+          onLogout: () async {},
+          onSwitch: (_) {},
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(find.byKey(const ValueKey('shell-page-0')), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Movies'));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('shell-page-4')), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Series'));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('shell-page-5')), findsOneWidget);
+
+    await tester.binding.handlePopRoute();
+    await tester.pump();
+    expect(find.byKey(const ValueKey('shell-page-4')), findsOneWidget);
+
+    await tester.binding.handlePopRoute();
+    await tester.pump();
+    expect(find.byKey(const ValueKey('shell-page-0')), findsOneWidget);
+
+    final homeBack = tester.binding.handlePopRoute();
+    await tester.pump();
+    expect(find.text('Exit Lumen?'), findsOneWidget);
+    expect(find.widgetWithText(TextButton, 'No'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, 'Yes'), findsOneWidget);
+    await tester.tap(find.widgetWithText(TextButton, 'No'));
+    await tester.pump();
+    await homeBack;
+    expect(find.text('Exit Lumen?'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 1));
+  });
+
+  testWidgets('phone dock promotes each supported catalog destination', (
     tester,
   ) async {
     tester.view.devicePixelRatio = 1;
@@ -250,6 +473,13 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     addTearDown(tester.view.resetPhysicalSize);
     final client = _FullCatalogClient();
+    await tester.runAsync(
+      () => Future.wait([
+        CatalogCache.instance.vod(client, priority: true),
+        CatalogCache.instance.series(client, priority: true),
+        CatalogCache.instance.live(client, priority: true),
+      ]),
+    );
 
     await tester.pumpWidget(
       MaterialApp(
@@ -265,10 +495,27 @@ void main() {
     await tester.pump(const Duration(seconds: 2));
 
     expect(find.text('Home'), findsOneWidget);
+    expect(find.text('Movies'), findsOneWidget);
+    expect(find.text('Series'), findsOneWidget);
+    expect(find.text('Live'), findsOneWidget);
     expect(find.text('Search'), findsOneWidget);
-    expect(find.text('My List'), findsOneWidget);
-    expect(find.text('Profile'), findsOneWidget);
+    expect(find.text('My List'), findsNothing);
+    expect(find.text('Profile'), findsNothing);
     expect(find.text('Discover'), findsNothing);
+    expect(tester.takeException(), isNull);
+
+    final utilityRect = tester.getRect(find.byTooltip('You & library'));
+    expect(utilityRect.top, lessThan(100));
+    expect(utilityRect.right, greaterThan(340));
+
+    await tester.tap(find.byTooltip('You & library'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+
+    expect(find.text('Your Lumen'), findsOneWidget);
+    expect(find.text('My List'), findsOneWidget);
+    expect(find.text('Downloads'), findsOneWidget);
+    expect(find.text('Profile & settings'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
     await tester.pumpWidget(const SizedBox.shrink());

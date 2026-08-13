@@ -1,7 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lumen_tv/downloads.dart';
+import 'package:lumen_tv/models.dart';
 import 'package:lumen_tv/widgets.dart';
+import 'package:lumen_tv/screens/downloads_screen.dart';
+import 'package:lumen_tv/screens/player_host.dart';
+import 'package:lumen_tv/screens/shell.dart';
+import 'package:lumen_tv/xtream.dart';
 
 void main() {
   testWidgets('D-pad traverses RemoteTap controls and center activates', (
@@ -88,6 +94,458 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
     await tester.pumpAndSettle();
     expect(controller.offset, greaterThan(0));
+  });
+
+  testWidgets('focus visibility scrolls back upward with D-pad Up', (
+    tester,
+  ) async {
+    final controller = ScrollController();
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RemoteFocusVisibility(
+          child: FocusTraversalGroup(
+            policy: RemoteFocusTraversalPolicy(),
+            child: Scaffold(
+              body: SizedBox(
+                width: 260,
+                height: 220,
+                child: SingleChildScrollView(
+                  controller: controller,
+                  child: Column(
+                    children: [
+                      for (var index = 0; index < 10; index++)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: RemoteTap(
+                            autofocus: index == 0,
+                            semanticLabel: 'Row $index',
+                            onTap: () {},
+                            child: const SizedBox(width: 220, height: 70),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    for (var i = 0; i < 7; i++) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pumpAndSettle();
+    }
+    final lowerOffset = controller.offset;
+    expect(lowerOffset, greaterThan(0));
+
+    for (var i = 0; i < 3; i++) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      await tester.pumpAndSettle();
+    }
+    expect(controller.offset, lessThan(lowerOffset));
+  });
+
+  testWidgets('D-pad reveals and focuses the next lazy horizontal tile', (
+    tester,
+  ) async {
+    final controller = ScrollController();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FocusTraversalGroup(
+          policy: RemoteFocusTraversalPolicy(),
+          child: Scaffold(
+            body: SizedBox(
+              width: 260,
+              height: 90,
+              child: ListView.separated(
+                controller: controller,
+                scrollDirection: Axis.horizontal,
+                itemCount: 8,
+                separatorBuilder: (_, _) => const SizedBox(width: 20),
+                itemBuilder: (_, index) => RemoteTap(
+                  autofocus: index == 0,
+                  semanticLabel: 'Tile $index',
+                  onTap: () {},
+                  child: const SizedBox(width: 200, height: 70),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pumpAndSettle();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pumpAndSettle();
+    expect(controller.offset, greaterThan(0));
+    expect(FocusManager.instance.primaryFocus?.context, isNotNull);
+  });
+
+  testWidgets('D-pad stays in a lazy grid and reveals the next row', (
+    tester,
+  ) async {
+    final controller = ScrollController();
+    final outsideFocus = FocusNode(debugLabel: 'Outside grid');
+    addTearDown(controller.dispose);
+    addTearDown(outsideFocus.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FocusTraversalGroup(
+          policy: RemoteFocusTraversalPolicy(),
+          child: Scaffold(
+            body: Row(
+              children: [
+                SizedBox(
+                  width: 260,
+                  height: 210,
+                  child: GridView.builder(
+                    controller: controller,
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                          mainAxisExtent: 90,
+                        ),
+                    itemCount: 30,
+                    itemBuilder: (_, index) => RemoteTap(
+                      autofocus: index == 0,
+                      semanticLabel: 'Poster $index',
+                      onTap: () {},
+                      child: const SizedBox(width: 120, height: 80),
+                    ),
+                  ),
+                ),
+                RemoteTap(
+                  focusNode: outsideFocus,
+                  onTap: () {},
+                  child: const SizedBox(width: 100, height: 60),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pumpAndSettle();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pumpAndSettle();
+
+    expect(controller.offset, greaterThan(0));
+    expect(outsideFocus.hasFocus, isFalse);
+  });
+
+  testWidgets('Downloads D-pad moves filter to item and back to shell rail', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1280, 720);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    final railFocus = FocusNode(debugLabel: 'Downloads test rail');
+    addTearDown(railFocus.dispose);
+    Downloads.instance.items
+      ..clear()
+      ..add(
+        DownloadItem(
+          id: 'movie:1',
+          title: 'Offline film',
+          poster: '',
+          kind: 'movie',
+          remoteUrl: 'https://example.invalid/movie.mp4',
+          fileName: 'offline.mp4',
+          progressKey: 'movie:1',
+          status: DlStatus.paused,
+        ),
+      );
+    addTearDown(Downloads.instance.items.clear);
+    final client = XtreamClient(
+      const XtreamCredentials(
+        baseUrl: 'https://example.invalid',
+        username: 'test',
+        password: 'test',
+      ),
+    );
+    addTearDown(client.close);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FocusTraversalGroup(
+          policy: RemoteFocusTraversalPolicy(),
+          child: Row(
+            children: [
+              RemoteTap(
+                focusNode: railFocus,
+                onTap: () {},
+                child: const SizedBox(width: 80, height: 80),
+              ),
+              Expanded(
+                child: DownloadsScreen(
+                  client: client,
+                  shellRailFocusNode: railFocus,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final allFilter = tester.widget<FocusableActionDetector>(
+      find
+          .ancestor(
+            of: find.text('All 1'),
+            matching: find.byType(FocusableActionDetector),
+          )
+          .first,
+    );
+    allFilter.focusNode!.requestFocus();
+    await tester.pump();
+    expect(
+      FocusManager.instance.primaryFocus?.debugLabel,
+      'Downloads filter 0',
+    );
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'Download item 0');
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+    await tester.pump();
+    expect(
+      FocusManager.instance.primaryFocus?.debugLabel,
+      'Downloads filter 0',
+    );
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pump();
+    expect(railFocus.hasFocus, isTrue);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 1));
+  });
+
+  testWidgets('navigation tabs can select as soon as focus lands', (
+    tester,
+  ) async {
+    final firstFocus = FocusNode();
+    final secondFocus = FocusNode();
+    var selected = 0;
+    addTearDown(firstFocus.dispose);
+    addTearDown(secondFocus.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Row(
+            children: [
+              RemoteTap(
+                focusNode: firstFocus,
+                autofocus: true,
+                onTap: () => selected = 0,
+                child: const SizedBox(width: 100, height: 60),
+              ),
+              RemoteTap(
+                focusNode: secondFocus,
+                onFocusChange: (focused) {
+                  if (focused) selected = 1;
+                },
+                onTap: () => selected = 1,
+                child: const SizedBox(width: 100, height: 60),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+
+    expect(secondFocus.hasFocus, isTrue);
+    expect(selected, 1);
+  });
+
+  testWidgets('catalog tile key routing cannot lose focus after tile two', (
+    tester,
+  ) async {
+    final nodes = List.generate(3, (i) => FocusNode(debugLabel: 'Tile $i'));
+    final outside = FocusNode(debugLabel: 'Outside');
+    for (final node in [...nodes, outside]) {
+      addTearDown(node.dispose);
+    }
+    KeyEventResult route(int index, KeyEvent event) {
+      if (event is! KeyDownEvent) return KeyEventResult.ignored;
+      if (event.logicalKey != LogicalKeyboardKey.arrowRight) {
+        return KeyEventResult.ignored;
+      }
+      if (index + 1 >= nodes.length) return KeyEventResult.handled;
+      nodes[index + 1].requestFocus();
+      return KeyEventResult.handled;
+    }
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Row(
+            children: [
+              for (var i = 0; i < nodes.length; i++)
+                FocusableTap(
+                  focusNode: nodes[i],
+                  autofocus: i == 0,
+                  onKeyEvent: (_, event) => route(i, event),
+                  onTap: () {},
+                  builder: (_, _) => const SizedBox(width: 80, height: 60),
+                ),
+              RemoteTap(
+                focusNode: outside,
+                onTap: () {},
+                child: const SizedBox(width: 80, height: 60),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    expect(nodes[1].hasFocus, isTrue);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    expect(nodes[2].hasFocus, isTrue);
+    expect(outside.hasFocus, isFalse);
+  });
+
+  testWidgets('Up and Down escape a TV text field', (tester) async {
+    final fieldFocus = FocusNode();
+    final buttonFocus = FocusNode();
+    addTearDown(fieldFocus.dispose);
+    addTearDown(buttonFocus.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Column(
+            children: [
+              RemoteTextInput(child: TextField(focusNode: fieldFocus)),
+              RemoteTap(
+                focusNode: buttonFocus,
+                onTap: () {},
+                child: const SizedBox(width: 100, height: 50),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    fieldFocus.requestFocus();
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
+    expect(buttonFocus.hasFocus, isTrue);
+  });
+
+  testWidgets('excluded pages cannot capture remote focus', (tester) async {
+    final visibleFocus = FocusNode();
+    final hiddenFocus = FocusNode();
+    addTearDown(visibleFocus.dispose);
+    addTearDown(hiddenFocus.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Row(
+          children: [
+            RemoteTap(
+              focusNode: visibleFocus,
+              autofocus: true,
+              onTap: () {},
+              child: const SizedBox(width: 100, height: 50),
+            ),
+            ExcludeFocus(
+              child: RemoteTap(
+                focusNode: hiddenFocus,
+                onTap: () {},
+                child: const SizedBox(width: 100, height: 50),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    expect(visibleFocus.hasFocus, isTrue);
+    expect(hiddenFocus.hasFocus, isFalse);
+  });
+
+  testWidgets('standard Material controls scroll into view when focused', (
+    tester,
+  ) async {
+    final controller = ScrollController();
+    final buttonFocus = FocusNode();
+    addTearDown(controller.dispose);
+    addTearDown(buttonFocus.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RemoteFocusVisibility(
+          child: Scaffold(
+            body: SingleChildScrollView(
+              controller: controller,
+              child: Column(
+                children: [
+                  const SizedBox(height: 900),
+                  FilledButton(
+                    focusNode: buttonFocus,
+                    onPressed: () {},
+                    child: const Text('Standard action'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    buttonFocus.requestFocus();
+    await tester.pumpAndSettle();
+    expect(controller.offset, greaterThan(0));
+  });
+
+  testWidgets('Home exit confirmation defaults safely to No', (tester) async {
+    expect(homeBackActionFor(0), HomeBackAction.confirmExit);
+    expect(homeBackActionFor(4), HomeBackAction.navigateBack);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => TextButton(
+            onPressed: () => showHomeExitConfirmation(context),
+            child: const Text('Open'),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Open'));
+    await tester.pumpAndSettle();
+    expect(find.text('Exit Lumen?'), findsOneWidget);
+    final noButton = tester.widget<TextButton>(
+      find.widgetWithText(TextButton, 'No'),
+    );
+    expect(noButton.autofocus, isTrue);
+  });
+
+  test('player Back returns to the app unless a panel is open', () {
+    expect(playerBackActionFor(panelOpen: false), PlayerBackAction.minimize);
+    expect(playerBackActionFor(panelOpen: true), PlayerBackAction.closePanel);
   });
 
   testWidgets('the single search field accepts programmatic focus', (

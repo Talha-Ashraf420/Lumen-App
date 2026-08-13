@@ -147,6 +147,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
         ),
         actions: [
           TextButton(
+            autofocus: true,
             onPressed: () => Navigator.pop(dialogContext, false),
             child: Text('Keep it', style: TextStyle(color: muted)),
           ),

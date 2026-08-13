@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen_tv/catalog_cache.dart';
 import 'package:lumen_tv/catalog_store.dart';
@@ -522,6 +523,74 @@ void main() {
     expect(client.vodStreamCategories, contains('1'));
     expect(client.vodStreamCategories, isNot(contains(null)));
     expect(find.text('The Last Signal'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await disposeUi(tester);
+  });
+
+  testWidgets('catalog D-pad keeps vertical focus inside the content grid', (
+    tester,
+  ) async {
+    final client = _HomeClient();
+    final railFocus = FocusNode(debugLabel: 'Movies shell rail');
+    addTearDown(client.close);
+    addTearDown(railFocus.dispose);
+
+    await pumpAt(
+      tester,
+      Row(
+        children: [
+          RemoteTap(
+            focusNode: railFocus,
+            onTap: () {},
+            child: const SizedBox(width: 72, height: 72),
+          ),
+          Expanded(
+            child: SearchScreen(
+              client: client,
+              initialSection: 'movie',
+              shellRailFocusNode: railFocus,
+            ),
+          ),
+        ],
+      ),
+      const Size(1280, 800),
+    );
+    await waitFor(
+      tester,
+      () => find.text('The Last Signal').evaluate().isNotEmpty,
+    );
+
+    final categoryFinder = find.ancestor(
+      of: find.text('Premieres'),
+      matching: find.byType(FocusableActionDetector),
+    );
+    final category = tester.widget<FocusableActionDetector>(
+      categoryFinder.first,
+    );
+    category.focusNode!.requestFocus();
+    await tester.pump();
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pumpAndSettle();
+    final tileFinder = find.ancestor(
+      of: find.text('The Last Signal'),
+      matching: find.byType(FocusableActionDetector),
+    );
+    final tile = tester.widget<FocusableActionDetector>(tileFinder.first);
+    expect(tile.focusNode!.hasFocus, isTrue);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+    await tester.pump();
+    expect(tile.focusNode!.hasFocus, isTrue);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pump();
+    expect(category.focusNode!.hasFocus, isTrue);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pump();
+    expect(railFocus.hasFocus, isTrue);
     expect(tester.takeException(), isNull);
 
     await disposeUi(tester);

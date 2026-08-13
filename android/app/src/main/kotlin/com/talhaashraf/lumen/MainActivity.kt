@@ -25,12 +25,14 @@ class MainActivity : FlutterActivity() {
         methodChannel!!.setMethodCallHandler { call, result ->
             when (call.method) {
                 "setPipAllowed" -> {
-                    pipAllowed = call.arguments as? Boolean ?: false
+                    pipAllowed = !isTelevision() &&
+                        (call.arguments as? Boolean ?: false)
                     result.success(null)
                 }
-                "enterPip" -> result.success(enterPip())
+                "enterPip" -> result.success(!isTelevision() && enterPip())
                 "isSupported" -> result.success(
-                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                    !isTelevision() &&
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
                         packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
                 )
                 else -> result.notImplemented()
@@ -53,6 +55,16 @@ class MainActivity : FlutterActivity() {
                     (args["headers"] as? Map<*, *>)?.forEach { (key, value) ->
                         if (key is String && value is String) headers[key] = value
                     }
+                    val playlistUrls = ArrayList<String>()
+                    val playlistTitles = ArrayList<String>()
+                    (args["playlist"] as? List<*>)?.forEach { rawItem ->
+                        val item = rawItem as? Map<*, *> ?: return@forEach
+                        val itemUrl = item["url"] as? String
+                        if (!itemUrl.isNullOrBlank()) {
+                            playlistUrls.add(itemUrl)
+                            playlistTitles.add(item["title"] as? String ?: "")
+                        }
+                    }
                     val intent = Intent(this, Media3PlayerActivity::class.java).apply {
                         putExtra(Media3PlayerActivity.EXTRA_URL, url)
                         putExtra(
@@ -64,6 +76,18 @@ class MainActivity : FlutterActivity() {
                             args["isLive"] as? Boolean ?: false
                         )
                         putExtra(Media3PlayerActivity.EXTRA_HEADERS, headers)
+                        putStringArrayListExtra(
+                            Media3PlayerActivity.EXTRA_PLAYLIST_URLS,
+                            playlistUrls
+                        )
+                        putStringArrayListExtra(
+                            Media3PlayerActivity.EXTRA_PLAYLIST_TITLES,
+                            playlistTitles
+                        )
+                        putExtra(
+                            Media3PlayerActivity.EXTRA_INITIAL_INDEX,
+                            (args["initialIndex"] as? Number)?.toInt() ?: 0
+                        )
                     }
                     startActivity(intent)
                     result.success(true)
@@ -100,6 +124,7 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun enterPip(): Boolean {
+        if (isTelevision()) return false
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false
         if (!packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) return false
         return try {
@@ -114,7 +139,7 @@ class MainActivity : FlutterActivity() {
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        if (pipAllowed) enterPip()
+        if (pipAllowed && !isTelevision()) enterPip()
     }
 
     override fun onPictureInPictureModeChanged(

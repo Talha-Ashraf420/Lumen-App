@@ -4,7 +4,194 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'device_profile.dart';
 import 'theme.dart';
+
+/// Directional traversal for TV remotes. Flutter can only traverse to widgets
+/// that have already been built; when focus reaches the edge of a lazy list,
+/// nudge its nearest scrollable and retry after the next frame.
+class RemoteFocusTraversalPolicy extends ReadingOrderTraversalPolicy {
+  final Set<FocusNode> _scrollPending = <FocusNode>{};
+
+  List<ScrollableState> _scrollableAncestors(BuildContext context, Axis axis) {
+    final result = <ScrollableState>[];
+    context.visitAncestorElements((element) {
+      if (element is StatefulElement && element.state is ScrollableState) {
+        final state = element.state as ScrollableState;
+        if (axisDirectionToAxis(state.axisDirection) == axis) {
+          result.add(state);
+        }
+      }
+      return true;
+    });
+    return result;
+  }
+
+  @override
+  bool inDirection(FocusNode currentNode, TraversalDirection direction) {
+    final context = currentNode.context;
+    if (context == null) return super.inDirection(currentNode, direction);
+
+    final axis = switch (direction) {
+      TraversalDirection.left || TraversalDirection.right => Axis.horizontal,
+      TraversalDirection.up || TraversalDirection.down => Axis.vertical,
+    };
+    final forward =
+        direction == TraversalDirection.right ||
+        direction == TraversalDirection.down;
+
+    // A lazy GridView/ListView only builds the current viewport. At its visible
+    // edge, ReadingOrderTraversalPolicy can see a toolbar/sidebar outside the
+    // list but not the next (unbuilt) tile, so it reports success and focus
+    // appears to vanish from the catalog. Reveal the next slice first, then
+    // retry traversal after those children have been built.
+    for (final scrollable in _scrollableAncestors(context, axis)) {
+      final position = scrollable.position;
+      if (!position.hasContentDimensions) continue;
+      final canMove = forward
+          ? position.pixels < position.maxScrollExtent
+          : position.pixels > position.minScrollExtent;
+      if (!canMove) continue;
+
+      final currentBox = context.findRenderObject();
+      final viewportContext = scrollable.context;
+      final viewportBox = viewportContext.findRenderObject();
+      if (currentBox is! RenderBox || viewportBox is! RenderBox) continue;
+      final currentRect =
+          currentBox.localToGlobal(Offset.zero) & currentBox.size;
+      final viewportRect =
+          viewportBox.localToGlobal(Offset.zero) & viewportBox.size;
+      final nearScrollableEdge = switch ((axis, forward)) {
+        (Axis.horizontal, true) =>
+          currentRect.right >= viewportRect.right - currentRect.width * .8,
+        (Axis.horizontal, false) =>
+          currentRect.left <= viewportRect.left + currentRect.width * .8,
+        (Axis.vertical, true) =>
+          currentRect.bottom >= viewportRect.bottom - currentRect.height * .8,
+        (Axis.vertical, false) =>
+          currentRect.top <= viewportRect.top + currentRect.height * .8,
+      };
+      if (!nearScrollableEdge) continue;
+      if (_scrollPending.contains(currentNode)) return true;
+
+      final itemExtent = axis == Axis.horizontal
+          ? currentRect.width
+          : currentRect.height;
+      final amount = (itemExtent * 1.15).clamp(72.0, 260.0);
+      final target = (position.pixels + (forward ? amount : -amount)).clamp(
+        position.minScrollExtent,
+        position.maxScrollExtent,
+      );
+      _scrollPending.add(currentNode);
+      position.jumpTo(target);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollPending.remove(currentNode);
+        if (currentNode.hasFocus && currentNode.context != null) {
+          super.inDirection(currentNode, direction);
+        }
+      });
+      return true;
+    }
+    return super.inDirection(currentNode, direction);
+  }
+}
+
+/// Keeps standard Material controls visible too (IconButton, Slider, switch,
+/// dialog buttons), not only Lumen's custom remote widgets.
+class RemoteFocusVisibility extends StatefulWidget {
+  const RemoteFocusVisibility({super.key, required this.child});
+  final Widget child;
+
+  @override
+  State<RemoteFocusVisibility> createState() => _RemoteFocusVisibilityState();
+}
+
+class _RemoteFocusVisibilityState extends State<RemoteFocusVisibility> {
+  FocusNode? _last;
+  TraversalDirection? _lastDirection;
+
+  @override
+  void initState() {
+    super.initState();
+    HardwareKeyboard.instance.addHandler(_recordDirection);
+    FocusManager.instance.addListener(_focusChanged);
+  }
+
+  bool _recordDirection(KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) return false;
+    _lastDirection = switch (event.logicalKey) {
+      LogicalKeyboardKey.arrowUp => TraversalDirection.up,
+      LogicalKeyboardKey.arrowDown => TraversalDirection.down,
+      LogicalKeyboardKey.arrowLeft => TraversalDirection.left,
+      LogicalKeyboardKey.arrowRight => TraversalDirection.right,
+      _ => null,
+    };
+    return false;
+  }
+
+  void _focusChanged() {
+    final node = FocusManager.instance.primaryFocus;
+    if (node == null || identical(node, _last)) return;
+    _last = node;
+    final direction = _lastDirection;
+    _lastDirection = null;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final context = node.context;
+      if (!mounted || !node.hasFocus || context == null) return;
+      Scrollable.ensureVisible(
+        context,
+        duration: DeviceProfile.isTelevision
+            ? Duration.zero
+            : const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        alignmentPolicy:
+            direction == TraversalDirection.up ||
+                direction == TraversalDirection.left
+            ? ScrollPositionAlignmentPolicy.keepVisibleAtStart
+            : ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    HardwareKeyboard.instance.removeHandler(_recordDirection);
+    FocusManager.instance.removeListener(_focusChanged);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}
+
+/// Text fields consume arrow keys for cursor movement. On TV, Up and Down are
+/// navigation commands, so pass them back to directional focus traversal.
+class RemoteTextInput extends StatelessWidget {
+  const RemoteTextInput({super.key, required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Focus(
+    canRequestFocus: false,
+    skipTraversal: true,
+    onKeyEvent: (_, event) {
+      if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+        return KeyEventResult.ignored;
+      }
+      final direction = switch (event.logicalKey) {
+        LogicalKeyboardKey.arrowUp => TraversalDirection.up,
+        LogicalKeyboardKey.arrowDown => TraversalDirection.down,
+        _ => null,
+      };
+      if (direction == null) return KeyEventResult.ignored;
+      return FocusManager.instance.primaryFocus?.focusInDirection(direction) ==
+              true
+          ? KeyEventResult.handled
+          : KeyEventResult.ignored;
+    },
+    child: child,
+  );
+}
 
 /// Turns provider-style filenames into human-facing titles without stripping a
 /// meaningful year that is actually part of a title (for example "1984").
@@ -97,11 +284,21 @@ class FocusableTap extends StatefulWidget {
   final Widget Function(BuildContext context, bool active) builder;
   final VoidCallback onTap;
   final bool autofocus;
+  final FocusNode? focusNode;
+  final ValueChanged<bool>? onFocusChange;
+  final double focusRadius;
+  final bool showFocusRing;
+  final FocusOnKeyEventCallback? onKeyEvent;
   const FocusableTap({
     super.key,
     required this.builder,
     required this.onTap,
     this.autofocus = false,
+    this.focusNode,
+    this.onFocusChange,
+    this.focusRadius = 16,
+    this.showFocusRing = true,
+    this.onKeyEvent,
   });
   @override
   State<FocusableTap> createState() => _FocusableTapState();
@@ -123,7 +320,11 @@ class _FocusableTapState extends State<FocusableTap> {
 
   void _focusChanged(bool value) {
     if (_focus != value) setState(() => _focus = value);
-    if (!value) return;
+    widget.onFocusChange?.call(value);
+    // The app-level RemoteFocusVisibility handles every focused control. On TV
+    // a second concurrent ensureVisible animation fights explicit grid scrolls
+    // and can leave a lazy tile detached while it owns focus.
+    if (!value || DeviceProfile.isTelevision) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       Scrollable.ensureVisible(
@@ -137,7 +338,8 @@ class _FocusableTapState extends State<FocusableTap> {
 
   @override
   Widget build(BuildContext context) {
-    return FocusableActionDetector(
+    final detector = FocusableActionDetector(
+      focusNode: widget.focusNode,
       autofocus: widget.autofocus,
       mouseCursor: SystemMouseCursors.click,
       shortcuts: _activators,
@@ -157,9 +359,32 @@ class _FocusableTapState extends State<FocusableTap> {
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: widget.onTap,
-          child: widget.builder(context, _hover || _focus),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 130),
+            foregroundDecoration: widget.showFocusRing && _focus
+                ? BoxDecoration(
+                    borderRadius: BorderRadius.circular(widget.focusRadius),
+                    border: Border.all(color: accentInk, width: 3.5),
+                    boxShadow: [
+                      BoxShadow(
+                        color: accent.withValues(alpha: .55),
+                        blurRadius: 18,
+                        spreadRadius: 2,
+                      ),
+                    ],
+                  )
+                : null,
+            child: widget.builder(context, _hover || _focus),
+          ),
         ),
       ),
+    );
+    if (widget.onKeyEvent == null) return detector;
+    return Focus(
+      canRequestFocus: false,
+      skipTraversal: true,
+      onKeyEvent: widget.onKeyEvent,
+      child: detector,
     );
   }
 }
@@ -176,6 +401,8 @@ class RemoteTap extends StatefulWidget {
   final String? semanticLabel;
   final double focusRadius;
   final bool showFocusRing;
+  final ValueChanged<bool>? onFocusChange;
+  final FocusOnKeyEventCallback? onKeyEvent;
 
   const RemoteTap({
     super.key,
@@ -187,6 +414,8 @@ class RemoteTap extends StatefulWidget {
     this.semanticLabel,
     this.focusRadius = 16,
     this.showFocusRing = true,
+    this.onFocusChange,
+    this.onKeyEvent,
   });
 
   @override
@@ -235,7 +464,8 @@ class _RemoteTapState extends State<RemoteTap> {
 
   void _onFocusChange(bool value) {
     if (_focused != value) setState(() => _focused = value);
-    if (!value) return;
+    widget.onFocusChange?.call(value);
+    if (!value || DeviceProfile.isTelevision) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       Scrollable.ensureVisible(
@@ -251,7 +481,7 @@ class _RemoteTapState extends State<RemoteTap> {
   Widget build(BuildContext context) {
     final enabled = widget.onTap != null;
     final active = enabled && (_focused || _hovered);
-    return FocusableActionDetector(
+    final detector = FocusableActionDetector(
       enabled: enabled,
       focusNode: widget.focusNode,
       autofocus: widget.autofocus,
@@ -281,7 +511,14 @@ class _RemoteTapState extends State<RemoteTap> {
             foregroundDecoration: widget.showFocusRing && _focused
                 ? BoxDecoration(
                     borderRadius: BorderRadius.circular(widget.focusRadius),
-                    border: Border.all(color: accentInk, width: 2.5),
+                    border: Border.all(color: accentInk, width: 3.5),
+                    boxShadow: [
+                      BoxShadow(
+                        color: accent.withValues(alpha: .55),
+                        blurRadius: 18,
+                        spreadRadius: 2,
+                      ),
+                    ],
                   )
                 : null,
             child: GestureDetector(
@@ -292,6 +529,13 @@ class _RemoteTapState extends State<RemoteTap> {
           ),
         ),
       ),
+    );
+    if (widget.onKeyEvent == null) return detector;
+    return Focus(
+      canRequestFocus: false,
+      skipTraversal: true,
+      onKeyEvent: widget.onKeyEvent,
+      child: detector,
     );
   }
 }
@@ -490,20 +734,27 @@ class Glass extends StatelessWidget {
         : tintColor.a < 0.99
         ? tintColor.a
         : (isDark ? 0.18 : 0.13);
+    final content = Container(
+      padding: padding,
+      decoration: BoxDecoration(
+        color: tintColor.withValues(alpha: tintAlpha),
+        borderRadius: BorderRadius.circular(radius),
+        border: Border.all(color: line),
+      ),
+      child: child,
+    );
+    // Backdrop filters force an offscreen render pass. A profile page can have
+    // several of them visible simultaneously, which is expensive on common TV
+    // chipsets and makes remote focus feel delayed. Keep the same surface and
+    // border on televisions without the live blur pass.
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
-        child: Container(
-          padding: padding,
-          decoration: BoxDecoration(
-            color: tintColor.withValues(alpha: tintAlpha),
-            borderRadius: BorderRadius.circular(radius),
-            border: Border.all(color: line),
-          ),
-          child: child,
-        ),
-      ),
+      child: DeviceProfile.isTelevision
+          ? content
+          : BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+              child: content,
+            ),
     );
   }
 }
@@ -723,6 +974,10 @@ class LumenFilterPill extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
   final IconData? icon;
+  final FocusNode? focusNode;
+  final FocusOnKeyEventCallback? onKeyEvent;
+  final ValueChanged<bool>? onFocusChange;
+  final bool autofocus;
 
   const LumenFilterPill({
     super.key,
@@ -730,10 +985,18 @@ class LumenFilterPill extends StatelessWidget {
     required this.selected,
     required this.onTap,
     this.icon,
+    this.focusNode,
+    this.onKeyEvent,
+    this.onFocusChange,
+    this.autofocus = false,
   });
 
   @override
   Widget build(BuildContext context) => RemoteTap(
+    focusNode: focusNode,
+    autofocus: autofocus,
+    onKeyEvent: onKeyEvent,
+    onFocusChange: onFocusChange,
     onTap: onTap,
     focusRadius: 13,
     child: AnimatedContainer(
@@ -854,20 +1117,22 @@ class _SearchFieldState extends State<SearchField> {
                       style: TextStyle(color: subtle, fontSize: 15),
                     ),
                   )
-                : TextField(
-                    controller: widget.controller,
-                    focusNode: _focusNode,
-                    onChanged: widget.onChanged,
-                    style: const TextStyle(fontSize: 15.5),
-                    cursorColor: accent,
-                    decoration: InputDecoration(
-                      isCollapsed: true,
-                      filled: false,
-                      border: InputBorder.none,
-                      enabledBorder: InputBorder.none,
-                      focusedBorder: InputBorder.none,
-                      hintText: widget.hint,
-                      hintStyle: TextStyle(color: subtle, fontSize: 15),
+                : RemoteTextInput(
+                    child: TextField(
+                      controller: widget.controller,
+                      focusNode: _focusNode,
+                      onChanged: widget.onChanged,
+                      style: const TextStyle(fontSize: 15.5),
+                      cursorColor: accent,
+                      decoration: InputDecoration(
+                        isCollapsed: true,
+                        filled: false,
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        hintText: widget.hint,
+                        hintStyle: TextStyle(color: subtle, fontSize: 15),
+                      ),
                     ),
                   ),
           ),
@@ -1299,6 +1564,9 @@ class PosterCard extends StatelessWidget {
   final int index;
   final VoidCallback onTap;
   final bool autofocus;
+  final FocusNode? focusNode;
+  final FocusOnKeyEventCallback? onKeyEvent;
+  final ValueChanged<bool>? onFocusChange;
   const PosterCard({
     super.key,
     required this.name,
@@ -1308,12 +1576,18 @@ class PosterCard extends StatelessWidget {
     this.subtitle,
     this.index = 0,
     this.autofocus = false,
+    this.focusNode,
+    this.onKeyEvent,
+    this.onFocusChange,
   });
 
   @override
   Widget build(BuildContext context) {
     final interactive = FocusableTap(
       autofocus: autofocus,
+      focusNode: focusNode,
+      onKeyEvent: onKeyEvent,
+      onFocusChange: onFocusChange,
       onTap: onTap,
       builder: (context, active) => _visual(context, active),
     );
@@ -1508,12 +1782,18 @@ class ChannelCard extends StatelessWidget {
   final String logo;
   final VoidCallback onTap;
   final int index;
+  final FocusNode? focusNode;
+  final FocusOnKeyEventCallback? onKeyEvent;
+  final ValueChanged<bool>? onFocusChange;
   const ChannelCard({
     super.key,
     required this.name,
     required this.logo,
     required this.onTap,
     this.index = 0,
+    this.focusNode,
+    this.onKeyEvent,
+    this.onFocusChange,
   });
 
   @override
@@ -1601,6 +1881,9 @@ class ChannelCard extends StatelessWidget {
       ],
     );
     final interactive = FocusableTap(
+      focusNode: focusNode,
+      onKeyEvent: onKeyEvent,
+      onFocusChange: onFocusChange,
       onTap: onTap,
       builder: (context, active) => AnimatedScale(
         scale: active ? 1.05 : 1.0,

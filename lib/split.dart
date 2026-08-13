@@ -25,7 +25,7 @@ class SplitController extends ChangeNotifier {
     }
     if (player == null) {
       player = Player(configuration: streamingPlayerConfiguration);
-      controller = VideoController(player!);
+      controller = createVideoController(player!);
       _nativeSetup = configureStreamingPlayer(player!).catchError((_) {});
     }
     item = it;

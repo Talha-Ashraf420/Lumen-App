@@ -149,6 +149,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                 children: [
                   Expanded(
                     child: OutlinedButton(
+                      autofocus: true,
                       onPressed: _busy
                           ? null
                           : () => Navigator.of(context).pop(),

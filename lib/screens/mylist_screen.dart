@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../library.dart';
 import '../models.dart';
 import '../responsive.dart';
@@ -11,7 +12,12 @@ import 'series_detail_screen.dart';
 
 class MyListScreen extends StatefulWidget {
   final XtreamClient client;
-  const MyListScreen({super.key, required this.client});
+  final FocusNode? shellRailFocusNode;
+  const MyListScreen({
+    super.key,
+    required this.client,
+    this.shellRailFocusNode,
+  });
 
   @override
   State<MyListScreen> createState() => _MyListScreenState();
@@ -19,20 +25,142 @@ class MyListScreen extends StatefulWidget {
 
 class _MyListScreenState extends State<MyListScreen> {
   String _filter = 'all';
+  final _gridScroll = ScrollController();
+  final _filterFocus = List<FocusNode>.generate(
+    4,
+    (index) => FocusNode(debugLabel: 'My List filter $index'),
+  );
+  final List<FocusNode> _gridFocus = <FocusNode>[];
+  int _gridColumns = 1;
+  double _gridRowExtent = 220;
 
-  void _open(BuildContext context, MediaRef r) {
+  @override
+  void dispose() {
+    _gridScroll.dispose();
+    for (final node in _filterFocus) {
+      node.dispose();
+    }
+    for (final node in _gridFocus) {
+      node.dispose();
+    }
+    super.dispose();
+  }
+
+  void _ensureGridFocus(int count) {
+    while (_gridFocus.length < count) {
+      _gridFocus.add(
+        FocusNode(debugLabel: 'My List tile ${_gridFocus.length}'),
+      );
+    }
+  }
+
+  void _requestGridFocus(int requested, int itemCount) {
+    if (itemCount == 0) return;
+    final target = requested.clamp(0, itemCount - 1).toInt();
+
+    void attempt(int frames) {
+      if (!mounted || target >= _gridFocus.length) return;
+      final node = _gridFocus[target];
+      if (node.context != null && node.canRequestFocus) {
+        node.requestFocus();
+        return;
+      }
+      if (_gridScroll.hasClients && _gridScroll.position.hasContentDimensions) {
+        final row = target ~/ _gridColumns;
+        final desired = (row * _gridRowExtent - _gridRowExtent * .45).clamp(
+          _gridScroll.position.minScrollExtent,
+          _gridScroll.position.maxScrollExtent,
+        );
+        _gridScroll.jumpTo(desired);
+      }
+      if (frames > 0) {
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => attempt(frames - 1),
+        );
+      }
+    }
+
+    attempt(8);
+  }
+
+  KeyEventResult _filterKey(int index, int itemCount, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+      if (index > 0) {
+        _filterFocus[index - 1].requestFocus();
+      } else {
+        widget.shellRailFocusNode?.requestFocus();
+      }
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+      _filterFocus[(index + 1).clamp(0, _filterFocus.length - 1)]
+          .requestFocus();
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+      _requestGridFocus(index, itemCount);
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  KeyEventResult _gridKey(int index, int itemCount, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    final column = index % _gridColumns;
+    int? target;
+    if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+      if (column == 0) {
+        widget.shellRailFocusNode?.requestFocus();
+        return KeyEventResult.handled;
+      }
+      target = index - 1;
+    } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+      if (column == _gridColumns - 1 || index + 1 >= itemCount) {
+        return KeyEventResult.handled;
+      }
+      target = index + 1;
+    } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+      if (index < _gridColumns) {
+        _filterFocus[column.clamp(0, _filterFocus.length - 1)].requestFocus();
+        return KeyEventResult.handled;
+      }
+      target = index - _gridColumns;
+    } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+      if (index + _gridColumns >= itemCount) return KeyEventResult.handled;
+      target = index + _gridColumns;
+    } else {
+      return KeyEventResult.ignored;
+    }
+    _requestGridFocus(target, itemCount);
+    return KeyEventResult.handled;
+  }
+
+  void _open(BuildContext context, MediaRef r, List<MediaRef> contextItems) {
     if (r.kind == 'live') {
+      final channels = contextItems
+          .where((item) => item.kind == 'live')
+          .toList();
+      final index = channels.indexWhere((item) => item.key == r.key);
       PlaybackController.instance.open([
-        PlayerItem(
-          r.url,
-          r.name,
-          isLive: true,
-          poster: r.image,
-          httpHeaders: widget.client.streamHeaders(r.id),
-          favRef: r,
-          epg: () => widget.client.shortEpg(r.id),
-        ),
-      ], 0);
+        for (final channel in channels)
+          PlayerItem(
+            channel.url,
+            channel.name,
+            isLive: true,
+            poster: channel.image,
+            httpHeaders: widget.client.streamHeaders(channel.id),
+            favRef: channel,
+            epg: () => widget.client.shortEpg(channel.id),
+          ),
+      ], index < 0 ? 0 : index);
       return;
     }
     final w = r.kind == 'series'
@@ -60,6 +188,7 @@ class _MyListScreenState extends State<MyListScreen> {
       builder: (context, _) {
         final all = Library.instance.favourites;
         final visible = _visible(all);
+        _ensureGridFocus(visible.length);
         final movies = all.where((item) => item.kind == 'movie').length;
         final series = all.where((item) => item.kind == 'series').length;
         final live = all.where((item) => item.kind == 'live').length;
@@ -85,6 +214,9 @@ class _MyListScreenState extends State<MyListScreen> {
                   padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
                   children: [
                     LumenFilterPill(
+                      focusNode: _filterFocus[0],
+                      onKeyEvent: (_, event) =>
+                          _filterKey(0, visible.length, event),
                       label: 'All ${all.length}',
                       selected: _filter == 'all',
                       onTap: () => setState(() => _filter = 'all'),
@@ -92,6 +224,9 @@ class _MyListScreenState extends State<MyListScreen> {
                     ),
                     const SizedBox(width: 8),
                     LumenFilterPill(
+                      focusNode: _filterFocus[1],
+                      onKeyEvent: (_, event) =>
+                          _filterKey(1, visible.length, event),
                       label: 'Films $movies',
                       selected: _filter == 'movie',
                       onTap: () => setState(() => _filter = 'movie'),
@@ -99,6 +234,9 @@ class _MyListScreenState extends State<MyListScreen> {
                     ),
                     const SizedBox(width: 8),
                     LumenFilterPill(
+                      focusNode: _filterFocus[2],
+                      onKeyEvent: (_, event) =>
+                          _filterKey(2, visible.length, event),
                       label: 'Series $series',
                       selected: _filter == 'series',
                       onTap: () => setState(() => _filter = 'series'),
@@ -106,6 +244,9 @@ class _MyListScreenState extends State<MyListScreen> {
                     ),
                     const SizedBox(width: 8),
                     LumenFilterPill(
+                      focusNode: _filterFocus[3],
+                      onKeyEvent: (_, event) =>
+                          _filterKey(3, visible.length, event),
                       label: 'Live $live',
                       selected: _filter == 'live',
                       onTap: () => setState(() => _filter = 'live'),
@@ -134,33 +275,51 @@ class _MyListScreenState extends State<MyListScreen> {
                       onAction: () => setState(() => _filter = 'all'),
                     )
                   : LayoutBuilder(
-                      builder: (context, constraints) => GridView.builder(
-                        padding: const EdgeInsets.fromLTRB(20, 10, 20, 120),
-                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: gridColumns(
-                            constraints.maxWidth,
-                            tile: 170,
-                            min: constraints.maxWidth < 520 ? 2 : 3,
-                          ),
-                          childAspectRatio: 0.66,
-                          crossAxisSpacing: 14,
-                          mainAxisSpacing: 20,
-                        ),
-                        itemCount: visible.length,
-                        itemBuilder: (_, i) => visible[i].isLive
-                            ? ChannelCard(
-                                name: visible[i].name,
-                                logo: visible[i].image,
-                                index: i,
-                                onTap: () => _open(context, visible[i]),
-                              )
-                            : PosterCard(
-                                name: visible[i].name,
-                                image: visible[i].image,
-                                index: i,
-                                onTap: () => _open(context, visible[i]),
+                      builder: (context, constraints) {
+                        final columns = gridColumns(
+                          constraints.maxWidth,
+                          tile: 170,
+                          min: constraints.maxWidth < 520 ? 2 : 3,
+                        );
+                        _gridColumns = columns;
+                        final tileWidth =
+                            (constraints.maxWidth - 40 - (columns - 1) * 14) /
+                            columns;
+                        _gridRowExtent = tileWidth / .66 + 20;
+                        return GridView.builder(
+                          controller: _gridScroll,
+                          padding: const EdgeInsets.fromLTRB(20, 10, 20, 120),
+                          gridDelegate:
+                              SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: columns,
+                                childAspectRatio: 0.66,
+                                crossAxisSpacing: 14,
+                                mainAxisSpacing: 20,
                               ),
-                      ),
+                          itemCount: visible.length,
+                          itemBuilder: (_, i) => visible[i].isLive
+                              ? ChannelCard(
+                                  focusNode: _gridFocus[i],
+                                  onKeyEvent: (_, event) =>
+                                      _gridKey(i, visible.length, event),
+                                  name: visible[i].name,
+                                  logo: visible[i].image,
+                                  index: i,
+                                  onTap: () =>
+                                      _open(context, visible[i], visible),
+                                )
+                              : PosterCard(
+                                  focusNode: _gridFocus[i],
+                                  onKeyEvent: (_, event) =>
+                                      _gridKey(i, visible.length, event),
+                                  name: visible[i].name,
+                                  image: visible[i].image,
+                                  index: i,
+                                  onTap: () =>
+                                      _open(context, visible[i], visible),
+                                ),
+                        );
+                      },
                     ),
             ),
           ],

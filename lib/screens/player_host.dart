@@ -9,6 +9,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 import 'package:window_manager/window_manager.dart';
 import '../android_compatibility_player.dart';
+import '../device_profile.dart';
 import '../library.dart';
 import '../opensubtitles.dart';
 import '../pip.dart';
@@ -18,6 +19,11 @@ import '../split.dart';
 import 'split_picker.dart';
 import '../theme.dart';
 import '../widgets.dart';
+
+enum PlayerBackAction { closePanel, minimize }
+
+PlayerBackAction playerBackActionFor({required bool panelOpen}) =>
+    panelOpen ? PlayerBackAction.closePanel : PlayerBackAction.minimize;
 
 /// The one and only player view — a persistent app-level overlay. A single
 /// [Video] (never recreated) animates between full-screen and a docked mini, so
@@ -47,6 +53,8 @@ class _PlayerHostState extends State<PlayerHost> {
   final FocusScopeNode _panelFocusScope = FocusScopeNode(
     debugLabel: 'player panel',
   );
+  final RemoteFocusTraversalPolicy _remoteTraversalPolicy =
+      RemoteFocusTraversalPolicy();
 
   bool _controls = true;
   bool _fullscreen = false;
@@ -599,7 +607,7 @@ class _PlayerHostState extends State<PlayerHost> {
         ? '${pc.item.url}\n${pc.item.progressKey ?? ''}\n${pc.item.title}'
         : null;
     // Only allow the OS to enter PiP when a video is actually loaded.
-    Pip.instance.setAllowed(has);
+    Pip.instance.setAllowed(has && !DeviceProfile.isTelevision);
     if (has && itemUrl != _lastItemUrl) {
       _resetForItem();
       _scheduleHide();
@@ -671,14 +679,11 @@ class _PlayerHostState extends State<PlayerHost> {
 
   bool _handleSystemBack() {
     if (!pc.hasMedia || pc.minimized) return false;
-    if (_panelKind != null) {
-      _closePanel();
-    } else if (_focus.hasFocus && !_focus.hasPrimaryFocus) {
-      _focus.requestFocus();
-      setState(() => _controls = true);
-      _scheduleHide();
-    } else {
-      _minimize();
+    switch (playerBackActionFor(panelOpen: _panelKind != null)) {
+      case PlayerBackAction.closePanel:
+        _closePanel();
+      case PlayerBackAction.minimize:
+        _minimize();
     }
     return true;
   }
@@ -773,7 +778,7 @@ class _PlayerHostState extends State<PlayerHost> {
     return FocusScope(
       node: _playerFocusScope,
       child: FocusTraversalGroup(
-        policy: ReadingOrderTraversalPolicy(),
+        policy: _remoteTraversalPolicy,
         child: Focus(
           focusNode: _focus,
           autofocus: true,
@@ -1071,16 +1076,15 @@ class _PlayerHostState extends State<PlayerHost> {
         k == LogicalKeyboardKey.mediaPlay ||
         k == LogicalKeyboardKey.mediaPause;
     // Once a visible control owns focus, let Flutter's directional traversal
-    // and ActivateIntent handle the D-pad. Back first exits the panel/control
-    // focus mode, then a second Back minimizes the player.
+    // and ActivateIntent handle the D-pad. Back always returns to the prior
+    // app screen in one press, except while a side panel is open (where it
+    // closes that panel first).
     if (!_focus.hasPrimaryFocus) {
       if (isBack) {
         if (_panelKind != null) {
           _closePanel();
         } else {
-          _focus.requestFocus();
-          setState(() => _controls = true);
-          _scheduleHide();
+          _minimize();
         }
         return KeyEventResult.handled;
       }
@@ -2103,7 +2107,7 @@ class _PlayerHostState extends State<PlayerHost> {
                         _openDiagnostics,
                         tooltip: 'Playback information',
                       ),
-                    if (_isAndroid && !compact)
+                    if (_isAndroid && !DeviceProfile.isTelevision && !compact)
                       _bottomIcon(
                         Icons.picture_in_picture_alt_rounded,
                         () => Pip.instance.enter(),
@@ -2520,32 +2524,34 @@ class _PlayerHostState extends State<PlayerHost> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // query field
-          TextField(
-            controller: _subQueryCtrl,
-            style: const TextStyle(color: Colors.white, fontSize: 14),
-            textInputAction: TextInputAction.search,
-            onSubmitted: (_) => _searchSubs(),
-            decoration: InputDecoration(
-              isDense: true,
-              hintText: 'Movie or show title…',
-              hintStyle: const TextStyle(color: Colors.white38),
-              filled: true,
-              fillColor: Colors.white.withValues(alpha: 0.08),
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 10,
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.white24),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: accent),
-              ),
-              suffixIcon: IconButton(
-                icon: Icon(Icons.search_rounded, color: accent),
-                onPressed: _searchSubs,
+          RemoteTextInput(
+            child: TextField(
+              controller: _subQueryCtrl,
+              style: const TextStyle(color: Colors.white, fontSize: 14),
+              textInputAction: TextInputAction.search,
+              onSubmitted: (_) => _searchSubs(),
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: 'Movie or show title…',
+                hintStyle: const TextStyle(color: Colors.white38),
+                filled: true,
+                fillColor: Colors.white.withValues(alpha: 0.08),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.white24),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: accent),
+                ),
+                suffixIcon: IconButton(
+                  icon: Icon(Icons.search_rounded, color: accent),
+                  onPressed: _searchSubs,
+                ),
               ),
             ),
           ),

@@ -379,25 +379,30 @@ class _LoginScreenState extends State<LoginScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              TextField(
-                controller: urlCtrl,
-                autocorrect: false,
-                enableSuggestions: false,
-                minLines: 1,
-                maxLines: 3,
-                decoration: const InputDecoration(
-                  labelText: 'Playlist URL',
-                  hintText: 'https://…/playlist.m3u  or  get.php?username=…',
+              RemoteTextInput(
+                child: TextField(
+                  autofocus: true,
+                  controller: urlCtrl,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  minLines: 1,
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                    labelText: 'Playlist URL',
+                    hintText: 'https://…/playlist.m3u  or  get.php?username=…',
+                  ),
                 ),
               ),
               const SizedBox(height: 12),
-              TextField(
-                controller: epgCtrl,
-                autocorrect: false,
-                enableSuggestions: false,
-                decoration: const InputDecoration(
-                  labelText: 'XMLTV EPG URL (optional)',
-                  hintText: 'https://…/epg.xml',
+              RemoteTextInput(
+                child: TextField(
+                  controller: epgCtrl,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  decoration: const InputDecoration(
+                    labelText: 'XMLTV EPG URL (optional)',
+                    hintText: 'https://…/epg.xml',
+                  ),
                 ),
               ),
               const SizedBox(height: 6),
@@ -808,16 +813,18 @@ class _LoginScreenState extends State<LoginScreen> {
     String? hint,
     bool obscure = false,
   }) {
-    return TextField(
-      controller: c,
-      focusNode: focusNode,
-      obscureText: obscure,
-      autocorrect: false,
-      enableSuggestions: false,
-      textInputAction: TextInputAction.next,
-      onChanged: (_) => setState(() {}),
-      onSubmitted: (_) => nextFocus.requestFocus(),
-      decoration: InputDecoration(labelText: label, hintText: hint),
+    return RemoteTextInput(
+      child: TextField(
+        controller: c,
+        focusNode: focusNode,
+        obscureText: obscure,
+        autocorrect: false,
+        enableSuggestions: false,
+        textInputAction: TextInputAction.next,
+        onChanged: (_) => setState(() {}),
+        onSubmitted: (_) => nextFocus.requestFocus(),
+        decoration: InputDecoration(labelText: label, hintText: hint),
+      ),
     );
   }
 

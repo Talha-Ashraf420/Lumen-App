@@ -1,7 +1,10 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'android_compatibility_player.dart';
+import 'device_profile.dart';
 import 'library.dart';
 import 'models.dart';
 import 'stats.dart';
@@ -106,6 +109,57 @@ const streamingPlayerConfiguration = PlayerConfiguration(
   ],
 );
 
+/// Android's embedded MediaCodec surface is substantially more reliable on TV
+/// compositors than the default texture path (which can produce audio over a
+/// permanently black frame on some Google TV hardware).
+const androidSurfaceVideoConfiguration = VideoControllerConfiguration(
+  vo: 'mediacodec_embed',
+  hwdec: 'mediacodec',
+  enableHardwareAcceleration: true,
+  androidAttachSurfaceAfterVideoParameters: false,
+);
+
+VideoControllerConfiguration videoConfigurationFor(TargetPlatform platform) =>
+    platform == TargetPlatform.android
+    ? androidSurfaceVideoConfiguration
+    : const VideoControllerConfiguration();
+
+VideoController createVideoController(Player player) => VideoController(
+  player,
+  configuration: videoConfigurationFor(defaultTargetPlatform),
+);
+
+Map<String, String> streamingPropertiesFor(TargetPlatform platform) => {
+  'cache': 'yes',
+  'cache-on-disk': 'no',
+  'cache-pause': 'yes',
+  'demuxer-hysteresis-secs': '0',
+  'network-timeout': '15',
+  if (platform == TargetPlatform.android) ...{
+    // Make audio the clock master and drop late video frames instead of
+    // allowing picture and sound to drift apart over long IPTV sessions.
+    'video-sync': 'audio',
+    'autosync': '30',
+    'framedrop': 'vo',
+    'untimed': 'no',
+  },
+};
+
+Map<String, String> streamingPropertiesForItem(
+  TargetPlatform platform,
+  PlayerItem item,
+) {
+  final ahead = PlaybackBufferPolicy.aheadFor(item.isLive).inSeconds;
+  final resume = PlaybackBufferPolicy.resumeFor(item.isLive).inSeconds;
+  return {
+    'cache-pause-initial': 'yes',
+    'cache-secs': '$ahead',
+    'demuxer-readahead-secs': '$ahead',
+    'cache-pause-wait': '$resume',
+    if (platform == TargetPlatform.android) 'audio-delay': '0',
+  };
+}
+
 bool isPlayableMediaUrl(String value) {
   final raw = value.trim();
   if (raw.isEmpty) return false;
@@ -144,25 +198,22 @@ Media mediaForPlayerItem(PlayerItem item, {String? sourceUrl}) => Media(
 Future<void> configureStreamingPlayer(Player player) async {
   final platform = player.platform;
   if (platform is! NativePlayer) return;
-  await platform.setProperty('cache', 'yes');
-  await platform.setProperty('cache-on-disk', 'no');
-  await platform.setProperty('cache-pause', 'yes');
-  await platform.setProperty('demuxer-hysteresis-secs', '0');
-  await platform.setProperty('network-timeout', '15');
+  for (final property in streamingPropertiesFor(
+    defaultTargetPlatform,
+  ).entries) {
+    await platform.setProperty(property.key, property.value);
+  }
 }
 
 Future<void> configurePlayerForItem(Player player, PlayerItem item) async {
   final platform = player.platform;
   if (platform is! NativePlayer) return;
-  final ahead = PlaybackBufferPolicy.aheadFor(item.isLive).inSeconds;
-  final resume = PlaybackBufferPolicy.resumeFor(item.isLive).inSeconds;
-
-  // Starting with a real cushion prevents the common start → stall → resume
-  // cycle. The same refill threshold is used after an underrun.
-  await platform.setProperty('cache-pause-initial', 'yes');
-  await platform.setProperty('cache-secs', '$ahead');
-  await platform.setProperty('demuxer-readahead-secs', '$ahead');
-  await platform.setProperty('cache-pause-wait', '$resume');
+  for (final property in streamingPropertiesForItem(
+    defaultTargetPlatform,
+    item,
+  ).entries) {
+    await platform.setProperty(property.key, property.value);
+  }
 }
 
 /// Root navigator key so the floating mini-player overlay (which lives above the
@@ -508,7 +559,7 @@ class PlaybackController extends ChangeNotifier {
   void _ensurePlayer() {
     if (player != null) return;
     player = Player(configuration: streamingPlayerConfiguration);
-    controller = VideoController(player!);
+    controller = createVideoController(player!);
     _nativeSetup = configureStreamingPlayer(player!).catchError((_) {});
     _posSub = player!.stream.position.listen(_onPosition);
     _completedSub = player!.stream.completed.listen((done) {
@@ -529,9 +580,45 @@ class PlaybackController extends ChangeNotifier {
 
   void open(List<PlayerItem> newItems, int i) {
     if (newItems.isEmpty) return;
+    final safeIndex = i.clamp(0, newItems.length - 1);
+    if (DeviceProfile.isTelevision && AndroidCompatibilityPlayer.isAvailable) {
+      // A native SurfaceView avoids the audio-only/black-frame failure seen
+      // when some Android TV compositors combine Flutter's texture surface
+      // with MediaCodec. Media3 also owns the audio clock, eliminating the A/V
+      // drift reported during longer TV playback sessions.
+      _openNativeTelevision(newItems, safeIndex);
+      return;
+    }
+    _openEmbedded(newItems, safeIndex);
+  }
+
+  Future<void> _openNativeTelevision(
+    List<PlayerItem> newItems,
+    int safeIndex,
+  ) async {
+    final selected = newItems[safeIndex];
+    final opened = await AndroidCompatibilityPlayer.open(
+      url: selected.url,
+      title: selected.title,
+      isLive: selected.isLive,
+      playlist: [
+        for (final item in newItems)
+          AndroidCompatibilityPlaylistItem(url: item.url, title: item.title),
+      ],
+      initialIndex: safeIndex,
+      headers: {
+        'User-Agent': 'VLC/3.0.20 LibVLC/3.0.20',
+        'Accept': '*/*',
+        ...selected.httpHeaders,
+      },
+    );
+    if (!opened) _openEmbedded(newItems, safeIndex);
+  }
+
+  void _openEmbedded(List<PlayerItem> newItems, int safeIndex) {
     _ensurePlayer();
     items = newItems;
-    index = i.clamp(0, newItems.length - 1);
+    index = safeIndex;
     minimized = false;
     _openCurrent();
     notifyListeners();

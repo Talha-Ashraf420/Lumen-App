@@ -20,6 +20,32 @@ import 'mylist_screen.dart';
 import 'profile_screen.dart';
 import 'search_screen.dart';
 
+enum HomeBackAction { navigateBack, confirmExit }
+
+HomeBackAction homeBackActionFor(int page) =>
+    page == 0 ? HomeBackAction.confirmExit : HomeBackAction.navigateBack;
+
+Future<bool> showHomeExitConfirmation(BuildContext context) async =>
+    await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Exit Lumen?'),
+        content: const Text('Do you want to close the app?'),
+        actions: [
+          TextButton(
+            autofocus: true,
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('No'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Yes'),
+          ),
+        ],
+      ),
+    ) ??
+    false;
+
 class HomeShell extends StatefulWidget {
   final XtreamClient client;
   final Future<void> Function() onLogout;
@@ -46,9 +72,28 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   // Tabs initialise only once first opened — avoids a startup request burst
   // (e.g. the Live guide loading EPG) that can trip the provider.
   final Set<int> _visited = {0};
+  final List<int> _navigationHistory = <int>[];
+  final Map<int, FocusNode> _dockFocusNodes = <int, FocusNode>{
+    0: FocusNode(debugLabel: 'Home dock'),
+    1: FocusNode(debugLabel: 'Search dock'),
+    2: FocusNode(debugLabel: 'My List dock'),
+    3: FocusNode(debugLabel: 'Profile dock'),
+    4: FocusNode(debugLabel: 'Movies dock'),
+    5: FocusNode(debugLabel: 'Series dock'),
+    6: FocusNode(debugLabel: 'Live dock'),
+    7: FocusNode(debugLabel: 'Guide dock'),
+    8: FocusNode(debugLabel: 'Downloads dock'),
+  };
+  final Map<int, FocusScopeNode> _pageFocusScopes = <int, FocusScopeNode>{
+    for (var page = 0; page < 9; page++)
+      page: FocusScopeNode(debugLabel: 'Shell page $page'),
+  };
+  final Map<int, Widget> _pageCache = <int, Widget>{};
+  bool _exitDialogOpen = false;
 
-  // Mobile destinations occupy 0–3. Desktop adds Movies, Series, Live,
-  // TV Guide, and Downloads at 4–8.
+  // Phones and larger screens share the same page map. The phone dock promotes
+  // the three catalog pages to first-class destinations, while the account and
+  // personal-library pages live in a compact utility hub.
   static const _pageCount = 9;
 
   bool _allows(int page) => _capabilities.allows(page);
@@ -56,7 +101,13 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
-    _capabilities = _CatalogCapabilities(live: widget.client.creds.isM3u);
+    // Keep the primary library map stable during the first cached/network
+    // lookup. Xtream accounts conventionally expose all three catalogs; each
+    // request below removes a destination if the provider proves otherwise.
+    // M3U profiles are known to be live-only from the outset.
+    _capabilities = widget.client.creds.isM3u
+        ? const _CatalogCapabilities(live: true)
+        : const _CatalogCapabilities(movies: true, series: true, live: true);
     _loadCapabilities();
     contentRefresh.addListener(_loadCapabilities);
     CatalogCache.instance.revision.addListener(_loadCapabilities);
@@ -83,7 +134,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         return;
       }
       // Start the three light category requests together. CatalogCache keeps
-      // concurrency bounded, while each completion progressively unlocks its
+      // concurrency bounded, while each completion independently settles its
       // destination instead of waiting for the slowest provider endpoint.
       Future<void> reveal(String kind, Future<List<Category>> request) async {
         final values = await request;
@@ -123,6 +174,12 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     contentRefresh.removeListener(_loadCapabilities);
     CatalogCache.instance.revision.removeListener(_loadCapabilities);
     WidgetsBinding.instance.removeObserver(this);
+    for (final node in _dockFocusNodes.values) {
+      node.dispose();
+    }
+    for (final node in _pageFocusScopes.values) {
+      node.dispose();
+    }
     super.dispose();
   }
 
@@ -153,39 +210,117 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
 
   Widget _pageFor(int i) => switch (i) {
     0 => HomeScreen(client: widget.client, onBrowse: () => _select(1)),
-    1 => SearchScreen(key: _searchKey, client: widget.client),
-    2 => MyListScreen(client: widget.client),
+    1 => SearchScreen(
+      key: _searchKey,
+      client: widget.client,
+      shellRailFocusNode: _dockFocusNodes[1],
+    ),
+    2 => MyListScreen(
+      client: widget.client,
+      shellRailFocusNode: _dockFocusNodes[2],
+    ),
     3 => ProfileScreen(
       client: widget.client,
       onLogout: widget.onLogout,
       onSwitch: widget.onSwitch,
+      shellRailFocusNode: _dockFocusNodes[3],
     ),
-    4 => SearchScreen(client: widget.client, initialSection: 'movie'),
-    5 => SearchScreen(client: widget.client, initialSection: 'series'),
-    6 => SearchScreen(client: widget.client, initialSection: 'live'),
+    4 => SearchScreen(
+      client: widget.client,
+      initialSection: 'movie',
+      shellRailFocusNode: _dockFocusNodes[4],
+    ),
+    5 => SearchScreen(
+      client: widget.client,
+      initialSection: 'series',
+      shellRailFocusNode: _dockFocusNodes[5],
+    ),
+    6 => SearchScreen(
+      client: widget.client,
+      initialSection: 'live',
+      shellRailFocusNode: _dockFocusNodes[6],
+    ),
     7 => EpgGuideScreen(client: widget.client),
-    _ => DownloadsScreen(client: widget.client),
+    _ => DownloadsScreen(
+      client: widget.client,
+      shellRailFocusNode: _dockFocusNodes[8],
+    ),
   };
 
-  void _select(int i) {
-    if (!_allows(i)) return;
-    if (i != _index) HapticFeedback.selectionClick();
-    setState(() => _index = i);
-    if (i == 1) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+  Widget _cachedPage(int page) =>
+      _pageCache.putIfAbsent(page, () => _pageFor(page));
+
+  void _focusPageContent(int page) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || page != _index) return;
+      if (page == 1) {
         _searchKey.currentState?.focusSearch();
+        return;
+      }
+      final scope = _pageFocusScopes[page];
+      if (scope == null) return;
+      for (final node in scope.traversalDescendants) {
+        if (node.canRequestFocus && !node.skipTraversal) {
+          node.requestFocus();
+          return;
+        }
+      }
+    });
+  }
+
+  void _select(int i, {bool rememberCurrent = true, bool focusContent = true}) {
+    if (!_allows(i)) return;
+    if (i == _index) {
+      if (focusContent) _focusPageContent(i);
+      return;
+    }
+    if (i != _index) HapticFeedback.selectionClick();
+    if (rememberCurrent) {
+      if (i == 0) {
+        _navigationHistory.clear();
+      } else {
+        _navigationHistory.remove(_index);
+        _navigationHistory.add(_index);
+      }
+    }
+    setState(() => _index = i);
+    if (!focusContent) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _dockFocusNodes[i]?.requestFocus();
+      });
+    }
+    if (focusContent && i != 0) {
+      _focusPageContent(i);
+    } else if (i == 0) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _dockFocusNodes[0]!.requestFocus();
       });
     }
   }
 
-  void _handleMobileBack(bool didPop) {
+  void _selectDockAfterFocusSettles(int page) {
+    // Focus callbacks run outside build, so cached destinations can switch
+    // immediately without the old debounce or an additional frame of latency.
+    if (!mounted || !(_dockFocusNodes[page]?.hasFocus ?? false)) return;
+    _select(page, focusContent: false);
+  }
+
+  Future<void> _handleBack(bool didPop) async {
     if (didPop) return;
-    // A back swipe inside the main shell is navigation, not an instruction to
-    // tear down the Flutter engine. Returning to Home also avoids the native
-    // video surface being disposed mid-gesture on some Android/Google TV
-    // devices. A second swipe on Home is intentionally ignored; the Android
-    // Home/Recents controls remain the safe way to leave the player.
-    if (_index != 0) _select(0);
+    final playback = PlaybackController.instance;
+    if (playback.hasMedia && !playback.minimized) return;
+    if (homeBackActionFor(_index) == HomeBackAction.navigateBack) {
+      final target = _navigationHistory.isEmpty
+          ? 0
+          : _navigationHistory.removeLast();
+      _select(target, rememberCurrent: false);
+      return;
+    }
+    if (_exitDialogOpen) return;
+    _exitDialogOpen = true;
+    final shouldExit = await showHomeExitConfirmation(context);
+    _exitDialogOpen = false;
+    if (shouldExit && mounted) await SystemNavigator.pop();
   }
 
   @override
@@ -193,18 +328,27 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     _visited.add(_index);
     final pages = [
       for (var i = 0; i < _pageCount; i++)
-        TickerMode(
-          // IndexedStack preserves visited pages for instant tab switching.
-          // Explicitly pause their animations while offstage so every Aurora,
-          // shimmer and transition does not continue consuming frames.
-          enabled: i == _index,
-          child: _visited.contains(i) ? _pageFor(i) : const SizedBox.shrink(),
+        ExcludeFocus(
+          key: ValueKey('shell-page-$i'),
+          excluding: i != _index,
+          child: FocusScope(
+            node: _pageFocusScopes[i],
+            child: TickerMode(
+              // Keep each visited page as the same widget instance. Besides
+              // preserving state, this prevents all heavy offstage utility and
+              // catalog pages from rebuilding on every rail focus change.
+              enabled: i == _index,
+              child: _visited.contains(i)
+                  ? _cachedPage(i)
+                  : const SizedBox.shrink(),
+            ),
+          ),
         ),
     ];
     final wide = isWide(context);
     return PopScope(
       canPop: false,
-      onPopInvokedWithResult: (didPop, _) => _handleMobileBack(didPop),
+      onPopInvokedWithResult: (didPop, _) => _handleBack(didPop),
       child: CallbackShortcuts(
         bindings: {
           const SingleActivator(LogicalKeyboardKey.keyK, meta: true): () =>
@@ -235,7 +379,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           _SignalDock(
             index: _index,
             capabilities: _capabilities,
-            onSelect: _select,
+            onSelect: (page) => _select(page),
+            onFocusSelect: _selectDockAfterFocusSettles,
+            focusNodes: _dockFocusNodes,
           ),
           Expanded(
             child: Padding(
@@ -276,12 +422,18 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           bottom: false,
           child: IndexedStack(index: _index, children: pages),
         ),
+        if (_index == 0)
+          Positioned(
+            top: 4,
+            right: 16,
+            child: SafeArea(bottom: false, child: _mobileUtilityButton()),
+          ),
         Align(
           alignment: Alignment.bottomCenter,
-          child:
-              Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 22),
-                    child: Container(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 22),
+            child:
+                Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 7,
                         vertical: 7,
@@ -296,29 +448,93 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                         mainAxisSize: MainAxisSize.min,
                         children: [for (final nav in _mobileDock) _item(nav)],
                       ),
-                    ),
-                  )
-                  .animate()
-                  .fadeIn(delay: 150.ms)
-                  .slideY(begin: 0.6, end: 0, curve: Curves.easeOutBack),
+                    )
+                    .animate()
+                    .fadeIn(delay: 150.ms)
+                    .slideY(begin: 0.6, end: 0, curve: Curves.easeOutBack),
+          ),
         ),
       ],
     );
   }
 
-  List<_Nav> get _mobileDock => [
+  List<_Nav> get _mobileDock => <_Nav>[
     const _Nav(Icons.home_rounded, 'Home', 0),
+    if (_capabilities.movies)
+      const _Nav(Icons.movie_filter_rounded, 'Movies', 4),
+    if (_capabilities.series)
+      const _Nav(Icons.amp_stories_rounded, 'Series', 5),
+    if (_capabilities.live) const _Nav(Icons.sensors_rounded, 'Live', 6),
     const _Nav(Icons.search_rounded, 'Search', 1),
-    const _Nav(Icons.favorite_rounded, 'My List', 2),
-    const _Nav(Icons.person_rounded, 'Profile', 3),
   ];
+
+  Widget _mobileUtilityButton() {
+    final username = widget.client.creds.username.trim();
+    final initial = username.isEmpty ? 'L' : username[0].toUpperCase();
+    return Tooltip(
+      message: 'You & library',
+      child: RemoteTap(
+        behavior: HitTestBehavior.opaque,
+        onTap: _openMobileUtilityHub,
+        child: Container(
+          width: 50,
+          height: 50,
+          decoration: BoxDecoration(
+            color: surface.withValues(alpha: 0.96),
+            borderRadius: BorderRadius.circular(17),
+            border: Border.all(color: line),
+            boxShadow: glow(Colors.black, blur: 16, y: 6),
+          ),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Text(
+                initial,
+                style: TextStyle(
+                  color: textHi,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 16,
+                ),
+              ),
+              Positioned(
+                right: 7,
+                bottom: 7,
+                child: Container(
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: accentInk,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openMobileUtilityHub() async {
+    final destination = await showModalBottomSheet<int>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: false,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.58),
+      builder: (_) => _MobileUtilityHub(client: widget.client),
+    );
+    if (!mounted || destination == null) return;
+    _select(destination);
+  }
 
   Widget _item(_Nav nav) {
     final sel = nav.page == _index;
     return RemoteTap(
-      // The phone dock communicates selection itself. A persistent focus ring
-      // made Home look selected after tapping another destination.
-      showFocusRing: false,
+      focusNode: _dockFocusNodes[nav.page],
+      onFocusChange: (focused) {
+        if (focused && !sel) _select(nav.page);
+      },
       behavior: HitTestBehavior.opaque,
       onTap: () => _select(nav.page),
       child: AnimatedContainer(
@@ -353,6 +569,209 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       ),
     );
   }
+}
+
+class _MobileUtilityHub extends StatelessWidget {
+  const _MobileUtilityHub({required this.client});
+
+  final XtreamClient client;
+
+  @override
+  Widget build(BuildContext context) {
+    final username = client.creds.username.trim();
+    final host = Uri.tryParse(client.creds.baseUrl)?.host;
+    final account = username.isEmpty ? (host ?? 'Local library') : username;
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+        padding: const EdgeInsets.fromLTRB(18, 10, 18, 18),
+        decoration: BoxDecoration(
+          color: surface,
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: line),
+          boxShadow: glow(Colors.black, blur: 32, y: 12),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 38,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: line,
+                  borderRadius: BorderRadius.circular(3),
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                Container(
+                  width: 42,
+                  height: 42,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: accent,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Text(
+                    account.isEmpty ? 'L' : account[0].toUpperCase(),
+                    style: TextStyle(
+                      color: onAccent,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Your Lumen',
+                        style: kTitle().copyWith(fontSize: 20),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        account,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: muted, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Close',
+                  onPressed: () => Navigator.pop(context),
+                  icon: Icon(Icons.close_rounded, color: muted),
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            Text(
+              'SAVED & PERSONAL',
+              style: TextStyle(
+                color: subtle,
+                fontSize: 10,
+                letterSpacing: 1.7,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: _MobileUtilityDestination(
+                    icon: Icons.favorite_rounded,
+                    label: 'My List',
+                    subtitle: 'Saved titles',
+                    autofocus: true,
+                    onTap: () => Navigator.pop(context, 2),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _MobileUtilityDestination(
+                    icon: Icons.download_rounded,
+                    label: 'Downloads',
+                    subtitle: 'Watch offline',
+                    onTap: () => Navigator.pop(context, 8),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            _MobileUtilityDestination(
+              icon: Icons.person_outline_rounded,
+              label: 'Profile & settings',
+              subtitle: 'Account, appearance, privacy and app controls',
+              onTap: () => Navigator.pop(context, 3),
+              horizontal: true,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MobileUtilityDestination extends StatelessWidget {
+  const _MobileUtilityDestination({
+    required this.icon,
+    required this.label,
+    required this.subtitle,
+    required this.onTap,
+    this.horizontal = false,
+    this.autofocus = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final String subtitle;
+  final VoidCallback onTap;
+  final bool horizontal;
+  final bool autofocus;
+
+  @override
+  Widget build(BuildContext context) {
+    return RemoteTap(
+      autofocus: autofocus,
+      onTap: onTap,
+      child: Container(
+        height: horizontal ? 68 : 92,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: surfaceHi,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: line),
+        ),
+        child: horizontal
+            ? Row(
+                children: [
+                  _icon(),
+                  const SizedBox(width: 12),
+                  Expanded(child: _copy()),
+                  Icon(Icons.chevron_right_rounded, color: muted),
+                ],
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [_icon(), const Spacer(), _copy()],
+              ),
+      ),
+    );
+  }
+
+  Widget _icon() => Icon(icon, color: accentInk, size: 21);
+
+  Widget _copy() => Column(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          color: textHi,
+          fontSize: 13,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      const SizedBox(height: 2),
+      Text(
+        subtitle,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(color: subtle, fontSize: 10.5),
+      ),
+    ],
+  );
 }
 
 // ── Signal dock ──────────────────────────────────────────────────────────────
@@ -406,14 +825,40 @@ class _SignalDock extends StatelessWidget {
   final int index;
   final _CatalogCapabilities capabilities;
   final ValueChanged<int> onSelect;
+  final ValueChanged<int> onFocusSelect;
+  final Map<int, FocusNode> focusNodes;
   const _SignalDock({
     required this.index,
     required this.capabilities,
     required this.onSelect,
+    required this.onFocusSelect,
+    required this.focusNodes,
   });
 
   @override
   Widget build(BuildContext context) {
+    final main = _mainDock
+        .where((nav) => capabilities.allows(nav.page))
+        .toList();
+    final ordered = <_Nav>[...main, ..._utilityDock];
+
+    KeyEventResult moveInRail(int page, KeyEvent event) {
+      if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+        return KeyEventResult.ignored;
+      }
+      final current = ordered.indexWhere((nav) => nav.page == page);
+      if (current < 0) return KeyEventResult.ignored;
+      final delta = event.logicalKey == LogicalKeyboardKey.arrowUp
+          ? -1
+          : event.logicalKey == LogicalKeyboardKey.arrowDown
+          ? 1
+          : 0;
+      if (delta == 0) return KeyEventResult.ignored;
+      final target = (current + delta).clamp(0, ordered.length - 1);
+      focusNodes[ordered[target].page]?.requestFocus();
+      return KeyEventResult.handled;
+    }
+
     return SizedBox(
       width: 86,
       child: Padding(
@@ -423,13 +868,14 @@ class _SignalDock extends StatelessWidget {
             const SizedBox(height: 6),
             Tooltip(message: 'Lumen', child: LumenMark(size: 27)),
             const SizedBox(height: 26),
-            for (final nav in _mainDock.where(
-              (nav) => capabilities.allows(nav.page),
-            ))
+            for (final nav in main)
               _DockItem(
                 nav: nav,
                 selected: nav.page == index,
                 onTap: () => onSelect(nav.page),
+                onFocusSelect: () => onFocusSelect(nav.page),
+                focusNode: focusNodes[nav.page],
+                onKeyEvent: (_, event) => moveInRail(nav.page, event),
               ),
             const Spacer(),
             Container(
@@ -442,6 +888,9 @@ class _SignalDock extends StatelessWidget {
                 nav: nav,
                 selected: nav.page == index,
                 onTap: () => onSelect(nav.page),
+                onFocusSelect: () => onFocusSelect(nav.page),
+                focusNode: focusNodes[nav.page],
+                onKeyEvent: (_, event) => moveInRail(nav.page, event),
               ),
           ],
         ),
@@ -454,10 +903,16 @@ class _DockItem extends StatelessWidget {
   final _Nav nav;
   final bool selected;
   final VoidCallback onTap;
+  final VoidCallback onFocusSelect;
+  final FocusNode? focusNode;
+  final FocusOnKeyEventCallback? onKeyEvent;
   const _DockItem({
     required this.nav,
     required this.selected,
     required this.onTap,
+    required this.onFocusSelect,
+    this.focusNode,
+    this.onKeyEvent,
   });
 
   @override
@@ -467,6 +922,14 @@ class _DockItem extends StatelessWidget {
       waitDuration: const Duration(milliseconds: 450),
       child: FocusableTap(
         autofocus: nav.page == 0,
+        focusNode: focusNode,
+        onKeyEvent: onKeyEvent,
+        // Primary TV destinations behave like tabs: landing on one with the
+        // D-pad reveals that page immediately. Media/action controls still
+        // require Select, so browsing can never start playback accidentally.
+        onFocusChange: (focused) {
+          if (focused && !selected) onFocusSelect();
+        },
         onTap: onTap,
         builder: (context, active) => AnimatedContainer(
           duration: const Duration(milliseconds: 180),
@@ -509,7 +972,7 @@ class _DockItem extends StatelessWidget {
               if (nav.trailingIsDownloads)
                 AnimatedBuilder(
                   animation: Downloads.instance,
-                  builder: (_, __) {
+                  builder: (context, child) {
                     final hasActive = Downloads.instance.items.any(
                       (d) =>
                           d.status == DlStatus.downloading ||

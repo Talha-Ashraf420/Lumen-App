@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../catalog_cache.dart';
 import '../library.dart';
 import '../refresh.dart';
@@ -32,6 +35,11 @@ class _Res {
 class SearchScreen extends StatefulWidget {
   final XtreamClient client;
 
+  /// Stable shell-rail destination used when a TV user presses Left from the
+  /// category column. Pushed catalog routes omit it and retain route-local
+  /// traversal instead.
+  final FocusNode? shellRailFocusNode;
+
   /// When set ('movie' | 'series' | 'live'), the screen opens straight into
   /// that catalog (used by the desktop sidebar's Movies/Series/Live entries).
   final String? initialSection;
@@ -42,6 +50,7 @@ class SearchScreen extends StatefulWidget {
   const SearchScreen({
     super.key,
     required this.client,
+    this.shellRailFocusNode,
     this.initialSection,
     this.initialCategory,
     this.initialCategoryName,
@@ -54,6 +63,19 @@ class SearchScreenState extends State<SearchScreen>
     with AutomaticKeepAliveClientMixin {
   final _ctrl = TextEditingController();
   final _searchFocus = FocusNode(debugLabel: 'Search library');
+  final _gridScroll = ScrollController();
+  final _categoryScope = FocusScopeNode(debugLabel: 'Catalog categories');
+  final _gridScope = FocusScopeNode(debugLabel: 'Catalog content grid');
+  final List<FocusNode> _gridFocus = <FocusNode>[];
+  final Map<String, FocusNode> _categoryFocus = <String, FocusNode>{};
+  Timer? _categorySelectionTimer;
+  Timer? _queryTimer;
+  int _lastGridIndex = 0;
+  int? _pendingGridFocus;
+  int _gridFocusRequestSerial = 0;
+  bool _gridFocusResumeScheduled = false;
+  int _gridColumns = 1;
+  double _gridRowExtent = 180;
   String _q = '';
   late String _section =
       widget.initialSection ?? 'all'; // all | movie | series | live
@@ -68,6 +90,7 @@ class SearchScreenState extends State<SearchScreen>
   final Map<String, List<LiveStream>> _liveByCat = {};
   final Set<String> _inFlight = {};
   final Map<String, bool> _hasMore = {};
+  final Map<String, String> _cacheSignatures = {};
   int _resultGeneration = 0;
   static const _pageSize = 48;
 
@@ -161,7 +184,194 @@ class SearchScreenState extends State<SearchScreen>
     CatalogCache.instance.revision.removeListener(_onCatalogRevision);
     _ctrl.dispose();
     _searchFocus.dispose();
+    _gridScroll.dispose();
+    _categoryScope.dispose();
+    _gridScope.dispose();
+    _categorySelectionTimer?.cancel();
+    _queryTimer?.cancel();
+    for (final node in _gridFocus) {
+      node.dispose();
+    }
+    for (final node in _categoryFocus.values) {
+      node.dispose();
+    }
     super.dispose();
+  }
+
+  String _categoryFocusKey(String id) => '$_section:$id';
+
+  FocusNode _categoryFocusNode(String id) => _categoryFocus.putIfAbsent(
+    _categoryFocusKey(id),
+    () => FocusNode(debugLabel: '$_section category $id'),
+  );
+
+  void _selectCategory(String id, {bool restoreCategoryFocus = true}) {
+    _categorySelectionTimer?.cancel();
+    if (_cat == id) return;
+    final node = _categoryFocusNode(id);
+    _lastGridIndex = 0;
+    // Results are cached per category. Clearing every category here made TV
+    // browsing refetch data whenever focus crossed the sidebar and was the main
+    // source of visible hangs. Only switch the active cache key.
+    setState(() => _cat = id);
+    if (!restoreCategoryFocus) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && node.canRequestFocus) node.requestFocus();
+    });
+  }
+
+  void _selectCategoryAfterFocusSettles(String id) {
+    _categorySelectionTimer?.cancel();
+    final node = _categoryFocusNode(id);
+    _categorySelectionTimer = Timer(const Duration(milliseconds: 70), () {
+      if (!mounted || !node.hasFocus) return;
+      _selectCategory(id);
+    });
+  }
+
+  KeyEventResult _moveCategoryFocus(
+    List<(String, String)> categories,
+    int index,
+    KeyEvent event,
+  ) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+      _categorySelectionTimer?.cancel();
+      final railNode = widget.shellRailFocusNode;
+      if (railNode != null && railNode.canRequestFocus) {
+        railNode.requestFocus();
+        return KeyEventResult.handled;
+      }
+      return FocusManager.instance.primaryFocus?.focusInDirection(
+                TraversalDirection.left,
+              ) ==
+              true
+          ? KeyEventResult.handled
+          : KeyEventResult.ignored;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+      final id = categories[index].$1;
+      if (_cat != id) {
+        _selectCategory(id, restoreCategoryFocus: false);
+      }
+      _requestGridFocus(_lastGridIndex);
+      return KeyEventResult.handled;
+    }
+    final delta = event.logicalKey == LogicalKeyboardKey.arrowUp
+        ? -1
+        : event.logicalKey == LogicalKeyboardKey.arrowDown
+        ? 1
+        : 0;
+    if (delta == 0) return KeyEventResult.ignored;
+    final target = index + delta;
+    // Vertical movement is contained inside the category zone. Letting an edge
+    // event fall through makes the geometry policy choose a content tile.
+    if (target < 0) return KeyEventResult.handled;
+    if (target >= categories.length) return KeyEventResult.handled;
+    _categoryFocusNode(categories[target].$1).requestFocus();
+    return KeyEventResult.handled;
+  }
+
+  void _ensureGridFocusNodes(int count) {
+    while (_gridFocus.length < count) {
+      _gridFocus.add(
+        FocusNode(debugLabel: 'Catalog tile ${_gridFocus.length}'),
+      );
+    }
+  }
+
+  void _resumePendingGridFocus() {
+    if (_pendingGridFocus == null || _gridFocusResumeScheduled) return;
+    _gridFocusResumeScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _gridFocusResumeScheduled = false;
+      final target = _pendingGridFocus;
+      if (mounted && target != null) _requestGridFocus(target);
+    });
+  }
+
+  void _requestGridFocus(int requestedIndex) {
+    final requestSerial = ++_gridFocusRequestSerial;
+    if (_gridFocus.isEmpty || (_browse && !_has(_section, _cat))) {
+      _pendingGridFocus = requestedIndex;
+      return;
+    }
+    final target = requestedIndex.clamp(0, _gridFocus.length - 1).toInt();
+    _pendingGridFocus = target;
+
+    void attempt(int remainingFrames) {
+      if (!mounted || requestSerial != _gridFocusRequestSerial) return;
+      final node = _gridFocus[target];
+      if (node.context != null && node.canRequestFocus) {
+        _pendingGridFocus = null;
+        node.requestFocus();
+        return;
+      }
+      if (_gridScroll.hasClients && _gridScroll.position.hasContentDimensions) {
+        final row = target ~/ _gridColumns;
+        final desired = (row * _gridRowExtent - _gridRowExtent).clamp(
+          _gridScroll.position.minScrollExtent,
+          _gridScroll.position.maxScrollExtent,
+        );
+        if ((_gridScroll.offset - desired).abs() > 1) {
+          _gridScroll.jumpTo(desired);
+        }
+      }
+      if (remainingFrames > 0) {
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => attempt(remainingFrames - 1),
+        );
+      }
+    }
+
+    attempt(10);
+  }
+
+  KeyEventResult _moveGridFocus(
+    int index,
+    KeyEvent event, {
+    required int itemCount,
+    required int columns,
+    required double rowExtent,
+  }) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    final key = event.logicalKey;
+    final column = index % columns;
+    int? target;
+    if (key == LogicalKeyboardKey.arrowRight) {
+      // Stay inside the grid at a row edge rather than allowing Flutter to
+      // jump to an unrelated sidebar/header control.
+      if (column == columns - 1 || index + 1 >= itemCount) {
+        return KeyEventResult.handled;
+      }
+      target = index + 1;
+    } else if (key == LogicalKeyboardKey.arrowLeft) {
+      if (column == 0) {
+        _categorySelectionTimer?.cancel();
+        _categoryFocusNode(_cat).requestFocus();
+        return KeyEventResult.handled;
+      }
+      target = index - 1;
+    } else if (key == LogicalKeyboardKey.arrowDown) {
+      if (index + columns >= itemCount) return KeyEventResult.handled;
+      target = index + columns;
+    } else if (key == LogicalKeyboardKey.arrowUp) {
+      // Up on the first content row stays in the grid. A geometry fallback can
+      // otherwise jump diagonally into whichever category happens to be near.
+      if (index < columns) return KeyEventResult.handled;
+      target = index - columns;
+    } else {
+      return KeyEventResult.ignored;
+    }
+
+    _gridColumns = columns;
+    _gridRowExtent = rowExtent;
+    _requestGridFocus(target);
+    return KeyEventResult.handled;
   }
 
   void _onCatalogRevision() {
@@ -174,11 +384,17 @@ class SearchScreenState extends State<SearchScreen>
     _searchFocus.requestFocus();
   }
 
-  bool _has(String section, String cat) => switch (section) {
-    'movie' => _movieByCat.containsKey(cat),
-    'series' => _seriesByCat.containsKey(cat),
-    _ => _liveByCat.containsKey(cat),
-  };
+  String get _resultSignature => '${_q.trim()}\u0000$_sort';
+
+  bool _has(String section, String cat) {
+    final contains = switch (section) {
+      'movie' => _movieByCat.containsKey(cat),
+      'series' => _seriesByCat.containsKey(cat),
+      _ => _liveByCat.containsKey(cat),
+    };
+    return contains &&
+        _cacheSignatures[_pageKey(section, cat)] == _resultSignature;
+  }
 
   String _pageKey(String section, String cat) => '$section:$cat';
 
@@ -188,13 +404,35 @@ class SearchScreenState extends State<SearchScreen>
     _seriesByCat.clear();
     _liveByCat.clear();
     _hasMore.clear();
+    _cacheSignatures.clear();
     _inFlight.clear();
   }
 
   void _changeResults(VoidCallback change) {
     setState(() {
       change();
-      _clearResults();
+      // Keep category/section pages in memory and invalidate only in-flight
+      // work. Each page is tagged with its query/sort signature, so stale data
+      // is never displayed but revisiting an unchanged tab is instant.
+      _resultGeneration++;
+      _inFlight.clear();
+    });
+  }
+
+  void _selectSection(String section) {
+    if (_section == section) return;
+    setState(() {
+      _section = section;
+      _cat = 'all';
+      _sort = 'default';
+      _lastGridIndex = 0;
+    });
+  }
+
+  void _onQueryChanged(String value) {
+    _queryTimer?.cancel();
+    _queryTimer = Timer(const Duration(milliseconds: 180), () {
+      if (mounted && value != _q) _changeResults(() => _q = value);
     });
   }
 
@@ -206,20 +444,31 @@ class SearchScreenState extends State<SearchScreen>
 
   void _loadNext(String section, String cat) {
     final pageKey = _pageKey(section, cat);
+    final signature = _resultSignature;
     if (_has(section, cat) && !(_hasMore[pageKey] ?? false)) return;
     final generation = _resultGeneration;
     final requestKey = '$generation:$pageKey';
     if (_inFlight.contains(requestKey)) return;
     _inFlight.add(requestKey);
-    final offset = switch (section) {
-      'movie' => _movieByCat[cat]?.length ?? 0,
-      'series' => _seriesByCat[cat]?.length ?? 0,
-      _ => _liveByCat[cat]?.length ?? 0,
-    };
+    final offset = !_has(section, cat)
+        ? 0
+        : switch (section) {
+            'movie' => _movieByCat[cat]?.length ?? 0,
+            'series' => _seriesByCat[cat]?.length ?? 0,
+            _ => _liveByCat[cat]?.length ?? 0,
+          };
 
     Future<void> finish(Future<void> Function() run) => run()
         .catchError(
-          (_) => _storePage(section, cat, const [], false, generation, offset),
+          (_) => _storePage(
+            section,
+            cat,
+            const [],
+            false,
+            generation,
+            offset,
+            signature,
+          ),
         )
         .whenComplete(() => _inFlight.remove(requestKey));
 
@@ -244,6 +493,7 @@ class SearchScreenState extends State<SearchScreen>
                   page.hasMore,
                   generation,
                   offset,
+                  signature,
                 ),
               ),
         );
@@ -266,6 +516,7 @@ class SearchScreenState extends State<SearchScreen>
                   page.hasMore,
                   generation,
                   offset,
+                  signature,
                 ),
               ),
         );
@@ -288,6 +539,7 @@ class SearchScreenState extends State<SearchScreen>
                   page.hasMore,
                   generation,
                   offset,
+                  signature,
                 ),
               ),
         );
@@ -301,6 +553,7 @@ class SearchScreenState extends State<SearchScreen>
     bool hasMore,
     int generation,
     int offset,
+    String signature,
   ) {
     if (!mounted || generation != _resultGeneration) return;
     setState(() {
@@ -322,6 +575,7 @@ class SearchScreenState extends State<SearchScreen>
           ];
       }
       _hasMore[_pageKey(section, cat)] = hasMore;
+      _cacheSignatures[_pageKey(section, cat)] = signature;
     });
   }
 
@@ -349,15 +603,6 @@ class SearchScreenState extends State<SearchScreen>
       ),
     ),
   );
-  _Res _liv(LiveStream s) => _Res(
-    s.name,
-    s.icon,
-    0,
-    '',
-    true,
-    () => PlaybackController.instance.open([_liveItem(s)], 0),
-  );
-
   PlayerItem _liveItem(LiveStream s) {
     final url = widget.client.streamUrl('live', s.streamId, ext: 'ts');
     return PlayerItem(
@@ -517,12 +762,13 @@ class SearchScreenState extends State<SearchScreen>
     hint: 'Search movies, series, channels…',
     controller: _ctrl,
     focusNode: _searchFocus,
-    onChanged: (v) => _changeResults(() => _q = v),
+    onChanged: _onQueryChanged,
     trailing: _q.isNotEmpty
         ? RemoteTap(
             semanticLabel: 'Clear search',
             focusRadius: 18,
             onTap: () => _changeResults(() {
+              _queryTimer?.cancel();
               _q = '';
               _ctrl.clear();
               _searchFocus.requestFocus();
@@ -617,11 +863,12 @@ class SearchScreenState extends State<SearchScreen>
         itemBuilder: (_, i) {
           final sel = _section == items[i].id;
           return RemoteTap(
-            onTap: () => _changeResults(() {
-              _section = items[i].id;
-              _cat = 'all';
-              _sort = 'default';
-            }),
+            onFocusChange: (focused) {
+              if (focused && !sel) {
+                _selectSection(items[i].id);
+              }
+            },
+            onTap: () => _selectSection(items[i].id),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
               alignment: Alignment.center,
@@ -737,7 +984,7 @@ class SearchScreenState extends State<SearchScreen>
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(color: line),
       ),
-      onSelected: (v) => _changeResults(() => _cat = v),
+      onSelected: (v) => _selectCategory(v, restoreCategoryFocus: false),
       itemBuilder: (_) => [
         _catItem('all', 'All categories'),
         for (final c in _curCats) _catItem(c.id, c.name),
@@ -804,28 +1051,48 @@ class SearchScreenState extends State<SearchScreen>
       ('all', 'All categories'),
       for (final c in _curCats) (c.id, c.name),
     ];
-    return Container(
-      width: 240,
-      decoration: BoxDecoration(
-        border: Border(right: BorderSide(color: line)),
-      ),
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(12, 2, 12, 24),
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 6, 12, 10),
-            child: Text('CATEGORIES', style: kSection()),
+    return FocusScope(
+      node: _categoryScope,
+      child: FocusTraversalGroup(
+        policy: WidgetOrderTraversalPolicy(),
+        child: Container(
+          width: 240,
+          decoration: BoxDecoration(
+            border: Border(right: BorderSide(color: line)),
           ),
-          for (final (id, name) in cats) _catTile(id, name),
-        ],
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(12, 2, 12, 24),
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 6, 12, 10),
+                child: Text('CATEGORIES', style: kSection()),
+              ),
+              for (var i = 0; i < cats.length; i++)
+                _catTile(
+                  cats[i].$1,
+                  cats[i].$2,
+                  onKeyEvent: (_, event) => _moveCategoryFocus(cats, i, event),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }
 
-  Widget _catTile(String id, String name) {
+  Widget _catTile(
+    String id,
+    String name, {
+    FocusOnKeyEventCallback? onKeyEvent,
+  }) {
     final sel = _cat == id;
     return FocusableTap(
-      onTap: () => _changeResults(() => _cat = id),
+      focusNode: _categoryFocusNode(id),
+      onKeyEvent: onKeyEvent,
+      onFocusChange: (focused) {
+        if (focused && !sel) _selectCategoryAfterFocusSettles(id);
+      },
+      onTap: () => _selectCategory(id),
       builder: (context, active) => AnimatedContainer(
         duration: const Duration(milliseconds: 140),
         margin: const EdgeInsets.symmetric(vertical: 2),
@@ -879,13 +1146,28 @@ class SearchScreenState extends State<SearchScreen>
       _ensure('movie', 'all');
       _ensure('series', 'all');
       _ensure('live', 'all');
-      final movies = _movieByCat['all'];
-      final series = _seriesByCat['all'];
-      final live = _liveByCat['all'];
+      final movies = _has('movie', 'all') ? _movieByCat['all'] : null;
+      final series = _has('series', 'all') ? _seriesByCat['all'] : null;
+      final live = _has('live', 'all') ? _liveByCat['all'] : null;
       final loading = movies == null || series == null || live == null;
       final mr = (movies ?? []).take(18).map(_movie).toList();
       final sr = (series ?? []).take(18).map(_ser).toList();
-      final lr = (live ?? []).take(18).map(_liv).toList();
+      final liveResults = (live ?? []).take(18).toList();
+      final livePlaylist = liveResults.map(_liveItem).toList();
+      final lr = liveResults
+          .asMap()
+          .entries
+          .map(
+            (entry) => _Res(
+              entry.value.name,
+              entry.value.icon,
+              0,
+              '',
+              true,
+              () => PlaybackController.instance.open(livePlaylist, entry.key),
+            ),
+          )
+          .toList();
       if (loading && mr.isEmpty && sr.isEmpty && lr.isEmpty) {
         return const GridLoading();
       }
@@ -941,64 +1223,102 @@ class SearchScreenState extends State<SearchScreen>
 
     final more = _hasMore[pageKey] ?? false;
     return LayoutBuilder(
-      builder: (context, constraints) =>
-          NotificationListener<ScrollNotification>(
-            onNotification: (notification) {
-              if (more && notification.metrics.extentAfter < 900) {
-                _loadNext(_section, catId);
-              }
-              return false;
-            },
-            child: GridView.builder(
-              key: PageStorageKey(
-                'catalog:${Store.profileScope(widget.client.creds)}:'
-                '$_section:$catId:$_sort:$q',
-              ),
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: gridColumns(
-                  constraints.maxWidth,
-                  tile: live ? 150 : 136,
+      builder: (context, constraints) {
+        final columns = gridColumns(
+          constraints.maxWidth,
+          tile: live ? 150 : 136,
+        );
+        final tileWidth =
+            (constraints.maxWidth - 32 - ((columns - 1) * 13)) / columns;
+        final rowExtent = tileWidth / (live ? 0.76 : 0.66) + 20;
+        _gridColumns = columns;
+        _gridRowExtent = rowExtent;
+        _ensureGridFocusNodes(items.length);
+        _resumePendingGridFocus();
+        return NotificationListener<ScrollNotification>(
+          onNotification: (notification) {
+            if (more && notification.metrics.extentAfter < 900) {
+              _loadNext(_section, catId);
+            }
+            return false;
+          },
+          child: FocusScope(
+            node: _gridScope,
+            child: FocusTraversalGroup(
+              policy: WidgetOrderTraversalPolicy(),
+              child: GridView.builder(
+                controller: _gridScroll,
+                key: PageStorageKey(
+                  'catalog:${Store.profileScope(widget.client.creds)}:'
+                  '$_section:$catId:$_sort:$q',
                 ),
-                // A channel tile is square artwork plus its label. At three
-                // columns on a phone, .82 left less room than the label's
-                // actual line box and produced a repeating 1.5px overflow.
-                childAspectRatio: live ? 0.76 : 0.66,
-                crossAxisSpacing: 13,
-                mainAxisSpacing: 20,
-              ),
-              itemCount: items.length + (more ? 1 : 0),
-              itemBuilder: (_, i) {
-                if (i == items.length) {
-                  return Center(
-                    child: SizedBox(
-                      width: 28,
-                      height: 28,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2.5,
-                        color: accentInk,
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: columns,
+                  // A channel tile is square artwork plus its label. At three
+                  // columns on a phone, .82 left less room than the label's
+                  // actual line box and produced a repeating 1.5px overflow.
+                  childAspectRatio: live ? 0.76 : 0.66,
+                  crossAxisSpacing: 13,
+                  mainAxisSpacing: 20,
+                ),
+                itemCount: items.length + (more ? 1 : 0),
+                itemBuilder: (_, i) {
+                  if (i == items.length) {
+                    return Center(
+                      child: SizedBox(
+                        width: 28,
+                        height: 28,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          color: accentInk,
+                        ),
                       ),
-                    ),
-                  );
-                }
-                return live
-                    ? ChannelCard(
-                        name: items[i].name,
-                        logo: items[i].image,
-                        index: i,
-                        onTap: items[i].onTap,
-                      )
-                    : PosterCard(
-                        name: items[i].name,
-                        image: items[i].image,
-                        rating: items[i].rating,
-                        subtitle: items[i].subtitle,
-                        index: i,
-                        onTap: items[i].onTap,
-                      );
-              },
+                    );
+                  }
+                  return live
+                      ? ChannelCard(
+                          focusNode: _gridFocus[i],
+                          onFocusChange: (focused) {
+                            if (focused) _lastGridIndex = i;
+                          },
+                          onKeyEvent: (_, event) => _moveGridFocus(
+                            i,
+                            event,
+                            itemCount: items.length,
+                            columns: columns,
+                            rowExtent: rowExtent,
+                          ),
+                          name: items[i].name,
+                          logo: items[i].image,
+                          index: i,
+                          onTap: items[i].onTap,
+                        )
+                      : PosterCard(
+                          focusNode: _gridFocus[i],
+                          onFocusChange: (focused) {
+                            if (focused) _lastGridIndex = i;
+                          },
+                          onKeyEvent: (_, event) => _moveGridFocus(
+                            i,
+                            event,
+                            itemCount: items.length,
+                            columns: columns,
+                            rowExtent: rowExtent,
+                          ),
+                          name: items[i].name,
+                          image: items[i].image,
+                          rating: items[i].rating,
+                          subtitle: items[i].subtitle,
+                          index: i,
+                          onTap: items[i].onTap,
+                        );
+                },
+              ),
             ),
           ),
+        );
+      },
     );
   }
 
