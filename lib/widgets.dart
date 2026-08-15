@@ -1100,9 +1100,12 @@ class _SearchFieldState extends State<SearchField> {
             : surface.withValues(alpha: 0.92),
         borderRadius: BorderRadius.circular(25),
         border: Border.all(
-          color: focused ? accent : line,
-          width: focused ? 1.6 : 1,
+          color: focused ? accentInk : line,
+          width: focused ? 3 : 1,
         ),
+        boxShadow: focused && DeviceProfile.isTelevision
+            ? glow(accent, blur: 18, a: .45)
+            : null,
       ),
       child: Row(
         children: [

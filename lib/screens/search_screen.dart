@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../catalog_cache.dart';
+import '../device_profile.dart';
 import '../library.dart';
 import '../refresh.dart';
 import '../responsive.dart';
@@ -63,6 +64,15 @@ class SearchScreenState extends State<SearchScreen>
     with AutomaticKeepAliveClientMixin {
   final _ctrl = TextEditingController();
   final _searchFocus = FocusNode(debugLabel: 'Search library');
+  final List<FocusNode> _sectionFocus = List.generate(
+    4,
+    (index) => FocusNode(
+      debugLabel:
+          'Search section ${const ['all', 'movie', 'series', 'live'][index]}',
+    ),
+  );
+  final _categoryButtonFocus = FocusNode(debugLabel: 'Search category');
+  final _categoryMenuKey = GlobalKey<PopupMenuButtonState<String>>();
   final _sortFocus = FocusNode(debugLabel: 'Catalog sort');
   final _sortMenuKey = GlobalKey<PopupMenuButtonState<String>>();
   final _gridScroll = ScrollController();
@@ -70,6 +80,14 @@ class SearchScreenState extends State<SearchScreen>
   final _gridScope = FocusScopeNode(debugLabel: 'Catalog content grid');
   final List<FocusNode> _gridFocus = <FocusNode>[];
   final Map<String, FocusNode> _categoryFocus = <String, FocusNode>{};
+  final Map<String, List<FocusNode>> _searchResultFocus =
+      <String, List<FocusNode>>{};
+  final Map<String, int> _searchResultCounts = <String, int>{};
+  final Map<String, ScrollController> _searchShelfScroll =
+      <String, ScrollController>{};
+  List<String> _visibleSearchGroups = const [];
+  (int, int)? _pendingSearchFocus;
+  int _searchFocusRequestSerial = 0;
   Timer? _categorySelectionTimer;
   Timer? _queryTimer;
   int _lastGridIndex = 0;
@@ -117,6 +135,10 @@ class SearchScreenState extends State<SearchScreen>
   @override
   void initState() {
     super.initState();
+    _searchFocus.onKeyEvent = _moveSearchFieldFocus;
+    _categoryButtonFocus
+      ..onKeyEvent = _moveCategoryButtonFocus
+      ..addListener(_onSortFocusChanged);
     _sortFocus
       ..onKeyEvent = _moveSortFocus
       ..addListener(_onSortFocusChanged);
@@ -189,6 +211,12 @@ class SearchScreenState extends State<SearchScreen>
     CatalogCache.instance.revision.removeListener(_onCatalogRevision);
     _ctrl.dispose();
     _searchFocus.dispose();
+    for (final node in _sectionFocus) {
+      node.dispose();
+    }
+    _categoryButtonFocus
+      ..removeListener(_onSortFocusChanged)
+      ..dispose();
     _sortFocus
       ..removeListener(_onSortFocusChanged)
       ..dispose();
@@ -202,6 +230,14 @@ class SearchScreenState extends State<SearchScreen>
     }
     for (final node in _categoryFocus.values) {
       node.dispose();
+    }
+    for (final nodes in _searchResultFocus.values) {
+      for (final node in nodes) {
+        node.dispose();
+      }
+    }
+    for (final controller in _searchShelfScroll.values) {
+      controller.dispose();
     }
     super.dispose();
   }
@@ -217,6 +253,89 @@ class SearchScreenState extends State<SearchScreen>
     if (mounted) setState(() {});
   }
 
+  int get _sectionFocusIndex => switch (_section) {
+    'movie' => 1,
+    'series' => 2,
+    'live' => 3,
+    _ => 0,
+  };
+
+  bool _isDirectionalKeyEvent(KeyEvent event) =>
+      event is KeyDownEvent || event is KeyRepeatEvent;
+
+  KeyEventResult _moveSearchFieldFocus(FocusNode _, KeyEvent event) {
+    if (!_isDirectionalKeyEvent(event)) return KeyEventResult.ignored;
+    if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+      _sectionFocus[_sectionFocusIndex].requestFocus();
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+      return KeyEventResult.handled;
+    }
+    // Left and Right remain text-cursor commands while editing.
+    return KeyEventResult.ignored;
+  }
+
+  KeyEventResult _moveSectionFocus(int index, KeyEvent event) {
+    if (!_isDirectionalKeyEvent(event)) return KeyEventResult.ignored;
+    final key = event.logicalKey;
+    if (key == LogicalKeyboardKey.arrowUp) {
+      _searchFocus.requestFocus();
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowDown) {
+      return _focusResultsFromControls();
+    }
+    if (key == LogicalKeyboardKey.arrowLeft) {
+      if (index > 0) {
+        _sectionFocus[index - 1].requestFocus();
+      } else {
+        widget.shellRailFocusNode?.requestFocus();
+      }
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowRight) {
+      if (index + 1 < _sectionFocus.length) {
+        _sectionFocus[index + 1].requestFocus();
+      } else if (_section != 'all') {
+        _categoryButtonFocus.requestFocus();
+      }
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  KeyEventResult _moveCategoryButtonFocus(FocusNode _, KeyEvent event) {
+    if (!_isDirectionalKeyEvent(event)) return KeyEventResult.ignored;
+    final key = event.logicalKey;
+    if (key == LogicalKeyboardKey.arrowUp) {
+      _searchFocus.requestFocus();
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowLeft) {
+      _sectionFocus[_sectionFocusIndex].requestFocus();
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowRight) {
+      _sortFocus.requestFocus();
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowDown) {
+      return _focusResultsFromControls();
+    }
+    return KeyEventResult.ignored;
+  }
+
+  KeyEventResult _focusResultsFromControls() {
+    if (_section != 'all') {
+      _requestGridFocus(_lastGridIndex);
+      return KeyEventResult.handled;
+    }
+    if (_q.trim().isEmpty) return KeyEventResult.handled;
+    _requestSearchResultFocus(0, 0);
+    return KeyEventResult.handled;
+  }
+
   KeyEventResult _moveSortFocus(FocusNode _, KeyEvent event) {
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
@@ -225,14 +344,126 @@ class SearchScreenState extends State<SearchScreen>
       _requestGridFocus(_lastGridIndex);
       return KeyEventResult.handled;
     }
-    if (event.logicalKey == LogicalKeyboardKey.arrowLeft && _browse) {
-      _categoryFocusNode(_cat).requestFocus();
+    if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+      if (_browse) {
+        _categoryFocusNode(_cat).requestFocus();
+      } else {
+        _categoryButtonFocus.requestFocus();
+      }
       return KeyEventResult.handled;
     }
-    if (event.logicalKey == LogicalKeyboardKey.arrowUp ||
-        event.logicalKey == LogicalKeyboardKey.arrowRight) {
+    if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+      if (!_browse) _searchFocus.requestFocus();
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
       // Sort is the top-right edge of the catalog. Keep focus visible instead
       // of allowing the geometry policy to lose it outside the page.
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  void _ensureSearchResultFocusNodes(String group, int count) {
+    final nodes = _searchResultFocus.putIfAbsent(group, () => <FocusNode>[]);
+    _searchResultCounts[group] = count;
+    while (nodes.length < count) {
+      nodes.add(FocusNode(debugLabel: 'Search $group result ${nodes.length}'));
+    }
+    _searchShelfScroll.putIfAbsent(group, ScrollController.new);
+  }
+
+  void _requestSearchResultFocus(int requestedGroup, int requestedIndex) {
+    final serial = ++_searchFocusRequestSerial;
+    if (_visibleSearchGroups.isEmpty) {
+      _pendingSearchFocus = (requestedGroup, requestedIndex);
+      return;
+    }
+    final groupIndex = requestedGroup
+        .clamp(0, _visibleSearchGroups.length - 1)
+        .toInt();
+    final group = _visibleSearchGroups[groupIndex];
+    final nodes = _searchResultFocus[group] ?? const <FocusNode>[];
+    final count = _searchResultCounts[group] ?? 0;
+    if (nodes.isEmpty || count == 0) {
+      _pendingSearchFocus = (groupIndex, requestedIndex);
+      return;
+    }
+    final index = requestedIndex.clamp(0, count - 1).toInt();
+    _pendingSearchFocus = (groupIndex, index);
+
+    void attempt(int remainingFrames) {
+      if (!mounted || serial != _searchFocusRequestSerial) return;
+      final node = nodes[index];
+      if (node.context != null && node.canRequestFocus) {
+        _pendingSearchFocus = null;
+        node.requestFocus();
+        return;
+      }
+      final controller = _searchShelfScroll[group];
+      if (controller?.hasClients ?? false) {
+        final desired = (index * (kPosterW + 14) - kPosterW).clamp(
+          controller!.position.minScrollExtent,
+          controller.position.maxScrollExtent,
+        );
+        controller.jumpTo(desired.toDouble());
+      }
+      if (remainingFrames > 0) {
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => attempt(remainingFrames - 1),
+        );
+      }
+    }
+
+    attempt(8);
+  }
+
+  void _resumePendingSearchFocus() {
+    final pending = _pendingSearchFocus;
+    if (pending == null || _visibleSearchGroups.isEmpty) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _pendingSearchFocus == pending) {
+        _requestSearchResultFocus(pending.$1, pending.$2);
+      }
+    });
+  }
+
+  KeyEventResult _moveSearchResultFocus(
+    String group,
+    int index,
+    KeyEvent event,
+  ) {
+    if (!_isDirectionalKeyEvent(event)) return KeyEventResult.ignored;
+    final groupIndex = _visibleSearchGroups.indexOf(group);
+    if (groupIndex < 0) return KeyEventResult.handled;
+    final key = event.logicalKey;
+    if (key == LogicalKeyboardKey.arrowLeft) {
+      if (index > 0) {
+        _requestSearchResultFocus(groupIndex, index - 1);
+      } else {
+        widget.shellRailFocusNode?.requestFocus();
+      }
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowRight) {
+      final count = _searchResultCounts[group] ?? 0;
+      if (index + 1 < count) {
+        _requestSearchResultFocus(groupIndex, index + 1);
+      }
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowUp) {
+      if (groupIndex == 0) {
+        _sectionFocus[_sectionFocusIndex].requestFocus();
+      } else {
+        _requestSearchResultFocus(groupIndex - 1, index);
+      }
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowDown) {
+      if (groupIndex + 1 < _visibleSearchGroups.length) {
+        _requestSearchResultFocus(groupIndex + 1, index);
+      }
       return KeyEventResult.handled;
     }
     return KeyEventResult.ignored;
@@ -471,7 +702,10 @@ class SearchScreenState extends State<SearchScreen>
 
   void _onQueryChanged(String value) {
     _queryTimer?.cancel();
-    _queryTimer = Timer(const Duration(milliseconds: 180), () {
+    final delay = DeviceProfile.isTelevision
+        ? const Duration(milliseconds: 320)
+        : const Duration(milliseconds: 220);
+    _queryTimer = Timer(delay, () {
       if (mounted && value != _q) _changeResults(() => _q = value);
     });
   }
@@ -903,6 +1137,8 @@ class SearchScreenState extends State<SearchScreen>
         itemBuilder: (_, i) {
           final sel = _section == items[i].id;
           return RemoteTap(
+            focusNode: _sectionFocus[i],
+            onKeyEvent: (_, event) => _moveSectionFocus(i, event),
             onFocusChange: (focused) {
               if (focused && !sel) {
                 _selectSection(items[i].id);
@@ -1051,43 +1287,77 @@ class SearchScreenState extends State<SearchScreen>
 
   // Category → anchored dropdown (used on mobile / search mode). No bottom sheet.
   Widget _catButton() {
-    return PopupMenuButton<String>(
-      tooltip: 'Category',
-      color: surface,
-      constraints: const BoxConstraints(minWidth: 260, maxHeight: 460),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: line),
-      ),
-      onSelected: (v) => _selectCategory(v, restoreCategoryFocus: false),
-      itemBuilder: (_) => [
-        _catItem('all', 'All categories'),
-        for (final c in _curCats) _catItem(c.id, c.name),
-      ],
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-          color: surfaceHi.withValues(alpha: 0.6),
-          borderRadius: BorderRadius.circular(13),
-          border: Border.all(color: line),
+    return FocusableActionDetector(
+      focusNode: _categoryButtonFocus,
+      shortcuts: const <ShortcutActivator, Intent>{
+        SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
+        SingleActivator(LogicalKeyboardKey.numpadEnter): ActivateIntent(),
+        SingleActivator(LogicalKeyboardKey.select): ActivateIntent(),
+        SingleActivator(LogicalKeyboardKey.accept): ActivateIntent(),
+        SingleActivator(LogicalKeyboardKey.execute): ActivateIntent(),
+        SingleActivator(LogicalKeyboardKey.gameButtonA): ActivateIntent(),
+      },
+      actions: <Type, Action<Intent>>{
+        ActivateIntent: CallbackAction<ActivateIntent>(
+          onInvoke: (_) {
+            _categoryMenuKey.currentState?.showButtonMenu();
+            return null;
+          },
         ),
-        child: Row(
-          children: [
-            Icon(Icons.category_rounded, size: 18, color: accentInk),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                _catLabel,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
+      },
+      child: ExcludeFocus(
+        child: PopupMenuButton<String>(
+          key: _categoryMenuKey,
+          tooltip: 'Category',
+          color: surface,
+          constraints: const BoxConstraints(minWidth: 260, maxHeight: 460),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(color: line),
+          ),
+          onSelected: (v) => _selectCategory(v, restoreCategoryFocus: false),
+          itemBuilder: (_) => [
+            _catItem('all', 'All categories'),
+            for (final c in _curCats) _catItem(c.id, c.name),
+          ],
+          child: AnimatedScale(
+            scale: _categoryButtonFocus.hasFocus ? 1.035 : 1,
+            duration: const Duration(milliseconds: 130),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: _categoryButtonFocus.hasFocus
+                    ? accent.withValues(alpha: .22)
+                    : surfaceHi.withValues(alpha: 0.6),
+                borderRadius: BorderRadius.circular(13),
+                border: Border.all(
+                  color: _categoryButtonFocus.hasFocus ? accentInk : line,
+                  width: _categoryButtonFocus.hasFocus ? 3 : 1,
                 ),
+                boxShadow: _categoryButtonFocus.hasFocus
+                    ? glow(accent, blur: 18, a: .5)
+                    : null,
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.category_rounded, size: 18, color: accentInk),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _catLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                  Icon(Icons.expand_more_rounded, color: muted, size: 20),
+                ],
               ),
             ),
-            Icon(Icons.expand_more_rounded, color: muted, size: 20),
-          ],
+          ),
         ),
       ),
     );
@@ -1214,7 +1484,10 @@ class SearchScreenState extends State<SearchScreen>
     final q = _q.trim();
 
     if (_section == 'all') {
-      if (q.isEmpty) return _prompt();
+      if (q.isEmpty) {
+        _visibleSearchGroups = const [];
+        return _prompt();
+      }
       // Each media type queries only its first matching page. Providers that
       // lack a whole-catalog endpoint are imported into SQLite once, then all
       // subsequent searches stay local and paged.
@@ -1244,22 +1517,34 @@ class SearchScreenState extends State<SearchScreen>
           )
           .toList();
       if (loading && mr.isEmpty && sr.isEmpty && lr.isEmpty) {
+        _visibleSearchGroups = const [];
         return const GridLoading();
       }
       if (mr.isEmpty && sr.isEmpty && lr.isEmpty) {
+        _visibleSearchGroups = const [];
         return _empty('No results for “$_q”.');
       }
+      final groups = <({String id, String title, List<_Res> items})>[
+        if (mr.isNotEmpty) (id: 'movie', title: 'Movies', items: mr),
+        if (sr.isNotEmpty) (id: 'series', title: 'Series', items: sr),
+        if (lr.isNotEmpty) (id: 'live', title: 'Channels', items: lr),
+      ];
+      _visibleSearchGroups = [for (final group in groups) group.id];
+      for (final group in groups) {
+        _ensureSearchResultFocusNodes(group.id, group.items.length);
+      }
+      _resumePendingSearchFocus();
       return ListView(
         padding: const EdgeInsets.only(top: 8, bottom: 120),
         children: [
-          if (mr.isNotEmpty) _group('Movies', mr),
-          if (sr.isNotEmpty) _group('Series', sr),
-          if (lr.isNotEmpty) _group('Channels', lr),
+          for (final group in groups)
+            _group(group.id, group.title, group.items),
         ],
       );
     }
 
     // specific section — fetch the selected category directly
+    _visibleSearchGroups = const [];
     final live = _section == 'live';
     if (_browse && !_curCatsReady) return GridLoading(channel: live);
     final catId = _cat;
@@ -1397,7 +1682,8 @@ class SearchScreenState extends State<SearchScreen>
     );
   }
 
-  Widget _group(String title, List<_Res> items) {
+  Widget _group(String id, String title, List<_Res> items) {
+    final focusNodes = _searchResultFocus[id]!;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1411,6 +1697,7 @@ class SearchScreenState extends State<SearchScreen>
         SizedBox(
           height: posterShelfHeight(live: items.first.live),
           child: ListView.separated(
+            controller: _searchShelfScroll[id],
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),
             itemCount: items.length,
@@ -1419,12 +1706,18 @@ class SearchScreenState extends State<SearchScreen>
               width: kPosterW,
               child: items[i].live
                   ? ChannelCard(
+                      focusNode: focusNodes[i],
+                      onKeyEvent: (_, event) =>
+                          _moveSearchResultFocus(id, i, event),
                       name: items[i].name,
                       logo: items[i].image,
                       index: i,
                       onTap: items[i].onTap,
                     )
                   : PosterCard(
+                      focusNode: focusNodes[i],
+                      onKeyEvent: (_, event) =>
+                          _moveSearchResultFocus(id, i, event),
                       name: items[i].name,
                       image: items[i].image,
                       rating: items[i].rating,

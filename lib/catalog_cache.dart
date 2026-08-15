@@ -335,8 +335,21 @@ class CatalogCache {
       query: query,
       sort: sort,
     );
-    if (cached.items.isNotEmpty) {
-      unawaited(vodStreams(client, categoryId, priority: true));
+    final exactLocal = await CatalogStore.instance.hasItems(
+      scope,
+      'movie',
+      bucket: bucket,
+    );
+    final anyLocal =
+        exactLocal ||
+        (categoryId == null &&
+            await CatalogStore.instance.hasItems(scope, 'movie'));
+    if (cached.items.isNotEmpty || anyLocal) {
+      if (categoryId == null && !exactLocal) {
+        unawaited(_importAllVod(client, scope));
+      } else {
+        unawaited(vodStreams(client, categoryId, priority: true));
+      }
       return cached;
     }
     var direct = await vodStreams(client, categoryId, priority: true);
@@ -386,8 +399,21 @@ class CatalogCache {
       query: query,
       sort: sort,
     );
-    if (cached.items.isNotEmpty) {
-      unawaited(seriesItems(client, categoryId, priority: true));
+    final exactLocal = await CatalogStore.instance.hasItems(
+      scope,
+      'series',
+      bucket: bucket,
+    );
+    final anyLocal =
+        exactLocal ||
+        (categoryId == null &&
+            await CatalogStore.instance.hasItems(scope, 'series'));
+    if (cached.items.isNotEmpty || anyLocal) {
+      if (categoryId == null && !exactLocal) {
+        unawaited(_importAllSeries(client, scope));
+      } else {
+        unawaited(seriesItems(client, categoryId, priority: true));
+      }
       return cached;
     }
     var direct = await seriesItems(client, categoryId, priority: true);
@@ -441,8 +467,21 @@ class CatalogCache {
       query: query,
       sort: sort,
     );
-    if (cached.items.isNotEmpty) {
-      unawaited(liveStreams(client, categoryId, priority: true));
+    final exactLocal = await CatalogStore.instance.hasItems(
+      scope,
+      'live',
+      bucket: bucket,
+    );
+    final anyLocal =
+        exactLocal ||
+        (categoryId == null &&
+            await CatalogStore.instance.hasItems(scope, 'live'));
+    if (cached.items.isNotEmpty || anyLocal) {
+      if (categoryId == null && !exactLocal) {
+        unawaited(_importAllLive(client, scope));
+      } else {
+        unawaited(liveStreams(client, categoryId, priority: true));
+      }
       return cached;
     }
     var direct = await liveStreams(client, categoryId, priority: true);
@@ -554,6 +593,7 @@ class CatalogCache {
         );
         if (identical(_owner, client)) {
           _vodStreams['*'] = Future.value(items);
+          revision.value++;
         }
       });
 
@@ -575,6 +615,7 @@ class CatalogCache {
         );
         if (identical(_owner, client)) {
           _series['*'] = Future.value(items);
+          revision.value++;
         }
       });
 
@@ -596,6 +637,7 @@ class CatalogCache {
         );
         if (identical(_owner, client)) {
           _liveStreams['*'] = Future.value(items);
+          revision.value++;
         }
       });
 

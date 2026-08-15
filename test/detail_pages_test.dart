@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen_tv/catalog_cache.dart';
 import 'package:lumen_tv/catalog_store.dart';
+import 'package:lumen_tv/device_profile.dart';
 import 'package:lumen_tv/models.dart';
 import 'package:lumen_tv/playback.dart';
 import 'package:lumen_tv/screens/home_screen.dart';
@@ -654,6 +655,105 @@ void main() {
     );
     expect(tester.takeException(), isNull);
 
+    await disposeUi(tester);
+  });
+
+  testWidgets('Search D-pad leaves the keyboard and reaches media tiles', (
+    tester,
+  ) async {
+    final client = _HomeClient();
+    final key = GlobalKey<SearchScreenState>();
+    final railFocus = FocusNode(debugLabel: 'Search shell rail');
+    DeviceProfile.isTelevision = true;
+    addTearDown(() => DeviceProfile.isTelevision = false);
+    addTearDown(client.close);
+    addTearDown(railFocus.dispose);
+
+    await pumpAt(
+      tester,
+      Row(
+        children: [
+          RemoteTap(
+            focusNode: railFocus,
+            onTap: () {},
+            child: const SizedBox(width: 72, height: 72),
+          ),
+          Expanded(
+            child: SearchScreen(
+              key: key,
+              client: client,
+              shellRailFocusNode: railFocus,
+            ),
+          ),
+        ],
+      ),
+      const Size(1280, 800),
+    );
+
+    key.currentState!.focusSearch();
+    await tester.pump();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'Search library');
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
+    expect(
+      FocusManager.instance.primaryFocus?.debugLabel,
+      'Search section all',
+    );
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    expect(
+      FocusManager.instance.primaryFocus?.debugLabel,
+      'Search section movie',
+    );
+    await waitFor(
+      tester,
+      () => find.text('The Last Signal').evaluate().isNotEmpty,
+    );
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await waitFor(
+      tester,
+      () => FocusManager.instance.primaryFocus?.debugLabel == 'Catalog tile 0',
+    );
+    expect(tester.takeException(), isNull);
+    await disposeUi(tester);
+  });
+
+  testWidgets('global Search results have deterministic shelf focus', (
+    tester,
+  ) async {
+    final client = _HomeClient();
+    final key = GlobalKey<SearchScreenState>();
+    DeviceProfile.isTelevision = true;
+    addTearDown(() => DeviceProfile.isTelevision = false);
+    addTearDown(client.close);
+
+    await pumpAt(
+      tester,
+      SearchScreen(key: key, client: client),
+      const Size(1280, 800),
+    );
+    await tester.enterText(find.byType(TextField), 'Signal');
+    await tester.pump(const Duration(milliseconds: 330));
+    await waitFor(
+      tester,
+      () => find.text('The Last Signal').evaluate().isNotEmpty,
+    );
+
+    key.currentState!.focusSearch();
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await waitFor(
+      tester,
+      () =>
+          FocusManager.instance.primaryFocus?.debugLabel ==
+          'Search movie result 0',
+    );
+    expect(tester.takeException(), isNull);
     await disposeUi(tester);
   });
 }

@@ -39,6 +39,37 @@ void main() {
   });
 
   test(
+    'global search reuses category buckets and removes duplicates',
+    () async {
+      await store.replaceVod('profile', 'drama', [
+        VodStream(1, 'Arrival', 'a.jpg', 'drama', 'mp4', 8, '1'),
+        VodStream(2, 'Contact', 'c.jpg', 'drama', 'mp4', 7, '2'),
+      ], generation: 10);
+      await store.replaceVod('profile', 'featured', [
+        VodStream(1, 'Arrival', 'a.jpg', 'drama', 'mp4', 8, '1'),
+        VodStream(3, 'The Last Signal', 's.jpg', 'featured', 'mp4', 9, '3'),
+      ], generation: 11);
+
+      expect(await store.hasItems('profile', 'movie'), isTrue);
+      expect(
+        await store.hasItems('profile', 'movie', bucket: '*'),
+        isFalse,
+        reason: 'only category buckets have been warmed',
+      );
+
+      final global = await store.vodPage('profile', query: 'arrival');
+      expect(global.items, hasLength(1));
+      expect(global.items.single.streamId, 1);
+
+      final categoryResult = await store.vodPage(
+        'profile',
+        query: 'last signal',
+      );
+      expect(categoryResult.items.single.streamId, 3);
+    },
+  );
+
+  test(
     'catalog pages preserve provider order and support indexed sorts',
     () async {
       final movies = List.generate(

@@ -306,6 +306,29 @@ class CatalogStore {
     decode: _decodeLive,
   );
 
+  /// Whether the local index already contains browse data. A null [bucket]
+  /// checks every cached category. Search uses this to distinguish “no match”
+  /// from “catalog has never been loaded” without starting a provider-wide
+  /// import for every unsuccessful query.
+  Future<bool> hasItems(String scope, String kind, {String? bucket}) async {
+    if (_disabledForWidgetTests) return false;
+    try {
+      final db = await _database();
+      final rows = await db.query(
+        'catalog_items',
+        columns: ['item_id'],
+        where:
+            'profile_scope = ? AND media_kind = ?'
+            '${bucket == null ? '' : ' AND bucket = ?'}',
+        whereArgs: [scope, kind, ?bucket],
+        limit: 1,
+      );
+      return rows.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<CatalogPage<T>> _page<T>(
     String scope,
     String kind, {
@@ -327,13 +350,25 @@ class CatalogStore {
     try {
       final db = await _database();
       final normalized = _sortName(query);
+      // The '*' surface means “all categories”. Query every indexed bucket so
+      // Search can immediately reuse pages warmed by Home/Movies/Series/Live.
+      // Grouping by item id prevents duplicates when both a category bucket
+      // and a complete '*' bucket contain the same media item.
+      final acrossBuckets = bucket == '*';
       final rows = await db.query(
         'catalog_items',
-        columns: ['payload'],
+        columns: ['payload', 'item_id'],
         where:
-            'profile_scope = ? AND media_kind = ? AND bucket = ?'
+            'profile_scope = ? AND media_kind = ?'
+            '${acrossBuckets ? '' : ' AND bucket = ?'}'
             '${normalized.isEmpty ? '' : ' AND instr(sort_name, ?) > 0'}',
-        whereArgs: [scope, kind, bucket, if (normalized.isNotEmpty) normalized],
+        whereArgs: [
+          scope,
+          kind,
+          if (!acrossBuckets) bucket,
+          if (normalized.isNotEmpty) normalized,
+        ],
+        groupBy: acrossBuckets ? 'item_id' : null,
         orderBy: switch (sort) {
           'az' => 'sort_name ASC, item_id ASC',
           'za' => 'sort_name DESC, item_id DESC',
