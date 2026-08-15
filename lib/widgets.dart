@@ -307,6 +307,9 @@ class FocusableTap extends StatefulWidget {
 class _FocusableTapState extends State<FocusableTap> {
   bool _hover = false;
   bool _focus = false;
+  FocusNode? _ownedFocusNode;
+  FocusOnKeyEventCallback? _previousNodeHandler;
+  late final FocusOnKeyEventCallback _installedNodeHandler = _handleKeyEvent;
 
   static const _activators = <ShortcutActivator, Intent>{
     SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
@@ -317,6 +320,56 @@ class _FocusableTapState extends State<FocusableTap> {
     SingleActivator(LogicalKeyboardKey.execute): ActivateIntent(),
     SingleActivator(LogicalKeyboardKey.gameButtonA): ActivateIntent(),
   };
+
+  FocusNode get _effectiveFocusNode => widget.focusNode ?? _ownedFocusNode!;
+
+  @override
+  void initState() {
+    super.initState();
+    _attachKeyHandler();
+  }
+
+  @override
+  void didUpdateWidget(FocusableTap oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.focusNode, widget.focusNode)) {
+      _detachKeyHandler(oldWidget.focusNode);
+      _attachKeyHandler();
+    }
+  }
+
+  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    final result = widget.onKeyEvent?.call(node, event);
+    if (result != null && result != KeyEventResult.ignored) return result;
+    return _previousNodeHandler?.call(node, event) ?? KeyEventResult.ignored;
+  }
+
+  void _attachKeyHandler() {
+    final external = widget.focusNode;
+    if (external == null) {
+      _ownedFocusNode = FocusNode(onKeyEvent: _installedNodeHandler);
+      _previousNodeHandler = null;
+      return;
+    }
+    _previousNodeHandler = external.onKeyEvent;
+    external.onKeyEvent = _installedNodeHandler;
+  }
+
+  void _detachKeyHandler(FocusNode? external) {
+    if (external != null &&
+        identical(external.onKeyEvent, _installedNodeHandler)) {
+      external.onKeyEvent = _previousNodeHandler;
+    }
+    _ownedFocusNode?.dispose();
+    _ownedFocusNode = null;
+    _previousNodeHandler = null;
+  }
+
+  @override
+  void dispose() {
+    _detachKeyHandler(widget.focusNode);
+    super.dispose();
+  }
 
   void _focusChanged(bool value) {
     if (_focus != value) setState(() => _focus = value);
@@ -339,7 +392,7 @@ class _FocusableTapState extends State<FocusableTap> {
   @override
   Widget build(BuildContext context) {
     final detector = FocusableActionDetector(
-      focusNode: widget.focusNode,
+      focusNode: _effectiveFocusNode,
       autofocus: widget.autofocus,
       mouseCursor: SystemMouseCursors.click,
       shortcuts: _activators,
@@ -379,13 +432,7 @@ class _FocusableTapState extends State<FocusableTap> {
         ),
       ),
     );
-    if (widget.onKeyEvent == null) return detector;
-    return Focus(
-      canRequestFocus: false,
-      skipTraversal: true,
-      onKeyEvent: widget.onKeyEvent,
-      child: detector,
-    );
+    return detector;
   }
 }
 
@@ -461,6 +508,59 @@ class LumenBackButton extends StatelessWidget {
 class _RemoteTapState extends State<RemoteTap> {
   bool _focused = false;
   bool _hovered = false;
+  FocusNode? _ownedFocusNode;
+  FocusOnKeyEventCallback? _previousNodeHandler;
+  late final FocusOnKeyEventCallback _installedNodeHandler = _handleKeyEvent;
+
+  FocusNode get _effectiveFocusNode => widget.focusNode ?? _ownedFocusNode!;
+
+  @override
+  void initState() {
+    super.initState();
+    _attachKeyHandler();
+  }
+
+  @override
+  void didUpdateWidget(RemoteTap oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.focusNode, widget.focusNode)) {
+      _detachKeyHandler(oldWidget.focusNode);
+      _attachKeyHandler();
+    }
+  }
+
+  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    final result = widget.onKeyEvent?.call(node, event);
+    if (result != null && result != KeyEventResult.ignored) return result;
+    return _previousNodeHandler?.call(node, event) ?? KeyEventResult.ignored;
+  }
+
+  void _attachKeyHandler() {
+    final external = widget.focusNode;
+    if (external == null) {
+      _ownedFocusNode = FocusNode(onKeyEvent: _installedNodeHandler);
+      _previousNodeHandler = null;
+      return;
+    }
+    _previousNodeHandler = external.onKeyEvent;
+    external.onKeyEvent = _installedNodeHandler;
+  }
+
+  void _detachKeyHandler(FocusNode? external) {
+    if (external != null &&
+        identical(external.onKeyEvent, _installedNodeHandler)) {
+      external.onKeyEvent = _previousNodeHandler;
+    }
+    _ownedFocusNode?.dispose();
+    _ownedFocusNode = null;
+    _previousNodeHandler = null;
+  }
+
+  @override
+  void dispose() {
+    _detachKeyHandler(widget.focusNode);
+    super.dispose();
+  }
 
   void _onFocusChange(bool value) {
     if (_focused != value) setState(() => _focused = value);
@@ -483,7 +583,7 @@ class _RemoteTapState extends State<RemoteTap> {
     final active = enabled && (_focused || _hovered);
     final detector = FocusableActionDetector(
       enabled: enabled,
-      focusNode: widget.focusNode,
+      focusNode: _effectiveFocusNode,
       autofocus: widget.autofocus,
       mouseCursor: enabled ? SystemMouseCursors.click : MouseCursor.defer,
       shortcuts: _FocusableTapState._activators,
@@ -530,13 +630,7 @@ class _RemoteTapState extends State<RemoteTap> {
         ),
       ),
     );
-    if (widget.onKeyEvent == null) return detector;
-    return Focus(
-      canRequestFocus: false,
-      skipTraversal: true,
-      onKeyEvent: widget.onKeyEvent,
-      child: detector,
-    );
+    return detector;
   }
 }
 

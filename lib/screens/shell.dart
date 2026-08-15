@@ -89,6 +89,15 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     for (var page = 0; page < 9; page++)
       page: FocusScopeNode(debugLabel: 'Shell page $page'),
   };
+  final FocusNode _commandSearchFocus = FocusNode(
+    debugLabel: 'Command find anything',
+  );
+  final FocusNode _commandRefreshFocus = FocusNode(
+    debugLabel: 'Command refresh',
+  );
+  final FocusNode _commandProfileFocus = FocusNode(
+    debugLabel: 'Command profile',
+  );
   final Map<int, Widget> _pageCache = <int, Widget>{};
   bool _exitDialogOpen = false;
 
@@ -181,6 +190,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     for (final node in _pageFocusScopes.values) {
       node.dispose();
     }
+    _commandSearchFocus.dispose();
+    _commandRefreshFocus.dispose();
+    _commandProfileFocus.dispose();
     super.dispose();
   }
 
@@ -215,10 +227,12 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       key: _searchKey,
       client: widget.client,
       shellRailFocusNode: _dockFocusNodes[1],
+      shellTopFocusNode: _commandRefreshFocus,
     ),
     2 => MyListScreen(
       client: widget.client,
       shellRailFocusNode: _dockFocusNodes[2],
+      shellTopFocusNode: _commandSearchFocus,
     ),
     3 => ProfileScreen(
       client: widget.client,
@@ -230,21 +244,25 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       client: widget.client,
       initialSection: 'movie',
       shellRailFocusNode: _dockFocusNodes[4],
+      shellTopFocusNode: _commandSearchFocus,
     ),
     5 => SearchScreen(
       client: widget.client,
       initialSection: 'series',
       shellRailFocusNode: _dockFocusNodes[5],
+      shellTopFocusNode: _commandSearchFocus,
     ),
     6 => SearchScreen(
       client: widget.client,
       initialSection: 'live',
       shellRailFocusNode: _dockFocusNodes[6],
+      shellTopFocusNode: _commandSearchFocus,
     ),
     7 => EpgGuideScreen(client: widget.client),
     _ => DownloadsScreen(
       client: widget.client,
       shellRailFocusNode: _dockFocusNodes[8],
+      shellTopFocusNode: _commandSearchFocus,
     ),
   };
 
@@ -252,37 +270,73 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       _pageCache.putIfAbsent(page, () => _pageFor(page));
 
   KeyEventResult _handlePageBoundaryKey(int page, KeyEvent event) {
-    if ((event is! KeyDownEvent && event is! KeyRepeatEvent) ||
-        event.logicalKey != LogicalKeyboardKey.arrowLeft) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    final key = event.logicalKey;
+    if (key != LogicalKeyboardKey.arrowLeft &&
+        key != LogicalKeyboardKey.arrowUp) {
       return KeyEventResult.ignored;
     }
     final rail = _dockFocusNodes[page];
+    final scope = _pageFocusScopes[page];
     final pageContext = _pageFocusScopes[page]?.context;
     final focusedContext = FocusManager.instance.primaryFocus?.context;
     final pageBox = pageContext?.findRenderObject();
     final focusedBox = focusedContext?.findRenderObject();
     if (rail == null ||
+        scope == null ||
         !rail.canRequestFocus ||
         pageBox is! RenderBox ||
         focusedBox is! RenderBox) {
       return KeyEventResult.ignored;
     }
-    final pageLeft = pageBox.localToGlobal(Offset.zero).dx;
-    final focusedCenter = focusedBox
-        .localToGlobal(focusedBox.size.center(Offset.zero))
-        .dx;
-    // Child controls get the key first, so rows/grids can still move left.
-    // If no child handled it and focus is in the page's left quarter, the
-    // stable shell rail is the only meaningful destination.
-    if (focusedCenter <= pageLeft + pageBox.size.width * .28) {
-      rail.requestFocus();
+    final focusedCenter = focusedBox.localToGlobal(
+      focusedBox.size.center(Offset.zero),
+    );
+    if (key == LogicalKeyboardKey.arrowLeft) {
+      final pageLeft = pageBox.localToGlobal(Offset.zero).dx;
+      // Child controls get the key first, so rows/grids can still move left.
+      // At the page's left edge the stable shell rail is the destination.
+      if (focusedCenter.dx <= pageLeft + pageBox.size.width * .28) {
+        rail.requestFocus();
+        return KeyEventResult.handled;
+      }
+      return KeyEventResult.ignored;
+    }
+
+    // Focus key handlers run before Flutter's geometry traversal. Only claim
+    // Up when this is genuinely the topmost actionable control in the page;
+    // otherwise grids, rows and settings lists keep their normal Up movement.
+    final hasFocusableAbove = scope.traversalDescendants.any((node) {
+      if (node == FocusManager.instance.primaryFocus ||
+          _isStructuralFocusNode(node) ||
+          node.context == null ||
+          !node.canRequestFocus ||
+          node.skipTraversal) {
+        return false;
+      }
+      final box = node.context?.findRenderObject();
+      if (box is! RenderBox) return false;
+      final center = box.localToGlobal(box.size.center(Offset.zero));
+      return center.dy < focusedCenter.dy - 8;
+    });
+    if (hasFocusableAbove) return KeyEventResult.ignored;
+    final commandEntry = page == 1 ? _commandRefreshFocus : _commandSearchFocus;
+    if (commandEntry.canRequestFocus) {
+      commandEntry.requestFocus();
       return KeyEventResult.handled;
     }
     return KeyEventResult.ignored;
   }
 
-  void _focusPageContent(int page) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+  bool _isStructuralFocusNode(FocusNode node) =>
+      node is FocusScopeNode ||
+      node.debugLabel == 'Shortcuts' ||
+      node.debugLabel == 'FocusTraversalGroup';
+
+  void _focusPageContent(int page, {bool defer = true}) {
+    void request() {
       if (!mounted || page != _index) return;
       if (page == 1) {
         _searchKey.currentState?.focusSearch();
@@ -295,11 +349,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         // CallbackShortcuts/Shortcuts insert focusable implementation nodes.
         // They are not controls, and choosing one traps all four D-pad keys on
         // the page wrapper. Enter the first real descendant instead.
-        final structural =
-            node is FocusScopeNode ||
-            node.debugLabel == 'Shortcuts' ||
-            node.debugLabel == 'FocusTraversalGroup';
-        if (!structural &&
+        if (!_isStructuralFocusNode(node) &&
             node.context != null &&
             node.canRequestFocus &&
             !node.skipTraversal) {
@@ -314,10 +364,26 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           : (page == 0 || page == 7) && candidates.isNotEmpty
           ? candidates.first
           : null;
-      // Empty My List/Downloads pages have no actions. Leaving focus on their
-      // rail tab is intentional; decorative empty states must never trap it.
-      target?.requestFocus();
-    });
+      if (target != null) {
+        // Re-enter through the page scope. Directly requesting a descendant
+        // after focus has moved to the sibling command bar can leave the root
+        // scope primary for one frame on Android TV.
+        scope.requestFocus(target);
+        return;
+      }
+      // Loading and empty pages may not yet expose a content action. Enter the
+      // command bar instead of leaving Right trapped on the shell rail.
+      final commandEntry = page == 1
+          ? _commandRefreshFocus
+          : _commandSearchFocus;
+      if (commandEntry.canRequestFocus) commandEntry.requestFocus();
+    }
+
+    if (defer) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => request());
+    } else {
+      request();
+    }
   }
 
   void _select(int i, {bool rememberCurrent = true, bool focusContent = true}) {
@@ -453,6 +519,12 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                         index: _index,
                         onSearch: () => _select(1),
                         onProfile: () => _select(3),
+                        onFocusContent: () =>
+                            _focusPageContent(_index, defer: false),
+                        railFocusNode: _dockFocusNodes[_index]!,
+                        searchFocusNode: _commandSearchFocus,
+                        refreshFocusNode: _commandRefreshFocus,
+                        profileFocusNode: _commandProfileFocus,
                       ),
                       Expanded(
                         child: IndexedStack(index: _index, children: pages),
@@ -1069,10 +1141,20 @@ class _CommandBar extends StatelessWidget {
   final int index;
   final VoidCallback onSearch;
   final VoidCallback onProfile;
+  final VoidCallback onFocusContent;
+  final FocusNode railFocusNode;
+  final FocusNode searchFocusNode;
+  final FocusNode refreshFocusNode;
+  final FocusNode profileFocusNode;
   const _CommandBar({
     required this.index,
     required this.onSearch,
     required this.onProfile,
+    required this.onFocusContent,
+    required this.railFocusNode,
+    required this.searchFocusNode,
+    required this.refreshFocusNode,
+    required this.profileFocusNode,
   });
 
   static const _titles = <int, String>{
@@ -1086,6 +1168,50 @@ class _CommandBar extends StatelessWidget {
     7: 'TV guide',
     8: 'Downloads',
   };
+
+  KeyEventResult _moveCommandFocus(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    final key = event.logicalKey;
+    final nodes = <FocusNode>[
+      if (index != 1) searchFocusNode,
+      refreshFocusNode,
+      profileFocusNode,
+    ];
+    final current = nodes.indexOf(node);
+    if (current < 0) return KeyEventResult.ignored;
+    if (key == LogicalKeyboardKey.arrowLeft) {
+      if (current > 0) {
+        nodes[current - 1].requestFocus();
+      } else {
+        // Cross sibling scopes after this key dispatch finishes. Requesting
+        // the rail synchronously while the command-bar Focus is handling Left
+        // can briefly promote rootScope and make focus appear to vanish.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (railFocusNode.context != null && railFocusNode.canRequestFocus) {
+            railFocusNode.requestFocus();
+          }
+        });
+      }
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowRight) {
+      if (current + 1 < nodes.length) nodes[current + 1].requestFocus();
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowUp) {
+      // The command bar is the top edge; keep focus visible there.
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowDown) {
+      if (!node.focusInDirection(TraversalDirection.down)) {
+        onFocusContent();
+      }
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1108,6 +1234,8 @@ class _CommandBar extends StatelessWidget {
             const Spacer(),
             if (index != 1) ...[
               FocusableTap(
+                focusNode: searchFocusNode,
+                onKeyEvent: _moveCommandFocus,
                 onTap: onSearch,
                 builder: (_, active) => AnimatedContainer(
                   duration: const Duration(milliseconds: 160),
@@ -1143,9 +1271,11 @@ class _CommandBar extends StatelessWidget {
               ),
               const SizedBox(width: 10),
             ],
-            IconButton(
-              tooltip: 'Refresh library',
-              onPressed: () {
+            FocusableTap(
+              focusNode: refreshFocusNode,
+              onKeyEvent: _moveCommandFocus,
+              focusRadius: 12,
+              onTap: () {
                 refreshContent();
                 ScaffoldMessenger.of(context)
                   ..hideCurrentSnackBar()
@@ -1156,10 +1286,32 @@ class _CommandBar extends StatelessWidget {
                     ),
                   );
               },
-              icon: Icon(Icons.sync_rounded, color: muted, size: 20),
+              builder: (_, active) => Tooltip(
+                message: 'Refresh library',
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 160),
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: active ? accent : Colors.transparent,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: active ? accent : Colors.transparent,
+                    ),
+                  ),
+                  alignment: Alignment.center,
+                  child: Icon(
+                    Icons.sync_rounded,
+                    color: active ? onAccent : muted,
+                    size: 20,
+                  ),
+                ),
+              ),
             ),
             const SizedBox(width: 2),
             FocusableTap(
+              focusNode: profileFocusNode,
+              onKeyEvent: _moveCommandFocus,
               onTap: onProfile,
               builder: (_, active) => AnimatedContainer(
                 duration: const Duration(milliseconds: 160),

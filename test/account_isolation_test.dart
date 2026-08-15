@@ -314,6 +314,147 @@ void main() {
     await tester.pump();
   });
 
+  testWidgets('TV command bar is reachable and directional on every page', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1920, 1080);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    final client = _FullCatalogClient();
+    addTearDown(client.close);
+    await tester.runAsync(
+      () => Future.wait([
+        CatalogCache.instance.vod(client, priority: true),
+        CatalogCache.instance.series(client, priority: true),
+        CatalogCache.instance.live(client, priority: true),
+      ]),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildTheme(darkPalette),
+        home: HomeShell(
+          client: client,
+          onLogout: () async {},
+          onSwitch: (_) {},
+        ),
+      ),
+    );
+    await tester.pump(const Duration(seconds: 2));
+
+    final homeControl = tester.widget<FocusableActionDetector>(
+      find
+          .descendant(
+            of: find.byTooltip('Home'),
+            matching: find.byType(FocusableActionDetector),
+          )
+          .first,
+    );
+    homeControl.focusNode!.requestFocus();
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    for (var i = 0; i < 8; i++) {
+      if (FocusManager.instance.primaryFocus?.debugLabel ==
+          'Command find anything') {
+        break;
+      }
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      await tester.pump();
+    }
+    expect(
+      FocusManager.instance.primaryFocus?.debugLabel,
+      'Command find anything',
+    );
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'Command refresh');
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'Command profile');
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await tester.pump();
+    expect(
+      FocusManager.instance.primaryFocus?.debugLabel,
+      'Profile add account',
+    );
+    for (var i = 0; i < 8; i++) {
+      if (FocusManager.instance.primaryFocus?.debugLabel ==
+          'Command find anything') {
+        break;
+      }
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      await tester.pump();
+    }
+    expect(
+      FocusManager.instance.primaryFocus?.debugLabel,
+      'Command find anything',
+    );
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(FocusManager.instance.primaryFocus, isNotNull);
+    expect(
+      FocusManager.instance.primaryFocus,
+      isNot(same(FocusManager.instance.rootScope)),
+    );
+
+    for (var i = 0; i < 8; i++) {
+      if (FocusManager.instance.primaryFocus?.debugLabel ==
+          'Command find anything') {
+        break;
+      }
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      await tester.pump();
+    }
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await tester.pump();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'Search library');
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+    await tester.pump();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'Command refresh');
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'Command profile');
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(FocusManager.instance.primaryFocus, isNotNull);
+    expect(
+      FocusManager.instance.primaryFocus,
+      isNot(same(FocusManager.instance.rootScope)),
+    );
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+    await tester.pump();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'Search library');
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+    await tester.pump();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'Command refresh');
+
+    final moviesControl = tester.widget<FocusableActionDetector>(
+      find
+          .descendant(
+            of: find.byTooltip('Movies'),
+            matching: find.byType(FocusableActionDetector),
+          )
+          .first,
+    );
+    moviesControl.focusNode!.requestFocus();
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'Catalog sort');
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+    await tester.pump();
+    expect(
+      FocusManager.instance.primaryFocus?.debugLabel,
+      'Command find anything',
+    );
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+  });
+
   testWidgets(
     'TV utility tabs enter content and return to the rail with D-pad',
     (tester) async {
@@ -377,9 +518,16 @@ void main() {
         'My List filter 0',
       );
 
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      await tester.pump();
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        'Command find anything',
+      );
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
       await tester.pump();
-      expect(myListControl.focusNode!.hasFocus, isTrue);
+      await tester.pump();
+      expect(FocusManager.instance.primaryFocus?.debugLabel, 'My List dock');
 
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
       await tester.pump();

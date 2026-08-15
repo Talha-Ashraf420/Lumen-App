@@ -41,6 +41,10 @@ class SearchScreen extends StatefulWidget {
   /// traversal instead.
   final FocusNode? shellRailFocusNode;
 
+  /// Stable command-bar destination above this page. Shell-hosted searches
+  /// use it to leave the top search/sort control with remote Up.
+  final FocusNode? shellTopFocusNode;
+
   /// When set ('movie' | 'series' | 'live'), the screen opens straight into
   /// that catalog (used by the desktop sidebar's Movies/Series/Live entries).
   final String? initialSection;
@@ -52,6 +56,7 @@ class SearchScreen extends StatefulWidget {
     super.key,
     required this.client,
     this.shellRailFocusNode,
+    this.shellTopFocusNode,
     this.initialSection,
     this.initialCategory,
     this.initialCategoryName,
@@ -297,6 +302,8 @@ class SearchScreenState extends State<SearchScreen>
       return KeyEventResult.handled;
     }
     if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+      final top = widget.shellTopFocusNode;
+      if (top != null && top.canRequestFocus) top.requestFocus();
       return KeyEventResult.handled;
     }
     // Left and Right remain text-cursor commands while editing.
@@ -380,7 +387,12 @@ class SearchScreenState extends State<SearchScreen>
       return KeyEventResult.handled;
     }
     if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-      if (!_browse) _searchFocus.requestFocus();
+      if (_browse) {
+        final top = widget.shellTopFocusNode;
+        if (top != null && top.canRequestFocus) top.requestFocus();
+      } else {
+        _searchFocus.requestFocus();
+      }
       return KeyEventResult.handled;
     }
     if (event.logicalKey == LogicalKeyboardKey.arrowRight) {

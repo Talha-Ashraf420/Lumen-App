@@ -13,10 +13,12 @@ import '../xtream.dart';
 class DownloadsScreen extends StatefulWidget {
   final XtreamClient client;
   final FocusNode? shellRailFocusNode;
+  final FocusNode? shellTopFocusNode;
   const DownloadsScreen({
     super.key,
     required this.client,
     this.shellRailFocusNode,
+    this.shellTopFocusNode,
   });
 
   @override
@@ -104,6 +106,8 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
       return KeyEventResult.handled;
     }
     if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+      final top = widget.shellTopFocusNode;
+      if (top != null && top.canRequestFocus) top.requestFocus();
       return KeyEventResult.handled;
     }
     return KeyEventResult.ignored;

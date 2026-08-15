@@ -13,10 +13,12 @@ import 'series_detail_screen.dart';
 class MyListScreen extends StatefulWidget {
   final XtreamClient client;
   final FocusNode? shellRailFocusNode;
+  final FocusNode? shellTopFocusNode;
   const MyListScreen({
     super.key,
     required this.client,
     this.shellRailFocusNode,
+    this.shellTopFocusNode,
   });
 
   @override
@@ -105,6 +107,8 @@ class _MyListScreenState extends State<MyListScreen> {
       return KeyEventResult.handled;
     }
     if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+      final top = widget.shellTopFocusNode;
+      if (top != null && top.canRequestFocus) top.requestFocus();
       return KeyEventResult.handled;
     }
     return KeyEventResult.ignored;
