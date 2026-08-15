@@ -6,7 +6,6 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'android_compatibility_player.dart';
 import 'device_profile.dart';
 import 'library.dart';
-import 'models.dart';
 import 'stats.dart';
 
 /// Reconnect configuration — tweak via [PlaybackController.reconnectConfig].
@@ -231,8 +230,6 @@ class PlayerItem {
   final String ext;
   final Map<String, String> httpHeaders;
   final MediaRef? favRef; // what the heart toggles (movie/series/channel)
-  final Future<List<EpgEntry>> Function()?
-  epg; // now/next for live channels (lazy)
   const PlayerItem(
     this.url,
     this.title, {
@@ -242,7 +239,6 @@ class PlayerItem {
     this.ext = '',
     this.httpHeaders = const {},
     this.favRef,
-    this.epg,
   });
 }
 
@@ -437,7 +433,7 @@ class PlaybackDiagnosticEvent {
 
 /// App-level playback so the video keeps running while you browse. The full
 /// PlayerScreen and the floating mini-player are both views over this one
-/// Player/VideoController; the controller owns the playlist, EPG, and
+/// Player/VideoController; the controller owns the playlist and
 /// continue-watching persistence.
 class PlaybackController extends ChangeNotifier {
   PlaybackController._();
@@ -448,7 +444,6 @@ class PlaybackController extends ChangeNotifier {
   List<PlayerItem> items = [];
   int index = 0;
   bool minimized = false;
-  List<EpgEntry> epg = const [];
   // Whether to auto-play the next item when this one finishes (user can cancel
   // from the "Up next" card to watch the credits). Reset per item.
   bool autoAdvance = true;
@@ -640,7 +635,6 @@ class PlaybackController extends ChangeNotifier {
   void _openCurrent() {
     _resumed = false;
     autoAdvance = true;
-    epg = const [];
     _cancelReconnect();
     playbackError = null;
     failure = null;
@@ -670,7 +664,6 @@ class PlaybackController extends ChangeNotifier {
     final token = ++_openToken;
     unawaited(_openMedia(current, token));
     if (item.favRef != null) Library.instance.addRecent(item.favRef!);
-    _loadEpg();
   }
 
   // ---- reconnect logic ----
@@ -988,34 +981,6 @@ class PlaybackController extends ChangeNotifier {
     }
   }
 
-  void _loadEpg() {
-    final fetch = item.epg;
-    if (fetch == null) return;
-    final forItem = item;
-    fetch()
-        .then((list) {
-          if (player != null && items.isNotEmpty && item == forItem) {
-            epg = list;
-            notifyListeners();
-          }
-        })
-        .catchError((_) {});
-  }
-
-  EpgEntry? get epgNow {
-    for (final e in epg) {
-      if (e.isNow) return e;
-    }
-    return epg.isNotEmpty ? epg.first : null;
-  }
-
-  EpgEntry? get epgNext {
-    final now = epgNow;
-    if (now == null) return null;
-    final i = epg.indexOf(now);
-    return (i >= 0 && i + 1 < epg.length) ? epg[i + 1] : null;
-  }
-
   void _onPosition(Duration pos) {
     if (player == null) return;
     // Watchdog health signal for ALL stream types: playback advanced → healthy,
@@ -1128,7 +1093,6 @@ class PlaybackController extends ChangeNotifier {
     _resumeAfterRecovery = null;
     _diagnosticEvents.clear();
     index = 0;
-    epg = const [];
     minimized = false;
     notifyListeners();
   }

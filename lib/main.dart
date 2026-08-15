@@ -8,7 +8,6 @@ import 'catalog_cache.dart';
 import 'demo_catalog.dart';
 import 'downloads.dart';
 import 'device_profile.dart';
-import 'epg_cache.dart';
 import 'home_config.dart';
 import 'models.dart';
 import 'playback.dart';
@@ -270,7 +269,6 @@ class _SessionGateState extends State<SessionGate> {
     _guardSessionStep('playback', PlaybackController.instance.stop);
     unawaited(_guardProfileState(SplitController.instance.close()));
     _guardSessionStep('catalog cache', CatalogCache.instance.clear);
-    _guardSessionStep('EPG cache', EpgCache.instance.clear);
 
     // Each controller clears its previous profile synchronously before its
     // first await. Let slower secure-storage and download-folder hydration
@@ -336,7 +334,6 @@ class _SessionGateState extends State<SessionGate> {
       _guardSessionStep('playback', PlaybackController.instance.stop);
       unawaited(_guardProfileState(SplitController.instance.close()));
       _guardSessionStep('catalog cache', CatalogCache.instance.clear);
-      _guardSessionStep('EPG cache', EpgCache.instance.clear);
       unawaited(
         _guardProfileState(
           Future<void>.sync(() => _activateProfileState(null)),

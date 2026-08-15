@@ -33,7 +33,7 @@ Do not use phrases such as “free TV,” “premium channels,” “watch anyth
 Lumen requires an external source, so App access must contain complete reviewer instructions and a working, legal HTTPS demo source. Supply either:
 
 - a dedicated Xtream-compatible reviewer account with server URL, username, and password; or
-- a stable HTTPS M3U demo playlist and optional HTTPS EPG URL containing only media you own or are licensed to distribute.
+- a stable HTTPS M3U demo playlist containing only media you own or are licensed to distribute.
 
 The account must remain active throughout review, work from Google's review region, avoid OTP/2FA, and expose enough content to test playback, search, favorites, history, downloads, and TV navigation. Explain that Lumen supplies no content. Never submit credentials for an unauthorized IPTV reseller.
 
@@ -77,7 +77,7 @@ tool, crash reporter, ad service, API, or data flow changes.
 Run this checklist on a physical Android TV/Google TV device before production:
 
 - [ ] Cold launch: complete the legal screen, login, and playlist dialogs using only D-pad, center/select, Back, and the TV keyboard.
-- [ ] Navigate from the left signal dock to Home, Movies, Series, Live, Guide, Search, My List, Downloads, and Profile.
+- [ ] Navigate from the left signal dock to Home, Movies, Series, Live, Search, My List, Downloads, and Profile.
 - [ ] Traverse every horizontal rail and grid; the focused card must show a clear accent ring/scale and scroll fully into view.
 - [ ] Open movie and series details, switch seasons, favorite an item, start playback, and use download controls.
 - [ ] Open categories, schedules, customization, appearance, privacy, and confirmation dialogs; Back must dismiss the topmost page or dialog.

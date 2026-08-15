@@ -40,13 +40,6 @@ playback is continuous and nothing races.
   in-app mini-player instead. Knowing where a platform *won't* cooperate saved a lot
   of wasted effort.
 
-## A real TV-guide grid
-The EPG guide is a channels × time grid with a sticky channel column, a sticky time
-axis, a red "now" line, and lazy per-channel EPG loading — all kept in sync with
-`linked_scroll_controller`. The fun bug: some providers return overlapping/duplicate
-programmes, so blocks stacked on top of each other. A sort-and-dedupe pass into a
-clean non-overlapping sequence fixed it.
-
 ## Offline downloads with pause/resume
 Downloads stream the provider's URL to a real folder, with a queue (most IPTV accounts
 allow **one connection**, so parallel downloads make the server drop the first).
@@ -70,8 +63,8 @@ with no signature conflicts.
 - Pick the hard dependency (libmpv) for the thing that matters (playback) and design
   the rest around its constraints (one surface).
 - Be honest about platform limits (iOS PiP, macOS self-update) instead of fighting them.
-- Real provider data is messy — defensive parsing (overlapping EPG, missing
-  content-length, ignored range requests) is most of the work.
+- Real provider data is messy — defensive parsing (missing content-length and
+  ignored range requests) is most of the work.
 
 Code, downloads and screenshots: **https://github.com/Talha-Ashraf420/Lumen-App**.
 Feedback and stars welcome.

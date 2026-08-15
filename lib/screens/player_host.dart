@@ -1904,49 +1904,6 @@ class _PlayerHostState extends State<PlayerHost> {
                       shadows: [Shadow(color: Colors.black, blurRadius: 8)],
                     ),
                   ),
-                  if (_isLive && pc.epgNow != null) ...[
-                    const SizedBox(height: 3),
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            'Now · ${pc.epgNow!.title}',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 11.5,
-                              color: Colors.white70,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                        if (pc.epgNext != null) ...[
-                          const SizedBox(width: 8),
-                          Flexible(
-                            child: Text(
-                              'Next · ${pc.epgNext!.title}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 11.5,
-                                color: Colors.white38,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(2),
-                      child: LinearProgressIndicator(
-                        value: pc.epgNow!.progress.toDouble(),
-                        minHeight: 2.5,
-                        backgroundColor: Colors.white24,
-                        valueColor: AlwaysStoppedAnimation(accent),
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),

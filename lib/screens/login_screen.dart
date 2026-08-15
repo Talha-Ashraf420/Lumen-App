@@ -362,12 +362,10 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  /// Add a playlist. Two cases are handled:
-  ///  • an Xtream-backed link (get.php?username=…&password=…) → full catalog+EPG;
-  ///  • a plain .m3u playlist URL (+ optional XMLTV EPG URL) → live channels.
+  /// Add a playlist. Xtream-backed links open the full catalog; plain M3U
+  /// links provide live channels.
   Future<void> _pasteUrl() async {
     final urlCtrl = TextEditingController();
-    final epgCtrl = TextEditingController();
     String? err;
     final creds = await showDialog<XtreamCredentials>(
       context: context,
@@ -390,18 +388,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   decoration: const InputDecoration(
                     labelText: 'Playlist URL',
                     hintText: 'https://…/playlist.m3u  or  get.php?username=…',
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              RemoteTextInput(
-                child: TextField(
-                  controller: epgCtrl,
-                  autocorrect: false,
-                  enableSuggestions: false,
-                  decoration: const InputDecoration(
-                    labelText: 'XMLTV EPG URL (optional)',
-                    hintText: 'https://…/epg.xml',
                   ),
                 ),
               ),
@@ -450,11 +436,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   return;
                 }
                 // Plain M3U playlist.
-                final epg = epgCtrl.text.trim();
-                if (epg.isNotEmpty && !isAllowedProviderUrl(epg)) {
-                  setLocal(() => err = 'Enter a valid HTTP or HTTPS EPG URL.');
-                  return;
-                }
                 Navigator.pop(
                   ctx,
                   XtreamCredentials(
@@ -462,7 +443,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     username: Uri.tryParse(raw)?.host ?? 'playlist',
                     password: '',
                     m3uUrl: raw,
-                    epgUrl: epg.isEmpty ? null : epg,
                   ),
                 );
               },

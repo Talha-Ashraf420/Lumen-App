@@ -31,13 +31,12 @@ Steps:
 ### If using an M3U source
 
 - Playlist URL: `[https://review.example.com/lumen-review.m3u]`
-- Optional EPG URL: `[https://review.example.com/lumen-review.xml]`
 
 Steps:
 
 1. Launch Lumen and accept the legal notice.
 2. Select the M3U playlist option.
-3. Enter the playlist and optional EPG URLs above.
+3. Enter the playlist URL above.
 4. Select **Open playlist**.
 5. Browse the available Live section and test playback, search, favorites, and
    remote navigation.

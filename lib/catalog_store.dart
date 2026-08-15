@@ -656,9 +656,6 @@ class CatalogStore {
     'name': item.name,
     'stream_icon': item.icon,
     'category_id': item.categoryId,
-    'epg_channel_id': item.epgChannelId,
-    'tv_archive': item.tvArchive,
-    'tv_archive_duration': item.tvArchiveDuration,
   };
 
   static LiveStream _decodeLive(Map<String, dynamic> value) =>

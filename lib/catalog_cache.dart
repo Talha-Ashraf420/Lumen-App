@@ -750,7 +750,7 @@ class CatalogCache {
           '${value.categoryId}|${value.rating}|${value.releaseDate}',
     LiveStream value =>
       '${value.streamId}|${value.name}|${value.icon}|'
-          '${value.categoryId}|${value.epgChannelId}|${value.tvArchive}',
+          '${value.categoryId}',
     _ => '$item',
   };
 

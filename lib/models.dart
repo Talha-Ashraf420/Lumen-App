@@ -1,5 +1,4 @@
 // Xtream Codes data models.
-import 'dart:convert';
 
 class XtreamCredentials {
   final String baseUrl; // scheme + host[:port], no trailing slash
@@ -10,16 +9,13 @@ class XtreamCredentials {
   /// carry no provider URL, token, username, or password.
   final bool demo;
   // Plain (non-Xtream) playlist support: when [m3uUrl] is set the client runs
-  // in M3U mode, serving channels parsed from the playlist (and EPG from the
-  // optional XMLTV [epgUrl]) instead of hitting the Xtream API.
+  // in M3U mode and serves channels parsed from the playlist.
   final String? m3uUrl;
-  final String? epgUrl;
   const XtreamCredentials({
     required this.baseUrl,
     required this.username,
     required this.password,
     this.m3uUrl,
-    this.epgUrl,
     this.demo = false,
   });
 
@@ -39,7 +35,6 @@ class XtreamCredentials {
     'password': password,
     if (demo) 'demo': true,
     if (m3uUrl != null) 'm3uUrl': m3uUrl,
-    if (epgUrl != null) 'epgUrl': epgUrl,
   };
   factory XtreamCredentials.fromJson(Map<String, dynamic> j) =>
       XtreamCredentials(
@@ -47,7 +42,6 @@ class XtreamCredentials {
         username: _toStr(j['username']),
         password: _toStr(j['password']),
         m3uUrl: j['m3uUrl'],
-        epgUrl: j['epgUrl'],
         demo: j['demo'] == true,
       );
 }
@@ -70,27 +64,12 @@ class LiveStream {
   final String name;
   final String icon;
   final String categoryId;
-  final String epgChannelId;
-  final int tvArchive; // 1 if catch-up/archive available
-  final int tvArchiveDuration; // archive window in days
-  LiveStream(
-    this.streamId,
-    this.name,
-    this.icon,
-    this.categoryId,
-    this.epgChannelId, {
-    this.tvArchive = 0,
-    this.tvArchiveDuration = 0,
-  });
-  bool get hasArchive => tvArchive == 1;
+  LiveStream(this.streamId, this.name, this.icon, this.categoryId);
   factory LiveStream.fromJson(Map<String, dynamic> j) => LiveStream(
     _toInt(j['stream_id']),
     _toStr(j['name']),
     _toStr(j['stream_icon']),
     _toStr(j['category_id']),
-    _toStr(j['epg_channel_id']),
-    tvArchive: _toInt(j['tv_archive']),
-    tvArchiveDuration: _toInt(j['tv_archive_duration']),
   );
 }
 
@@ -228,79 +207,6 @@ class Episode {
       _toInt(j['season']),
       _toStr(info['movie_image']),
     );
-  }
-}
-
-/// A single EPG programme (now/next) from get_short_epg / get_simple_data_table.
-class EpgEntry {
-  final String title;
-  final String description;
-  final DateTime start;
-  final DateTime end;
-  final String
-  startServer; // raw provider-local "YYYY-MM-DD HH:MM:SS" (for timeshift)
-  EpgEntry(
-    this.title,
-    this.description,
-    this.start,
-    this.end, {
-    this.startServer = '',
-  });
-
-  factory EpgEntry.fromJson(Map<String, dynamic> j) {
-    String dec(dynamic v) {
-      final s = _toStr(v);
-      if (s.isEmpty) return '';
-      try {
-        return utf8.decode(base64.decode(s));
-      } catch (_) {
-        return s; // some providers send plain text
-      }
-    }
-
-    DateTime ts(dynamic v) {
-      final n = _toInt(v);
-      return DateTime.fromMillisecondsSinceEpoch(
-        n * 1000,
-        isUtc: true,
-      ).toLocal();
-    }
-
-    return EpgEntry(
-      dec(j['title']),
-      dec(j['description']),
-      ts(j['start_timestamp']),
-      ts(j['stop_timestamp']),
-      startServer: _toStr(j['start']),
-    );
-  }
-
-  bool get isNow {
-    final now = DateTime.now();
-    return now.isAfter(start) && now.isBefore(end);
-  }
-
-  bool get isPast => DateTime.now().isAfter(end);
-
-  int get durationMinutes => end.difference(start).inMinutes;
-
-  double get progress {
-    final total = end.difference(start).inSeconds;
-    if (total <= 0) return 0;
-    final done = DateTime.now().difference(start).inSeconds;
-    return (done / total).clamp(0, 1);
-  }
-
-  /// Provider-local start formatted for the timeshift endpoint: `YYYY-MM-DD:HH-MM`.
-  String get timeshiftStart {
-    // startServer looks like "2026-06-16 20:30:00"
-    final m = RegExp(
-      r'(\d{4}-\d{2}-\d{2})\s+(\d{2}):(\d{2})',
-    ).firstMatch(startServer);
-    if (m != null) return '${m.group(1)}:${m.group(2)}-${m.group(3)}';
-    // fallback: derive from local start time
-    String two(int n) => n.toString().padLeft(2, '0');
-    return '${start.year}-${two(start.month)}-${two(start.day)}:${two(start.hour)}-${two(start.minute)}';
   }
 }
 

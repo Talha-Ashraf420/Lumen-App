@@ -292,12 +292,12 @@ class DemoCatalog {
   }
 
   static final List<LiveStream> _channels = [
-    LiveStream(9401, 'Lumen One', aerial, 'demo_live', 'demo-one'),
-    LiveStream(9402, 'Horizon News', meridian, 'demo_live', 'demo-news'),
-    LiveStream(9403, 'Cinema Vault', harbor, 'demo_culture', 'demo-cinema'),
-    LiveStream(9404, 'Wild Earth', afterlight, 'demo_nature', 'demo-earth'),
-    LiveStream(9405, 'Nightline', meridian, 'demo_culture', 'demo-night'),
-    LiveStream(9406, 'Coast & Sky', harbor, 'demo_nature', 'demo-coast'),
+    LiveStream(9401, 'Lumen One', aerial, 'demo_live'),
+    LiveStream(9402, 'Horizon News', meridian, 'demo_live'),
+    LiveStream(9403, 'Cinema Vault', harbor, 'demo_culture'),
+    LiveStream(9404, 'Wild Earth', afterlight, 'demo_nature'),
+    LiveStream(9405, 'Nightline', meridian, 'demo_culture'),
+    LiveStream(9406, 'Coast & Sky', harbor, 'demo_nature'),
   ];
 
   static List<LiveStream> channels(String? categoryId) {
@@ -305,35 +305,5 @@ class DemoCatalog {
     return _channels
         .where((channel) => channel.categoryId == categoryId)
         .toList(growable: false);
-  }
-
-  static List<EpgEntry> epg(int streamId, {int limit = 8}) {
-    final now = DateTime.now();
-    final start = DateTime(
-      now.year,
-      now.month,
-      now.day,
-      now.hour,
-      now.minute < 30 ? 0 : 30,
-    );
-    const titles = [
-      'Now in focus',
-      'Signal stories',
-      'The long view',
-      'Night archive',
-      'After hours',
-      'Quiet cinema',
-      'New horizons',
-      'Morning light',
-    ];
-    return [
-      for (var index = 0; index < limit; index++)
-        EpgEntry(
-          titles[index % titles.length],
-          'Fictional programming from Lumen’s offline demonstration library.',
-          start.add(Duration(minutes: 30 * index)),
-          start.add(Duration(minutes: 30 * (index + 1))),
-        ),
-    ];
   }
 }

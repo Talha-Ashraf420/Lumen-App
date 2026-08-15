@@ -204,7 +204,7 @@ void main() {
     await tester.pump(const Duration(seconds: 2));
 
     expect(find.byTooltip('Live'), findsOneWidget);
-    expect(find.byTooltip('Guide'), findsOneWidget);
+    expect(find.byTooltip('Guide'), findsNothing);
     expect(find.byTooltip('Movies'), findsNothing);
     expect(find.byTooltip('Series'), findsNothing);
     expect(find.byTooltip('Discover'), findsNothing);

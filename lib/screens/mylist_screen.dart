@@ -162,7 +162,6 @@ class _MyListScreenState extends State<MyListScreen> {
             poster: channel.image,
             httpHeaders: widget.client.streamHeaders(channel.id),
             favRef: channel,
-            epg: () => widget.client.shortEpg(channel.id),
           ),
       ], index < 0 ? 0 : index);
       return;

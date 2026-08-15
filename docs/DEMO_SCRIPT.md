@@ -9,7 +9,6 @@ in the bottom-left, big and short.
 | 0:00–0:03 | Cold open: launch app → teal Lumen loader → Home immersive hero fades in | **Lumen** — your IPTV, beautifully played |
 | 0:03–0:08 | Slow scroll down Home (Jump back in → ENGLISH 4K shelf) | One app. Live TV, Movies & Series. |
 | 0:08–0:14 | Click a movie (e.g. Elvis) → detail hero → hit **Play** → video fills screen | Instant, native playback |
-| 0:14–0:19 | Open **TV Guide**, scroll the channels × time grid; the red "now" line visible | A full TV-guide grid |
 | 0:19–0:24 | Open **Search**, filter to Movies, sort the grid, then open one | Find anything, fast |
 | 0:24–0:30 | A movie → tap **Download**, show the progress ring, tap **Pause** then **Resume** | Download for offline · pause/resume |
 | 0:30–0:35 | Minimize the player → it docks as a floating mini-player while you browse | Picture-in-picture |
@@ -25,4 +24,4 @@ in the bottom-left, big and short.
 - A 6–8s **GIF** of the accent recolor and fast search transition is great for README/Twitter.
 
 ## 15-second cut (for Shorts/Reels)
-Home hero → Play a movie → TV Guide grid → accent recolor → end card.
+Home hero → Play a movie → browse Live channels → accent recolor → end card.

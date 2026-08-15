@@ -947,7 +947,6 @@ class SearchScreenState extends State<SearchScreen>
         image: s.icon,
         url: url,
       ),
-      epg: () => widget.client.shortEpg(s.streamId),
     );
   }
 

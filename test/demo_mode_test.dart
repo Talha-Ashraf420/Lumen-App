@@ -62,7 +62,6 @@ void main() {
     final show = await client.seriesInfo(shows.first.seriesId);
     final liveCategories = await client.liveCategories();
     final channels = await client.liveStreams(null);
-    final guide = await client.shortEpg(channels.first.streamId);
 
     expect(auth['auth'], 1);
     expect(movieCategories, isNotEmpty);
@@ -73,7 +72,6 @@ void main() {
     expect(show.episodes.values.expand((episodes) => episodes), isNotEmpty);
     expect(liveCategories, isNotEmpty);
     expect(channels, isNotEmpty);
-    expect(guide, isNotEmpty);
     expect(client.streamHeaders(channels.first.streamId), isEmpty);
     expect(tripwire.requests, 0);
   });

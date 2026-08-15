@@ -171,8 +171,8 @@ void main() {
         generation: 10,
       );
       await store.replaceLive('profile', 'channels', [
-        LiveStream(1, 'World News', '', 'channels', ''),
-        LiveStream(2, 'Sports Arena', '', 'channels', ''),
+        LiveStream(1, 'World News', '', 'channels'),
+        LiveStream(2, 'Sports Arena', '', 'channels'),
       ], generation: 11);
 
       final secondSeriesPage = await store.seriesPage(
@@ -195,10 +195,10 @@ void main() {
 
   test('an older refresh cannot overwrite a newer generation', () async {
     await store.replaceLive('profile', '*', [
-      LiveStream(1, 'New channel', '', 'news', ''),
+      LiveStream(1, 'New channel', '', 'news'),
     ], generation: 20);
     final accepted = await store.replaceLive('profile', '*', [
-      LiveStream(2, 'Stale channel', '', 'news', ''),
+      LiveStream(2, 'Stale channel', '', 'news'),
     ], generation: 19);
 
     expect(accepted, isFalse);

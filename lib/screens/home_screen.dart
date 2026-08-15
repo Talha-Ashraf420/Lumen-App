@@ -214,7 +214,6 @@ class _HomeScreenState extends State<HomeScreen>
               image: s.icon,
               url: widget.client.streamUrl('live', s.streamId, ext: 'ts'),
             ),
-            epg: () => widget.client.shortEpg(s.streamId),
           ),
         )
         .toList();
@@ -276,7 +275,6 @@ class _HomeScreenState extends State<HomeScreen>
             poster: r.image,
             httpHeaders: widget.client.streamHeaders(r.id),
             favRef: r,
-            epg: () => widget.client.shortEpg(r.id),
           ),
         ], 0);
     }

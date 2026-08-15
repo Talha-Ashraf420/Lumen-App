@@ -14,7 +14,6 @@ import '../theme.dart';
 import '../widgets.dart';
 import '../xtream.dart';
 import 'downloads_screen.dart';
-import 'epg_guide_screen.dart';
 import 'home_screen.dart';
 import 'update_dialog.dart';
 import 'mylist_screen.dart';
@@ -70,8 +69,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   // Auto-refresh the catalog when the app returns to the foreground (throttled),
   // so recently-added movies surface without a manual Refresh.
   DateTime _lastRefresh = DateTime.now();
-  // Tabs initialise only once first opened — avoids a startup request burst
-  // (e.g. the Live guide loading EPG) that can trip the provider.
+  // Tabs initialise only once first opened to avoid a startup request burst.
   final Set<int> _visited = {0};
   final List<int> _navigationHistory = <int>[];
   final Map<int, FocusNode> _dockFocusNodes = <int, FocusNode>{
@@ -82,11 +80,10 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     4: FocusNode(debugLabel: 'Movies dock'),
     5: FocusNode(debugLabel: 'Series dock'),
     6: FocusNode(debugLabel: 'Live dock'),
-    7: FocusNode(debugLabel: 'Guide dock'),
-    8: FocusNode(debugLabel: 'Downloads dock'),
+    7: FocusNode(debugLabel: 'Downloads dock'),
   };
   final Map<int, FocusScopeNode> _pageFocusScopes = <int, FocusScopeNode>{
-    for (var page = 0; page < 9; page++)
+    for (var page = 0; page < 8; page++)
       page: FocusScopeNode(debugLabel: 'Shell page $page'),
   };
   final FocusNode _commandSearchFocus = FocusNode(
@@ -104,7 +101,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   // Phones and larger screens share the same page map. The phone dock promotes
   // the three catalog pages to first-class destinations, while the account and
   // personal-library pages live in a compact utility hub.
-  static const _pageCount = 9;
+  static const _pageCount = 8;
 
   bool _allows(int page) => _capabilities.allows(page);
 
@@ -258,10 +255,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       shellRailFocusNode: _dockFocusNodes[6],
       shellTopFocusNode: _commandSearchFocus,
     ),
-    7 => EpgGuideScreen(client: widget.client),
     _ => DownloadsScreen(
       client: widget.client,
-      shellRailFocusNode: _dockFocusNodes[8],
+      shellRailFocusNode: _dockFocusNodes[7],
       shellTopFocusNode: _commandSearchFocus,
     ),
   };
@@ -361,7 +357,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       );
       final target = named.isNotEmpty
           ? named.first
-          : (page == 0 || page == 7) && candidates.isNotEmpty
+          : page == 0 && candidates.isNotEmpty
           ? candidates.first
           : null;
       if (target != null) {
@@ -806,7 +802,7 @@ class _MobileUtilityHub extends StatelessWidget {
                     icon: Icons.download_rounded,
                     label: 'Downloads',
                     subtitle: 'Watch offline',
-                    onTap: () => Navigator.pop(context, 8),
+                    onTap: () => Navigator.pop(context, 7),
                   ),
                 ),
               ],
@@ -914,7 +910,7 @@ class _CatalogCapabilities {
   bool allows(int page) => switch (page) {
     4 => movies,
     5 => series,
-    6 || 7 => live,
+    6 => live,
     _ => true,
   };
 }
@@ -937,13 +933,12 @@ const List<_Nav> _mainDock = [
   _Nav(Icons.movie_filter_rounded, 'Movies', 4),
   _Nav(Icons.amp_stories_rounded, 'Series', 5),
   _Nav(Icons.sensors_rounded, 'Live', 6),
-  _Nav(Icons.calendar_view_week_rounded, 'Guide', 7),
   _Nav(Icons.search_rounded, 'Search', 1),
 ];
 
 const List<_Nav> _utilityDock = [
   _Nav(Icons.favorite_rounded, 'My List', 2),
-  _Nav(Icons.download_rounded, 'Downloads', 8, trailingIsDownloads: true),
+  _Nav(Icons.download_rounded, 'Downloads', 7, trailingIsDownloads: true),
   _Nav(Icons.person_rounded, 'Profile', 3),
 ];
 
@@ -1165,8 +1160,7 @@ class _CommandBar extends StatelessWidget {
     4: 'Movies',
     5: 'Series',
     6: 'Live signal',
-    7: 'TV guide',
-    8: 'Downloads',
+    7: 'Downloads',
   };
 
   KeyEventResult _moveCommandFocus(FocusNode node, KeyEvent event) {
