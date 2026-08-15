@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../catalog_cache.dart';
+import '../device_profile.dart';
 import '../downloads.dart';
 import '../models.dart';
 import '../playback.dart';
@@ -250,6 +251,36 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   Widget _cachedPage(int page) =>
       _pageCache.putIfAbsent(page, () => _pageFor(page));
 
+  KeyEventResult _handlePageBoundaryKey(int page, KeyEvent event) {
+    if ((event is! KeyDownEvent && event is! KeyRepeatEvent) ||
+        event.logicalKey != LogicalKeyboardKey.arrowLeft) {
+      return KeyEventResult.ignored;
+    }
+    final rail = _dockFocusNodes[page];
+    final pageContext = _pageFocusScopes[page]?.context;
+    final focusedContext = FocusManager.instance.primaryFocus?.context;
+    final pageBox = pageContext?.findRenderObject();
+    final focusedBox = focusedContext?.findRenderObject();
+    if (rail == null ||
+        !rail.canRequestFocus ||
+        pageBox is! RenderBox ||
+        focusedBox is! RenderBox) {
+      return KeyEventResult.ignored;
+    }
+    final pageLeft = pageBox.localToGlobal(Offset.zero).dx;
+    final focusedCenter = focusedBox
+        .localToGlobal(focusedBox.size.center(Offset.zero))
+        .dx;
+    // Child controls get the key first, so rows/grids can still move left.
+    // If no child handled it and focus is in the page's left quarter, the
+    // stable shell rail is the only meaningful destination.
+    if (focusedCenter <= pageLeft + pageBox.size.width * .28) {
+      rail.requestFocus();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
   void _focusPageContent(int page) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || page != _index) return;
@@ -259,12 +290,33 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       }
       final scope = _pageFocusScopes[page];
       if (scope == null) return;
+      final candidates = <FocusNode>[];
       for (final node in scope.traversalDescendants) {
-        if (node.canRequestFocus && !node.skipTraversal) {
-          node.requestFocus();
-          return;
+        // CallbackShortcuts/Shortcuts insert focusable implementation nodes.
+        // They are not controls, and choosing one traps all four D-pad keys on
+        // the page wrapper. Enter the first real descendant instead.
+        final structural =
+            node is FocusScopeNode ||
+            node.debugLabel == 'Shortcuts' ||
+            node.debugLabel == 'FocusTraversalGroup';
+        if (!structural &&
+            node.context != null &&
+            node.canRequestFocus &&
+            !node.skipTraversal) {
+          candidates.add(node);
         }
       }
+      final named = candidates.where(
+        (node) => node.debugLabel?.trim().isNotEmpty ?? false,
+      );
+      final target = named.isNotEmpty
+          ? named.first
+          : (page == 0 || page == 7) && candidates.isNotEmpty
+          ? candidates.first
+          : null;
+      // Empty My List/Downloads pages have no actions. Leaving focus on their
+      // rail tab is intentional; decorative empty states must never trap it.
+      target?.requestFocus();
     });
   }
 
@@ -333,6 +385,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           excluding: i != _index,
           child: FocusScope(
             node: _pageFocusScopes[i],
+            onKeyEvent: (_, event) => _handlePageBoundaryKey(i, event),
             child: TickerMode(
               // Keep each visited page as the same widget instance. Besides
               // preserving state, this prevents all heavy offstage utility and
@@ -358,6 +411,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         },
         child: Focus(
           child: Scaffold(
+            resizeToAvoidBottomInset: !DeviceProfile.isTelevision,
             body: Stack(
               children: [
                 Aurora(),
@@ -848,6 +902,14 @@ class _SignalDock extends StatelessWidget {
       }
       final current = ordered.indexWhere((nav) => nav.page == page);
       if (current < 0) return KeyEventResult.ignored;
+      if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+        onSelect(page);
+        return KeyEventResult.handled;
+      }
+      if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+        // The rail is the left edge of the app. Keep its focus visible.
+        return KeyEventResult.handled;
+      }
       final delta = event.logicalKey == LogicalKeyboardKey.arrowUp
           ? -1
           : event.logicalKey == LogicalKeyboardKey.arrowDown
@@ -935,7 +997,8 @@ class _DockItem extends StatelessWidget {
           duration: const Duration(milliseconds: 180),
           width: 52,
           height: 44,
-          margin: const EdgeInsets.only(bottom: 3),
+          // Nine dock entries must fit a 540dp TV viewport after SafeArea.
+          margin: const EdgeInsets.only(bottom: 2),
           decoration: BoxDecoration(
             color: selected
                 ? accentInk.withValues(alpha: isDark ? 0.14 : 0.09)

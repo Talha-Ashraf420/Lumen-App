@@ -13,10 +13,19 @@ class DeviceProfile {
   DeviceProfile._();
 
   static const _channel = MethodChannel('lumen/device');
+  static const _forceTelevisionForTesting = bool.fromEnvironment(
+    'LUMEN_FORCE_TV',
+  );
 
   static bool isTelevision = false;
 
   static Future<void> detect() async {
+    // Lets local/emulator builds exercise the real TV paths without changing
+    // production detection. The flag is absent from shipping builds.
+    if (_forceTelevisionForTesting) {
+      isTelevision = true;
+      return;
+    }
     if (kIsWeb || !Platform.isAndroid) {
       isTelevision = false;
       return;

@@ -253,6 +253,28 @@ class SearchScreenState extends State<SearchScreen>
     if (mounted) setState(() {});
   }
 
+  void _requestVisibleCategoryFocus() {
+    _categorySelectionTimer?.cancel();
+    final visibleIds = <String>{'all', for (final c in _curCats) c.id};
+    final id = visibleIds.contains(_cat) ? _cat : 'all';
+    final node = _categoryFocusNode(id);
+
+    void attempt(int remainingFrames) {
+      if (!mounted) return;
+      if (node.context != null && node.canRequestFocus) {
+        node.requestFocus();
+        return;
+      }
+      if (remainingFrames > 0) {
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => attempt(remainingFrames - 1),
+        );
+      }
+    }
+
+    attempt(6);
+  }
+
   int get _sectionFocusIndex => switch (_section) {
     'movie' => 1,
     'series' => 2,
@@ -351,7 +373,7 @@ class SearchScreenState extends State<SearchScreen>
     }
     if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
       if (_browse) {
-        _categoryFocusNode(_cat).requestFocus();
+        _requestVisibleCategoryFocus();
       } else {
         _categoryButtonFocus.requestFocus();
       }
@@ -492,7 +514,10 @@ class SearchScreenState extends State<SearchScreen>
   void _selectCategoryAfterFocusSettles(String id) {
     _categorySelectionTimer?.cancel();
     final node = _categoryFocusNode(id);
-    _categorySelectionTimer = Timer(const Duration(milliseconds: 70), () {
+    final delay = DeviceProfile.isTelevision
+        ? const Duration(milliseconds: 220)
+        : const Duration(milliseconds: 70);
+    _categorySelectionTimer = Timer(delay, () {
       if (!mounted || !node.hasFocus) return;
       _selectCategory(id);
     });
@@ -623,8 +648,7 @@ class SearchScreenState extends State<SearchScreen>
       target = index + 1;
     } else if (key == LogicalKeyboardKey.arrowLeft) {
       if (column == 0) {
-        _categorySelectionTimer?.cancel();
-        _categoryFocusNode(_cat).requestFocus();
+        _requestVisibleCategoryFocus();
         return KeyEventResult.handled;
       }
       target = index - 1;

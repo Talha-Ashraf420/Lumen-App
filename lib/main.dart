@@ -61,6 +61,16 @@ Future<void> main() async {
   );
 
   runApp(LumenApp(startup: startup));
+  if (const bool.fromEnvironment('LUMEN_LOG_FOCUS')) {
+    FocusManager.instance.addListener(() {
+      final focus = FocusManager.instance.primaryFocus;
+      final path = <String>[
+        ?focus?.debugLabel,
+        ...?focus?.ancestors.map((node) => node.debugLabel).whereType<String>(),
+      ];
+      debugPrint('LUMEN_FOCUS ${path.join(' > ')}');
+    });
+  }
   // Android TV playback uses the native Media3 SurfaceView. Avoid waking the
   // secondary libmpv decoder at launch; that saves memory and removes a burst
   // of native setup work while the first catalog is becoming focusable.

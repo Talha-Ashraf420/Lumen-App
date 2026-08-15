@@ -86,7 +86,9 @@ class Media3PlayerActivity : Activity() {
     private val transportButtons = mutableListOf<Button>()
     private lateinit var errorPanel: LinearLayout
     private lateinit var errorText: TextView
+    private lateinit var errorPreviousButton: Button
     private lateinit var retryButton: Button
+    private lateinit var errorNextButton: Button
     private val handler = Handler(Looper.getMainLooper())
     private var retryAttempt = 0
     private var retryScheduled = false
@@ -503,6 +505,7 @@ class Media3PlayerActivity : Activity() {
     private fun themedButton(
         label: String,
         description: String,
+        showPlayerControlsOnFocus: Boolean = true,
         onClick: () -> Unit
     ): Button = Button(this).apply {
         id = View.generateViewId()
@@ -530,7 +533,7 @@ class Media3PlayerActivity : Activity() {
             )
         )
         setOnFocusChangeListener { view, focused ->
-            if (focused) showControls()
+            if (focused && showPlayerControlsOnFocus) showControls()
             view.animate()
                 .scaleX(if (focused) 1.045f else 1f)
                 .scaleY(if (focused) 1.045f else 1f)
@@ -576,6 +579,7 @@ class Media3PlayerActivity : Activity() {
             ?.takeIf { it.isNotBlank() }
             ?: if (isLive) "Live channel" else "Episode"
         updateFocusGraph()
+        updateErrorNavigationUi()
     }
 
     private fun updateFocusGraph() {
@@ -852,18 +856,31 @@ class Media3PlayerActivity : Activity() {
             setTextColor(Color.WHITE)
             setPadding(0, 0, 0, dp(16))
         }
-        retryButton = themedButton("Try again", "Try this stream again") {
+        errorPreviousButton = themedButton(
+            if (isLive) "‹  Channel" else "‹  Episode",
+            if (isLive) "Try the previous channel" else "Try the previous episode",
+            showPlayerControlsOnFocus = false
+        ) {
+            openPlaylistItem(playlistIndex - 1)
+        }
+        retryButton = themedButton(
+            "Try again",
+            "Try this stream again",
+            showPlayerControlsOnFocus = false
+        ) {
             retryAttempt = 0
             retryScheduled = false
             terminalError = false
             errorPanel.visibility = View.GONE
             open()
             showControls(requestTransportFocus = true)
-        }.apply {
-            nextFocusLeftId = id
-            nextFocusRightId = id
-            nextFocusUpId = id
-            nextFocusDownId = id
+        }
+        errorNextButton = themedButton(
+            if (isLive) "Channel  ›" else "Episode  ›",
+            if (isLive) "Try the next channel" else "Try the next episode",
+            showPlayerControlsOnFocus = false
+        ) {
+            openPlaylistItem(playlistIndex + 1)
         }
         panel.addView(
             errorText,
@@ -872,8 +889,48 @@ class Media3PlayerActivity : Activity() {
                 ViewGroup.LayoutParams.WRAP_CONTENT
             )
         )
-        panel.addView(retryButton, LinearLayout.LayoutParams(dp(180), dp(52)))
+        val actions = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        actions.addView(
+            errorPreviousButton,
+            LinearLayout.LayoutParams(dp(156), dp(52)).apply { marginEnd = dp(8) }
+        )
+        actions.addView(
+            retryButton,
+            LinearLayout.LayoutParams(dp(180), dp(52)).apply {
+                marginStart = dp(8)
+                marginEnd = dp(8)
+            }
+        )
+        actions.addView(
+            errorNextButton,
+            LinearLayout.LayoutParams(dp(156), dp(52)).apply { marginStart = dp(8) }
+        )
+        panel.addView(
+            actions,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+        updateErrorNavigationUi()
         return panel
+    }
+
+    private fun updateErrorNavigationUi() {
+        if (!::retryButton.isInitialized) return
+        errorPreviousButton.isEnabled = playlistIndex > 0
+        errorNextButton.isEnabled = playlistIndex < playlistUrls.lastIndex
+        val active = listOf(errorPreviousButton, retryButton, errorNextButton)
+            .filter { it.isEnabled }
+        active.forEachIndexed { index, button ->
+            button.nextFocusLeftId = active.getOrNull(index - 1)?.id ?: button.id
+            button.nextFocusRightId = active.getOrNull(index + 1)?.id ?: button.id
+            button.nextFocusUpId = button.id
+            button.nextFocusDownId = button.id
+        }
     }
 
     private fun open() {
@@ -915,6 +972,8 @@ class Media3PlayerActivity : Activity() {
         val delay = RETRY_DELAYS_MS[retryAttempt++]
         errorText.text = "$message\nRetrying ${retryAttempt}/${RETRY_DELAYS_MS.size}…"
         errorPanel.visibility = View.VISIBLE
+        updateErrorNavigationUi()
+        retryButton.requestFocus()
         handler.postDelayed({
             retryScheduled = false
             errorPanel.visibility = View.GONE
@@ -927,6 +986,7 @@ class Media3PlayerActivity : Activity() {
         terminalError = true
         errorText.text = message
         errorPanel.visibility = View.VISIBLE
+        updateErrorNavigationUi()
         retryButton.requestFocus()
     }
 

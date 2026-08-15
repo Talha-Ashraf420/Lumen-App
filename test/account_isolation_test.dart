@@ -345,7 +345,7 @@ void main() {
           ),
         ),
       );
-      await tester.pump();
+      await tester.pump(const Duration(seconds: 2));
 
       final myListControl = tester.widget<FocusableActionDetector>(
         find
@@ -359,7 +359,7 @@ void main() {
       await tester.pump();
       expect(myListControl.focusNode!.hasFocus, isTrue);
 
-      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
       await tester.pump();
       expect(
         FocusManager.instance.primaryFocus?.debugLabel,
@@ -399,6 +399,10 @@ void main() {
       await tester.pump();
       expect(profileControl.focusNode!.hasFocus, isFalse);
       expect(FocusManager.instance.primaryFocus, isNotNull);
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        isNot('Shortcuts'),
+      );
 
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(seconds: 1));

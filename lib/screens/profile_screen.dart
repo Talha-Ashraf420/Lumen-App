@@ -36,6 +36,7 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
+  final _entryFocus = FocusNode(debugLabel: 'Profile add account');
   Map<String, dynamic>? _info;
   List<XtreamCredentials> _profiles = [];
   bool _accountInfoLoading = true;
@@ -291,6 +292,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   @override
+  void dispose() {
+    _entryFocus.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -532,6 +539,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
                 RemoteTap(
+                  focusNode: _entryFocus,
                   onTap: _addProfile,
                   semanticLabel: 'Add account',
                   focusRadius: 12,

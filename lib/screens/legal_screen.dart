@@ -82,6 +82,7 @@ class _LegalWelcomeScreenState extends State<LegalWelcomeScreen> {
                         SizedBox(
                           width: double.infinity,
                           child: FilledButton(
+                            autofocus: true,
                             onPressed: _busy ? null : _accept,
                             style: FilledButton.styleFrom(
                               backgroundColor: accent,
