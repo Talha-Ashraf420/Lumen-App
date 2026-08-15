@@ -41,6 +41,10 @@ is a good architectural primer.
 
 - **Format & analyze before pushing:** `dart format .` and `flutter analyze`
   (CI and reviewers expect **0 analyzer errors**).
+- **Never commit secrets:** signing keystores, `key.properties`, provider
+  credentials, playlists, service-account files, API tokens, and real user data
+  must stay outside the repository. Use local ignored files and fictional test
+  data instead.
 - Dart imports use **relative paths** (`import '../theme.dart'`).
 - Use the theme-aware colour getters (`accent`, `surface`, `textHi`, …) — never
   hard-code brand colours, so custom accents keep working.
@@ -54,6 +58,10 @@ is a good architectural primer.
 2. Fork → branch (`feat/...` or `fix/...`).
 3. Make the change; run `flutter analyze` (0 errors) and test on at least one platform.
 4. Open a PR describing **what** and **why**, with a screenshot/GIF for UI changes.
+
+Security vulnerabilities and accidentally exposed credentials should not be
+reported in a public issue. Follow the private reporting instructions in
+[`SECURITY.md`](SECURITY.md).
 
 ## Good areas to help
 

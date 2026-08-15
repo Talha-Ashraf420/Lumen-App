@@ -63,6 +63,8 @@ class SearchScreenState extends State<SearchScreen>
     with AutomaticKeepAliveClientMixin {
   final _ctrl = TextEditingController();
   final _searchFocus = FocusNode(debugLabel: 'Search library');
+  final _sortFocus = FocusNode(debugLabel: 'Catalog sort');
+  final _sortMenuKey = GlobalKey<PopupMenuButtonState<String>>();
   final _gridScroll = ScrollController();
   final _categoryScope = FocusScopeNode(debugLabel: 'Catalog categories');
   final _gridScope = FocusScopeNode(debugLabel: 'Catalog content grid');
@@ -115,6 +117,9 @@ class SearchScreenState extends State<SearchScreen>
   @override
   void initState() {
     super.initState();
+    _sortFocus
+      ..onKeyEvent = _moveSortFocus
+      ..addListener(_onSortFocusChanged);
     _loadCats();
     contentRefresh.addListener(_onRefresh);
     CatalogCache.instance.revision.addListener(_onCatalogRevision);
@@ -184,6 +189,9 @@ class SearchScreenState extends State<SearchScreen>
     CatalogCache.instance.revision.removeListener(_onCatalogRevision);
     _ctrl.dispose();
     _searchFocus.dispose();
+    _sortFocus
+      ..removeListener(_onSortFocusChanged)
+      ..dispose();
     _gridScroll.dispose();
     _categoryScope.dispose();
     _gridScope.dispose();
@@ -204,6 +212,31 @@ class SearchScreenState extends State<SearchScreen>
     _categoryFocusKey(id),
     () => FocusNode(debugLabel: '$_section category $id'),
   );
+
+  void _onSortFocusChanged() {
+    if (mounted) setState(() {});
+  }
+
+  KeyEventResult _moveSortFocus(FocusNode _, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+      _requestGridFocus(_lastGridIndex);
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowLeft && _browse) {
+      _categoryFocusNode(_cat).requestFocus();
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowUp ||
+        event.logicalKey == LogicalKeyboardKey.arrowRight) {
+      // Sort is the top-right edge of the catalog. Keep focus visible instead
+      // of allowing the geometry policy to lose it outside the page.
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
 
   void _selectCategory(String id, {bool restoreCategoryFocus = true}) {
     _categorySelectionTimer?.cancel();
@@ -268,7 +301,10 @@ class SearchScreenState extends State<SearchScreen>
     final target = index + delta;
     // Vertical movement is contained inside the category zone. Letting an edge
     // event fall through makes the geometry policy choose a content tile.
-    if (target < 0) return KeyEventResult.handled;
+    if (target < 0) {
+      _sortFocus.requestFocus();
+      return KeyEventResult.handled;
+    }
     if (target >= categories.length) return KeyEventResult.handled;
     _categoryFocusNode(categories[target].$1).requestFocus();
     return KeyEventResult.handled;
@@ -360,9 +396,13 @@ class SearchScreenState extends State<SearchScreen>
       if (index + columns >= itemCount) return KeyEventResult.handled;
       target = index + columns;
     } else if (key == LogicalKeyboardKey.arrowUp) {
-      // Up on the first content row stays in the grid. A geometry fallback can
-      // otherwise jump diagonally into whichever category happens to be near.
-      if (index < columns) return KeyEventResult.handled;
+      // Sort is the only deliberate exit above the first content row. This
+      // avoids the old diagonal category jump while keeping the top-right
+      // catalog action reachable from every column.
+      if (index < columns) {
+        _sortFocus.requestFocus();
+        return KeyEventResult.handled;
+      }
       target = index - columns;
     } else {
       return KeyEventResult.ignored;
@@ -911,64 +951,99 @@ class SearchScreenState extends State<SearchScreen>
                   (e.key == 'rating' || e.key == 'recent' || e.key == 'year')),
         )
         .toList();
-    return PopupMenuButton<String>(
-      tooltip: 'Sort',
-      color: surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: line),
-      ),
-      onSelected: (v) => _changeResults(() => _sort = v),
-      itemBuilder: (_) => [
-        for (final e in entries)
-          PopupMenuItem(
-            value: e.key,
-            child: Row(
-              children: [
-                Icon(
-                  _sort == e.key ? Icons.check_rounded : Icons.sort_rounded,
-                  color: _sort == e.key ? accentInk : muted,
-                  size: 18,
-                ),
-                const SizedBox(width: 10),
-                Text(
-                  e.value,
-                  style: TextStyle(
-                    fontWeight: _sort == e.key
-                        ? FontWeight.w800
-                        : FontWeight.w600,
-                    color: textHi,
-                  ),
-                ),
-              ],
-            ),
-          ),
-      ],
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-        decoration: BoxDecoration(
-          color: surfaceHi.withValues(alpha: 0.6),
-          borderRadius: BorderRadius.circular(13),
-          border: Border.all(color: line),
+    return FocusableActionDetector(
+      focusNode: _sortFocus,
+      shortcuts: const <ShortcutActivator, Intent>{
+        SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
+        SingleActivator(LogicalKeyboardKey.numpadEnter): ActivateIntent(),
+        SingleActivator(LogicalKeyboardKey.select): ActivateIntent(),
+        SingleActivator(LogicalKeyboardKey.accept): ActivateIntent(),
+        SingleActivator(LogicalKeyboardKey.execute): ActivateIntent(),
+        SingleActivator(LogicalKeyboardKey.gameButtonA): ActivateIntent(),
+      },
+      actions: <Type, Action<Intent>>{
+        ActivateIntent: CallbackAction<ActivateIntent>(
+          onInvoke: (_) {
+            _sortMenuKey.currentState?.showButtonMenu();
+            return null;
+          },
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.swap_vert_rounded,
-              size: 18,
-              color: _sort == 'default' ? muted : accentInk,
-            ),
-            const SizedBox(width: 6),
-            Text(
-              _sort == 'default' ? 'Sort' : _sortLabels[_sort]!,
-              style: TextStyle(
-                fontWeight: FontWeight.w700,
-                fontSize: 13,
-                color: _sort == 'default' ? textHi : accentInk,
+      },
+      child: ExcludeFocus(
+        child: PopupMenuButton<String>(
+          key: _sortMenuKey,
+          tooltip: 'Sort',
+          color: surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(color: line),
+          ),
+          onSelected: (v) => _changeResults(() => _sort = v),
+          itemBuilder: (_) => [
+            for (final e in entries)
+              PopupMenuItem(
+                value: e.key,
+                child: Row(
+                  children: [
+                    Icon(
+                      _sort == e.key ? Icons.check_rounded : Icons.sort_rounded,
+                      color: _sort == e.key ? accentInk : muted,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      e.value,
+                      style: TextStyle(
+                        fontWeight: _sort == e.key
+                            ? FontWeight.w800
+                            : FontWeight.w600,
+                        color: textHi,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+          child: AnimatedScale(
+            scale: _sortFocus.hasFocus ? 1.045 : 1,
+            duration: const Duration(milliseconds: 130),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 130),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+              decoration: BoxDecoration(
+                color: _sortFocus.hasFocus
+                    ? accent.withValues(alpha: .22)
+                    : surfaceHi.withValues(alpha: 0.6),
+                borderRadius: BorderRadius.circular(13),
+                border: Border.all(
+                  color: _sortFocus.hasFocus ? accentInk : line,
+                  width: _sortFocus.hasFocus ? 3 : 1,
+                ),
+                boxShadow: _sortFocus.hasFocus
+                    ? glow(accent, blur: 18, a: .5)
+                    : null,
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.swap_vert_rounded,
+                    size: 18,
+                    color: _sort == 'default' ? muted : accentInk,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    _sort == 'default' ? 'Sort' : _sortLabels[_sort]!,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                      color: _sort == 'default' ? textHi : accentInk,
+                    ),
+                  ),
+                ],
               ),
             ),
-          ],
+          ),
         ),
       ),
     );

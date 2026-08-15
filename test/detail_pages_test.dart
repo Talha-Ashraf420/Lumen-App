@@ -528,7 +528,7 @@ void main() {
     await disposeUi(tester);
   });
 
-  testWidgets('catalog D-pad keeps vertical focus inside the content grid', (
+  testWidgets('catalog D-pad reaches Sort and returns to the content grid', (
     tester,
   ) async {
     final client = _HomeClient();
@@ -581,6 +581,16 @@ void main() {
     expect(tile.focusNode!.hasFocus, isTrue);
 
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+    await tester.pump();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'Catalog sort');
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await tester.pumpAndSettle();
+    expect(find.text('A–Z'), findsOneWidget);
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
     await tester.pump();
     expect(tile.focusNode!.hasFocus, isTrue);
 
