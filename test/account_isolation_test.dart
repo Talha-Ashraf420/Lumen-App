@@ -557,6 +557,83 @@ void main() {
     },
   );
 
+  testWidgets(
+    'TV My List keeps a direct focus path when the first favorite is added',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1920, 1080);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+      final client = _FullCatalogClient();
+      addTearDown(client.close);
+      await Library.instance.activate(client.creds);
+      await tester.runAsync(
+        () => Future.wait([
+          CatalogCache.instance.vod(client, priority: true),
+          CatalogCache.instance.series(client, priority: true),
+          CatalogCache.instance.live(client, priority: true),
+        ]),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildTheme(darkPalette),
+          home: HomeShell(
+            client: client,
+            onLogout: () async {},
+            onSwitch: (_) {},
+          ),
+        ),
+      );
+      await tester.pump(const Duration(seconds: 2));
+
+      final myListControl = tester.widget<FocusableActionDetector>(
+        find
+            .descendant(
+              of: find.byTooltip('My List'),
+              matching: find.byType(FocusableActionDetector),
+            )
+            .first,
+      );
+      myListControl.focusNode!.requestFocus();
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(find.text('Save the good stuff'), findsOneWidget);
+
+      Library.instance.toggleFav(
+        const MediaRef(kind: 'movie', id: 72, name: 'New favorite'),
+      );
+      await tester.pump();
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pump();
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        'My List filter 0',
+      );
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      await tester.pump();
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        'Command find anything',
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pump();
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        'My List filter 0',
+      );
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pump();
+      expect(FocusManager.instance.primaryFocus?.debugLabel, 'My List tile 0');
+
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    },
+  );
+
   testWidgets('remote Back follows shell history then asks before exit', (
     tester,
   ) async {

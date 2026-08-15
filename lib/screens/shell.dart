@@ -95,6 +95,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   final FocusNode _commandProfileFocus = FocusNode(
     debugLabel: 'Command profile',
   );
+  final FocusNode _myListEntryFocus = FocusNode(debugLabel: 'My List filter 0');
   final Map<int, Widget> _pageCache = <int, Widget>{};
   bool _exitDialogOpen = false;
 
@@ -190,6 +191,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     _commandSearchFocus.dispose();
     _commandRefreshFocus.dispose();
     _commandProfileFocus.dispose();
+    _myListEntryFocus.dispose();
     super.dispose();
   }
 
@@ -230,6 +232,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       client: widget.client,
       shellRailFocusNode: _dockFocusNodes[2],
       shellTopFocusNode: _commandSearchFocus,
+      entryFocusNode: _myListEntryFocus,
     ),
     3 => ProfileScreen(
       client: widget.client,
@@ -340,6 +343,15 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       }
       final scope = _pageFocusScopes[page];
       if (scope == null) return;
+      // My List can change from an empty, non-focusable page to a populated
+      // one while its cached page stays mounted. Use its stable first filter
+      // node instead of relying on a traversal snapshot from the empty state.
+      if (page == 2 &&
+          _myListEntryFocus.context != null &&
+          _myListEntryFocus.canRequestFocus) {
+        scope.requestFocus(_myListEntryFocus);
+        return;
+      }
       final candidates = <FocusNode>[];
       for (final node in scope.traversalDescendants) {
         // CallbackShortcuts/Shortcuts insert focusable implementation nodes.
@@ -1199,7 +1211,10 @@ class _CommandBar extends StatelessWidget {
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.arrowDown) {
-      if (!node.focusInDirection(TraversalDirection.down)) {
+      // Geometry traversal can select an implementation FocusScope when a
+      // cached page has just changed from empty to populated. Enter through
+      // the page's explicit focus handoff so the highlight never disappears.
+      if (index == 2 || !node.focusInDirection(TraversalDirection.down)) {
         onFocusContent();
       }
       return KeyEventResult.handled;

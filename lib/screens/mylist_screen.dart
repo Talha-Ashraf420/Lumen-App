@@ -14,11 +14,13 @@ class MyListScreen extends StatefulWidget {
   final XtreamClient client;
   final FocusNode? shellRailFocusNode;
   final FocusNode? shellTopFocusNode;
+  final FocusNode? entryFocusNode;
   const MyListScreen({
     super.key,
     required this.client,
     this.shellRailFocusNode,
     this.shellTopFocusNode,
+    this.entryFocusNode,
   });
 
   @override
@@ -28,19 +30,28 @@ class MyListScreen extends StatefulWidget {
 class _MyListScreenState extends State<MyListScreen> {
   String _filter = 'all';
   final _gridScroll = ScrollController();
-  final _filterFocus = List<FocusNode>.generate(
-    4,
-    (index) => FocusNode(debugLabel: 'My List filter $index'),
-  );
+  late final List<FocusNode> _filterFocus;
   final List<FocusNode> _gridFocus = <FocusNode>[];
   int _gridColumns = 1;
   double _gridRowExtent = 220;
 
   @override
+  void initState() {
+    super.initState();
+    _filterFocus = <FocusNode>[
+      widget.entryFocusNode ?? FocusNode(debugLabel: 'My List filter 0'),
+      for (var index = 1; index < 4; index++)
+        FocusNode(debugLabel: 'My List filter $index'),
+    ];
+  }
+
+  @override
   void dispose() {
     _gridScroll.dispose();
-    for (final node in _filterFocus) {
-      node.dispose();
+    for (var index = 0; index < _filterFocus.length; index++) {
+      if (index != 0 || widget.entryFocusNode == null) {
+        _filterFocus[index].dispose();
+      }
     }
     for (final node in _gridFocus) {
       node.dispose();
