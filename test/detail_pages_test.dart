@@ -471,7 +471,8 @@ void main() {
       final page = await CatalogCache.instance.vodPage(client, query: 'second');
 
       expect(page.items.single.name, 'Second Film');
-      expect(client.requestedCategories, containsAll([null, 'one', 'two']));
+      expect(client.requestedCategories, containsAll(['one', 'two']));
+      expect(client.requestedCategories, isNot(contains(null)));
     },
   );
 

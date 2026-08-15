@@ -1547,10 +1547,17 @@ class SearchScreenState extends State<SearchScreen>
       // Each media type queries only its first matching page. Providers that
       // lack a whole-catalog endpoint are imported into SQLite once, then all
       // subsequent searches stay local and paged.
+      // Movie search gets the provider queue first. A number of panels have a
+      // very slow whole-catalog endpoint; starting all three media types at
+      // once lets those requests occupy every network slot and delays the
+      // title the user is waiting for. Secondary types begin as soon as the
+      // first movie page settles and do not block its rendering.
       _ensure('movie', 'all');
-      _ensure('series', 'all');
-      _ensure('live', 'all');
       final movies = _has('movie', 'all') ? _movieByCat['all'] : null;
+      if (movies != null) {
+        _ensure('series', 'all');
+        _ensure('live', 'all');
+      }
       final series = _has('series', 'all') ? _seriesByCat['all'] : null;
       final live = _has('live', 'all') ? _liveByCat['all'] : null;
       final loading = movies == null || series == null || live == null;

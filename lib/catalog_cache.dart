@@ -344,6 +344,23 @@ class CatalogCache {
         exactLocal ||
         (categoryId == null &&
             await CatalogStore.instance.hasItems(scope, 'movie'));
+    // Some Xtream panels time out or reject get_vod_streams without a
+    // category even though their category endpoints are fast. Search those
+    // buckets in provider order and stop at the first matching batch. This
+    // makes a cold title search useful in seconds instead of waiting for the
+    // unreliable whole-provider response and then importing every category.
+    if (categoryId == null &&
+        query.trim().isNotEmpty &&
+        !exactLocal &&
+        cached.items.isEmpty) {
+      return _searchVodCategories(
+        client,
+        query: query,
+        offset: offset,
+        limit: limit,
+        sort: sort,
+      );
+    }
     if (cached.items.isNotEmpty || anyLocal) {
       if (categoryId == null && !exactLocal) {
         unawaited(_importAllVod(client, scope));
@@ -378,6 +395,50 @@ class CatalogCache {
             recent: (item) => int.tryParse(item.added) ?? 0,
             year: (item) => _yearValue(item.name),
           );
+  }
+
+  Future<CatalogPage<VodStream>> _searchVodCategories(
+    XtreamClient client, {
+    required String query,
+    required int offset,
+    required int limit,
+    required String sort,
+  }) async {
+    final categories = await vod(client, priority: true);
+    final normalized = query.trim().toLowerCase();
+    final matches = <int, VodStream>{};
+    const batchSize = 6;
+    for (var start = 0; start < categories.length; start += batchSize) {
+      final batch = categories.skip(start).take(batchSize);
+      final results = await Future.wait(
+        batch.map(
+          (category) => vodStreams(
+            client,
+            category.id,
+            priority: true,
+          ).catchError((_) => <VodStream>[]),
+        ),
+      );
+      for (final items in results) {
+        for (final item in items) {
+          if (item.name.toLowerCase().contains(normalized)) {
+            matches[item.streamId] = item;
+          }
+        }
+      }
+      if (matches.isNotEmpty) break;
+    }
+    return _memoryPage(
+      matches.values.toList(growable: false),
+      offset: offset,
+      limit: limit,
+      query: query,
+      sort: sort,
+      name: (item) => item.name,
+      rating: (item) => item.rating,
+      recent: (item) => int.tryParse(item.added) ?? 0,
+      year: (item) => _yearValue(item.name),
+    );
   }
 
   Future<CatalogPage<Series>> seriesPage(
