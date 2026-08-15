@@ -265,6 +265,11 @@ class SearchScreenState extends State<SearchScreen>
 
   KeyEventResult _moveSearchFieldFocus(FocusNode _, KeyEvent event) {
     if (!_isDirectionalKeyEvent(event)) return KeyEventResult.ignored;
+    if (event.logicalKey == LogicalKeyboardKey.select ||
+        event.logicalKey == LogicalKeyboardKey.gameButtonA) {
+      _showSearchKeyboard();
+      return KeyEventResult.handled;
+    }
     if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
       _sectionFocus[_sectionFocusIndex].requestFocus();
       return KeyEventResult.handled;
@@ -652,7 +657,16 @@ class SearchScreenState extends State<SearchScreen>
   }
 
   void focusSearch() {
+    _showSearchKeyboard();
+  }
+
+  void _showSearchKeyboard() {
     _searchFocus.requestFocus();
+    if (!DeviceProfile.isTelevision) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_searchFocus.hasFocus) return;
+      unawaited(SystemChannels.textInput.invokeMethod<void>('TextInput.show'));
+    });
   }
 
   String get _resultSignature => '${_q.trim()}\u0000$_sort';
@@ -708,6 +722,11 @@ class SearchScreenState extends State<SearchScreen>
     _queryTimer = Timer(delay, () {
       if (mounted && value != _q) _changeResults(() => _q = value);
     });
+  }
+
+  void _onQuerySubmitted(String value) {
+    _queryTimer?.cancel();
+    if (value != _q) _changeResults(() => _q = value);
   }
 
   /// Ensure the first page for (section, category) is loaded. Safe from build.
@@ -1037,6 +1056,7 @@ class SearchScreenState extends State<SearchScreen>
     controller: _ctrl,
     focusNode: _searchFocus,
     onChanged: _onQueryChanged,
+    onSubmitted: _onQuerySubmitted,
     trailing: _q.isNotEmpty
         ? RemoteTap(
             semanticLabel: 'Clear search',

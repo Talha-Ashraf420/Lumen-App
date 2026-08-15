@@ -721,6 +721,42 @@ void main() {
     await disposeUi(tester);
   });
 
+  testWidgets('Search opens and reopens the TV keyboard with the remote', (
+    tester,
+  ) async {
+    final client = _HomeClient();
+    final key = GlobalKey<SearchScreenState>();
+    DeviceProfile.isTelevision = true;
+    addTearDown(() => DeviceProfile.isTelevision = false);
+    addTearDown(client.close);
+
+    await pumpAt(
+      tester,
+      SearchScreen(key: key, client: client),
+      const Size(1280, 800),
+    );
+
+    key.currentState!.focusSearch();
+    await tester.pump();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'Search library');
+    expect(tester.testTextInput.isVisible, isTrue);
+
+    await tester.enterText(find.byType(TextField), 'Signal');
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await waitFor(
+      tester,
+      () => find.text('The Last Signal').evaluate().isNotEmpty,
+    );
+
+    tester.testTextInput.hide();
+    expect(tester.testTextInput.isVisible, isFalse);
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await tester.pump();
+    expect(tester.testTextInput.isVisible, isTrue);
+    expect(tester.takeException(), isNull);
+    await disposeUi(tester);
+  });
+
   testWidgets('global Search results have deterministic shelf focus', (
     tester,
   ) async {

@@ -1034,6 +1034,7 @@ class SearchField extends StatefulWidget {
   final TextEditingController? controller;
   final FocusNode? focusNode;
   final ValueChanged<String>? onChanged;
+  final ValueChanged<String>? onSubmitted;
   final VoidCallback? onTap; // read-only mode (e.g. Home → opens Search)
   final bool readOnly;
   final Widget? trailing;
@@ -1043,6 +1044,7 @@ class SearchField extends StatefulWidget {
     this.controller,
     this.focusNode,
     this.onChanged,
+    this.onSubmitted,
     this.onTap,
     this.readOnly = false,
     this.trailing,
@@ -1125,6 +1127,14 @@ class _SearchFieldState extends State<SearchField> {
                       controller: widget.controller,
                       focusNode: _focusNode,
                       onChanged: widget.onChanged,
+                      onSubmitted: widget.onSubmitted,
+                      // Keep the remote anchored to Search after the IME's
+                      // Search/Done action closes. The user can then press
+                      // center to reopen the keyboard or Down to reach filters.
+                      onEditingComplete: () {},
+                      textInputAction: TextInputAction.search,
+                      autocorrect: false,
+                      enableSuggestions: false,
                       style: const TextStyle(fontSize: 15.5),
                       cursorColor: accent,
                       decoration: InputDecoration(
