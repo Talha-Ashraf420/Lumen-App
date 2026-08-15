@@ -127,4 +127,7 @@ If you're using Lumen, a ⭐ really helps others find it.
 
 ## 📄 License
 
-[MIT](LICENSE) © Talha Ashraf. Lumen is a player only and includes no content; you are responsible for the sources you add.
+[MIT](LICENSE) © Talha Ashraf. Contributions are welcome, but the Lumen name,
+logo and official-release identity are covered by the project’s
+[trademark policy](TRADEMARKS.md). Lumen is a player only and includes no
+content; you are responsible for the sources you add.
