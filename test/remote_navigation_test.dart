@@ -320,6 +320,26 @@ void main() {
     await tester.pump();
     expect(FocusManager.instance.primaryFocus?.debugLabel, 'Download item 0');
 
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'Resume');
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'Cancel');
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pump();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'Resume');
+
+    _itemFocusAgain:
+    for (var i = 0; i < 3; i++) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      await tester.pump();
+      if (FocusManager.instance.primaryFocus?.debugLabel == 'Download item 0') {
+        break _itemFocusAgain;
+      }
+    }
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'Download item 0');
+
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
     await tester.pump();
     expect(

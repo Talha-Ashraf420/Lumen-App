@@ -39,6 +39,14 @@ class Palette {
 
 const defaultAccent = Color(0xFFC7F36B); // signal lime
 
+// Shared geometry and motion keep the interface feeling designed as one
+// system. TV focus transitions stay short enough to remain responsive.
+const lumenRadiusSm = 12.0;
+const lumenRadiusMd = 16.0;
+const lumenRadiusLg = 24.0;
+const lumenMotionFast = Duration(milliseconds: 140);
+const lumenMotion = Duration(milliseconds: 190);
+
 /// A named, deliberately small set of polished Lumen accents. Keeping this to
 /// five avoids the "rainbow picker" look and makes each choice feel like a
 /// complete visual direction rather than a random colour.
@@ -174,6 +182,16 @@ Color get accentDark => activePalette.accentDark;
 Color get accent2 => activePalette.accent; // legacy alias → single accent
 Color get gold => activePalette.gold;
 Color get onAccent => foregroundFor(accent);
+Color get dangerInk =>
+    isDark ? const Color(0xFFFF7A9A) : const Color(0xFFA5193C);
+Color get surfaceRaised => Color.alphaBlend(
+  (isDark ? Colors.white : Colors.white).withValues(
+    alpha: isDark ? 0.045 : 0.42,
+  ),
+  surfaceHi,
+);
+Color get lineStrong =>
+    Color.alphaBlend(accentInk.withValues(alpha: isDark ? 0.18 : 0.24), line);
 
 /// One soft, neutral shadow for floating surfaces (no coloured glow).
 List<BoxShadow> glow(
@@ -229,6 +247,16 @@ ThemeData buildTheme(Palette p) {
   final text = GoogleFonts.spaceGroteskTextTheme(
     base.textTheme,
   ).apply(bodyColor: p.textHi, displayColor: p.textHi);
+  final raised = Color.alphaBlend(
+    Colors.white.withValues(
+      alpha: p.brightness == Brightness.dark ? .045 : .42,
+    ),
+    p.surfaceHi,
+  );
+  final componentShape = RoundedRectangleBorder(
+    borderRadius: BorderRadius.circular(lumenRadiusMd),
+    side: BorderSide(color: p.line),
+  );
   return base.copyWith(
     scaffoldBackgroundColor: p.bg,
     colorScheme: base.colorScheme.copyWith(
@@ -237,7 +265,11 @@ ThemeData buildTheme(Palette p) {
       secondary: p.accent,
       onSecondary: foregroundFor(p.accent),
       surface: p.surface,
+      surfaceContainerLow: p.surface,
+      surfaceContainer: raised,
       surfaceContainerHighest: p.surfaceHi,
+      outline: p.line,
+      outlineVariant: p.line,
       brightness: p.brightness,
     ),
     textTheme: text,
@@ -275,6 +307,73 @@ ThemeData buildTheme(Palette p) {
     progressIndicatorTheme: ProgressIndicatorThemeData(color: p.accentInk),
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(foregroundColor: p.accentInk),
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        backgroundColor: p.accent,
+        foregroundColor: foregroundFor(p.accent),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(lumenRadiusMd),
+        ),
+        textStyle: const TextStyle(fontWeight: FontWeight.w800),
+      ),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: p.textHi,
+        side: BorderSide(color: p.line),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(lumenRadiusMd),
+        ),
+      ),
+    ),
+    cardTheme: CardThemeData(
+      color: raised,
+      elevation: 0,
+      margin: EdgeInsets.zero,
+      shape: componentShape,
+    ),
+    dialogTheme: DialogThemeData(
+      backgroundColor: p.surface,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(lumenRadiusLg),
+        side: BorderSide(color: p.line),
+      ),
+      titleTextStyle: text.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+      contentTextStyle: text.bodyMedium?.copyWith(color: p.muted, height: 1.45),
+    ),
+    popupMenuTheme: PopupMenuThemeData(
+      color: p.surface,
+      surfaceTintColor: Colors.transparent,
+      elevation: 12,
+      shape: componentShape,
+      textStyle: text.bodyMedium?.copyWith(color: p.textHi),
+    ),
+    snackBarTheme: SnackBarThemeData(
+      backgroundColor: raised,
+      contentTextStyle: text.bodyMedium?.copyWith(color: p.textHi),
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(lumenRadiusMd),
+        side: BorderSide(color: p.line),
+      ),
+    ),
+    tooltipTheme: TooltipThemeData(
+      decoration: BoxDecoration(
+        color: p.brightness == Brightness.dark
+            ? const Color(0xF21A1E20)
+            : const Color(0xF2FFFFFF),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: p.line),
+      ),
+      textStyle: TextStyle(
+        color: p.textHi,
+        fontSize: 11.5,
+        fontWeight: FontWeight.w700,
+      ),
     ),
     focusColor: p.accent.withValues(alpha: 0.30),
     hoverColor: p.accent.withValues(alpha: 0.12),

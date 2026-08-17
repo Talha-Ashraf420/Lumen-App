@@ -24,12 +24,16 @@ class ProfileScreen extends StatefulWidget {
   final Future<void> Function() onLogout;
   final void Function(XtreamCredentials) onSwitch;
   final FocusNode? shellRailFocusNode;
+  final FocusNode? shellTopFocusNode;
+  final FocusNode? entryFocusNode;
   const ProfileScreen({
     super.key,
     required this.client,
     required this.onLogout,
     required this.onSwitch,
     this.shellRailFocusNode,
+    this.shellTopFocusNode,
+    this.entryFocusNode,
   });
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -43,8 +47,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _signingOut = false;
 
   KeyEventResult _handlePageKey(FocusNode _, KeyEvent event) {
-    if ((event is! KeyDownEvent && event is! KeyRepeatEvent) ||
-        event.logicalKey != LogicalKeyboardKey.arrowLeft) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowUp &&
+        _entryFocusNode.hasFocus) {
+      final top = widget.shellTopFocusNode;
+      if (top != null && top.canRequestFocus) {
+        top.requestFocus();
+        return KeyEventResult.handled;
+      }
+    }
+    if (event.logicalKey != LogicalKeyboardKey.arrowLeft) {
       return KeyEventResult.ignored;
     }
     final rail = widget.shellRailFocusNode;
@@ -70,6 +84,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
     return KeyEventResult.ignored;
   }
+
+  FocusNode get _entryFocusNode => widget.entryFocusNode ?? _entryFocus;
 
   @override
   void initState() {
@@ -299,6 +315,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    Theme.of(
+      context,
+    ); // Refresh every cached profile card with the new palette.
     return LayoutBuilder(
       builder: (context, constraints) {
         final shellIsWide = isWide(context);
@@ -539,7 +558,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
                 RemoteTap(
-                  focusNode: _entryFocus,
+                  focusNode: _entryFocusNode,
                   onTap: _addProfile,
                   semanticLabel: 'Add account',
                   focusRadius: 12,
@@ -798,7 +817,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     bool showChevron = true,
     Widget? trailing,
   }) {
-    const dangerColor = Color(0xFFFF6B88);
+    final dangerColor = dangerInk;
     final iconColor = danger ? dangerColor : accentInk;
     return RemoteTap(
       onTap: onTap,
@@ -862,41 +881,36 @@ class _ProfileScreenState extends State<ProfileScreen> {
     child: Container(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
       decoration: BoxDecoration(
-        color: const Color(0x12FF5277),
+        color: dangerInk.withValues(alpha: isDark ? 0.07 : 0.08),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0x30FF5277)),
+        border: Border.all(
+          color: dangerInk.withValues(alpha: isDark ? 0.19 : 0.25),
+        ),
       ),
       child: Row(
         children: [
           if (_signingOut)
-            const SizedBox(
+            SizedBox(
               width: 20,
               height: 20,
               child: CircularProgressIndicator(
                 strokeWidth: 2,
-                color: Color(0xFFFF7A9A),
+                color: dangerInk,
               ),
             )
           else
-            const Icon(
-              Icons.logout_rounded,
-              color: Color(0xFFFF7A9A),
-              size: 20,
-            ),
+            Icon(Icons.logout_rounded, color: dangerInk, size: 20),
           const SizedBox(width: 11),
           Expanded(
             child: Text(
               _signingOut ? 'Signing out…' : 'Sign out of Lumen',
-              style: const TextStyle(
-                color: Color(0xFFFF7A9A),
-                fontWeight: FontWeight.w800,
-              ),
+              style: TextStyle(color: dangerInk, fontWeight: FontWeight.w800),
             ),
           ),
           if (!_signingOut)
-            const Icon(
+            Icon(
               Icons.chevron_right_rounded,
-              color: Color(0x99FF7A9A),
+              color: dangerInk.withValues(alpha: 0.60),
               size: 21,
             ),
         ],
@@ -998,9 +1012,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
 }
 
 /// Dark / Light / System segmented selector wired to ThemeController.
-class _ThemeSelector extends StatelessWidget {
+class _ThemeSelector extends StatefulWidget {
   const _ThemeSelector();
 
+  @override
+  State<_ThemeSelector> createState() => _ThemeSelectorState();
+}
+
+class _ThemeSelectorState extends State<_ThemeSelector> {
   static const _opts = [
     (mode: ThemeMode.dark, icon: Icons.dark_mode_rounded, label: 'Dark'),
     (mode: ThemeMode.light, icon: Icons.light_mode_rounded, label: 'Light'),
@@ -1011,8 +1030,39 @@ class _ThemeSelector extends StatelessWidget {
     ),
   ];
 
+  late final List<FocusNode> _focusNodes = List.generate(
+    _opts.length,
+    (index) => FocusNode(debugLabel: '${_opts[index].label} appearance'),
+  );
+
+  @override
+  void dispose() {
+    for (final node in _focusNodes) {
+      node.dispose();
+    }
+    super.dispose();
+  }
+
+  KeyEventResult _route(int index, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    final delta = event.logicalKey == LogicalKeyboardKey.arrowLeft
+        ? -1
+        : event.logicalKey == LogicalKeyboardKey.arrowRight
+        ? 1
+        : 0;
+    if (delta == 0) return KeyEventResult.ignored;
+    final target = index + delta;
+    if (target >= 0 && target < _focusNodes.length) {
+      _focusNodes[target].requestFocus();
+    }
+    return KeyEventResult.handled;
+  }
+
   @override
   Widget build(BuildContext context) {
+    Theme.of(context);
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: ThemeController.instance.mode,
       builder: (context, current, _) {
@@ -1024,34 +1074,47 @@ class _ThemeSelector extends StatelessWidget {
           ),
           child: Row(
             children: [
-              for (final o in _opts)
+              for (var index = 0; index < _opts.length; index++)
                 Expanded(
                   child: RemoteTap(
+                    focusNode: _focusNodes[index],
+                    onKeyEvent: (_, event) => _route(index, event),
                     behavior: HitTestBehavior.opaque,
-                    onTap: () => ThemeController.instance.set(o.mode),
+                    semanticLabel: '${_opts[index].label} appearance',
+                    onTap: () =>
+                        ThemeController.instance.set(_opts[index].mode),
                     child: AnimatedContainer(
+                      key: ValueKey(
+                        'profile-theme-${_opts[index].label.toLowerCase()}',
+                      ),
                       duration: const Duration(milliseconds: 220),
                       curve: Curves.easeOut,
                       margin: const EdgeInsets.symmetric(horizontal: 2),
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       decoration: BoxDecoration(
-                        color: current == o.mode ? accent : Colors.transparent,
+                        color: current == _opts[index].mode
+                            ? accent
+                            : Colors.transparent,
                         borderRadius: BorderRadius.circular(14),
                       ),
                       child: Column(
                         children: [
                           Icon(
-                            o.icon,
+                            _opts[index].icon,
                             size: 20,
-                            color: current == o.mode ? onAccent : muted,
+                            color: current == _opts[index].mode
+                                ? onAccent
+                                : muted,
                           ),
                           const SizedBox(height: 5),
                           Text(
-                            o.label,
+                            _opts[index].label,
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
-                              color: current == o.mode ? onAccent : muted,
+                              color: current == _opts[index].mode
+                                  ? onAccent
+                                  : muted,
                             ),
                           ),
                         ],
@@ -1068,8 +1131,47 @@ class _ThemeSelector extends StatelessWidget {
 }
 
 /// Accent picker: five named Lumen directions plus D-pad-friendly sliders.
-class _AccentPicker extends StatelessWidget {
+class _AccentPicker extends StatefulWidget {
   const _AccentPicker();
+
+  @override
+  State<_AccentPicker> createState() => _AccentPickerState();
+}
+
+class _AccentPickerState extends State<_AccentPicker> {
+  late final List<FocusNode> _focusNodes = List.generate(
+    accentSchemes.length + 1,
+    (index) => FocusNode(
+      debugLabel: index < accentSchemes.length
+          ? '${accentSchemes[index].name} accent'
+          : 'Custom accent',
+    ),
+  );
+
+  @override
+  void dispose() {
+    for (final node in _focusNodes) {
+      node.dispose();
+    }
+    super.dispose();
+  }
+
+  KeyEventResult _route(int index, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    final delta = event.logicalKey == LogicalKeyboardKey.arrowLeft
+        ? -1
+        : event.logicalKey == LogicalKeyboardKey.arrowRight
+        ? 1
+        : 0;
+    if (delta == 0) return KeyEventResult.ignored;
+    final target = index + delta;
+    if (target >= 0 && target < _focusNodes.length) {
+      _focusNodes[target].requestFocus();
+    }
+    return KeyEventResult.handled;
+  }
 
   Future<void> _pickCustom(BuildContext context, Color initial) async {
     var picked = initial;
@@ -1188,6 +1290,7 @@ class _AccentPicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    Theme.of(context);
     return ValueListenableBuilder<Color>(
       valueListenable: ThemeController.instance.accent,
       builder: (context, current, _) {
@@ -1199,18 +1302,26 @@ class _AccentPicker extends StatelessWidget {
           spacing: 10,
           runSpacing: 10,
           children: [
-            for (final scheme in accentSchemes)
+            for (var index = 0; index < accentSchemes.length; index++)
               _schemeChoice(
-                label: scheme.name,
-                color: scheme.color,
-                selected: scheme.color.toARGB32() == cur,
-                onTap: () => ThemeController.instance.setAccent(scheme.color),
+                label: accentSchemes[index].name,
+                color: accentSchemes[index].color,
+                selected: accentSchemes[index].color.toARGB32() == cur,
+                onTap: () => ThemeController.instance.setAccent(
+                  accentSchemes[index].color,
+                ),
+                focusNode: _focusNodes[index],
+                onKeyEvent: (_, event) => _route(index, event),
               ),
             // Custom colour is available without competing visually with the
             // curated directions above.
             RemoteTap(
+              focusNode: _focusNodes.last,
+              onKeyEvent: (_, event) => _route(_focusNodes.length - 1, event),
+              semanticLabel: 'Custom accent',
               onTap: () => _pickCustom(context, current),
               child: Container(
+                key: const ValueKey('profile-accent-custom'),
                 width: 112,
                 height: 64,
                 padding: const EdgeInsets.symmetric(horizontal: 11),
@@ -1279,10 +1390,16 @@ class _AccentPicker extends StatelessWidget {
     required Color color,
     required bool selected,
     required VoidCallback onTap,
+    required FocusNode focusNode,
+    required FocusOnKeyEventCallback onKeyEvent,
   }) {
     return RemoteTap(
+      focusNode: focusNode,
+      onKeyEvent: onKeyEvent,
+      semanticLabel: '$label accent',
       onTap: onTap,
       child: AnimatedContainer(
+        key: ValueKey('profile-accent-${label.toLowerCase()}'),
         duration: const Duration(milliseconds: 160),
         width: 112,
         height: 64,

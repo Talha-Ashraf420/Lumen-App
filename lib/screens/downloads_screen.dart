@@ -14,11 +14,13 @@ class DownloadsScreen extends StatefulWidget {
   final XtreamClient client;
   final FocusNode? shellRailFocusNode;
   final FocusNode? shellTopFocusNode;
+  final FocusNode? entryFocusNode;
   const DownloadsScreen({
     super.key,
     required this.client,
     this.shellRailFocusNode,
     this.shellTopFocusNode,
+    this.entryFocusNode,
   });
 
   @override
@@ -33,8 +35,14 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
     (index) => FocusNode(debugLabel: 'Downloads filter $index'),
   );
   final List<FocusNode> _itemFocus = <FocusNode>[];
+  final List<List<FocusNode>> _actionFocus = <List<FocusNode>>[];
   int _gridColumns = 1;
   static const double _rowExtent = 116;
+
+  FocusNode _filterNode(int index) =>
+      index == 0 && widget.entryFocusNode != null
+      ? widget.entryFocusNode!
+      : _filterFocus[index];
 
   @override
   void dispose() {
@@ -45,14 +53,22 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
     for (final node in _itemFocus) {
       node.dispose();
     }
+    for (final row in _actionFocus) {
+      for (final node in row) {
+        node.dispose();
+      }
+    }
     super.dispose();
   }
 
   void _ensureItemFocus(int count) {
     while (_itemFocus.length < count) {
-      _itemFocus.add(
-        FocusNode(debugLabel: 'Download item ${_itemFocus.length}'),
-      );
+      final index = _itemFocus.length;
+      _itemFocus.add(FocusNode(debugLabel: 'Download item $index'));
+      _actionFocus.add([
+        FocusNode(debugLabel: 'Download action $index 0'),
+        FocusNode(debugLabel: 'Download action $index 1'),
+      ]);
     }
   }
 
@@ -92,13 +108,14 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
       if (index == 0) {
         widget.shellRailFocusNode?.requestFocus();
       } else {
-        _filterFocus[index - 1].requestFocus();
+        _filterNode(index - 1).requestFocus();
       }
       return KeyEventResult.handled;
     }
     if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-      _filterFocus[(index + 1).clamp(0, _filterFocus.length - 1).toInt()]
-          .requestFocus();
+      _filterNode(
+        (index + 1).clamp(0, _filterFocus.length - 1).toInt(),
+      ).requestFocus();
       return KeyEventResult.handled;
     }
     if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
@@ -120,8 +137,9 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
     final column = index % _gridColumns;
     if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
       if (index < _gridColumns) {
-        _filterFocus[column.clamp(0, _filterFocus.length - 1).toInt()]
-            .requestFocus();
+        _filterNode(
+          column.clamp(0, _filterFocus.length - 1).toInt(),
+        ).requestFocus();
       } else {
         _requestItemFocus(index - _gridColumns, itemCount);
       }
@@ -137,6 +155,59 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
         _itemFocus[index].hasFocus &&
         column == 0) {
       widget.shellRailFocusNode?.requestFocus();
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowRight &&
+        _itemFocus[index].hasFocus) {
+      final firstAction = _actionFocus[index].first;
+      if (firstAction.context != null && firstAction.canRequestFocus) {
+        firstAction.requestFocus();
+      }
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  KeyEventResult _actionKey(
+    int itemIndex,
+    int actionIndex,
+    int actionCount,
+    int itemCount,
+    KeyEvent event,
+  ) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    final key = event.logicalKey;
+    if (key == LogicalKeyboardKey.arrowLeft) {
+      if (actionIndex == 0) {
+        _itemFocus[itemIndex].requestFocus();
+      } else {
+        _actionFocus[itemIndex][actionIndex - 1].requestFocus();
+      }
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowRight) {
+      if (actionIndex + 1 < actionCount) {
+        _actionFocus[itemIndex][actionIndex + 1].requestFocus();
+      }
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowUp) {
+      if (itemIndex < _gridColumns) {
+        final column = itemIndex % _gridColumns;
+        _filterNode(
+          column.clamp(0, _filterFocus.length - 1).toInt(),
+        ).requestFocus();
+      } else {
+        _requestItemFocus(itemIndex - _gridColumns, itemCount);
+      }
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowDown) {
+      if (itemIndex + _gridColumns < itemCount) {
+        _requestItemFocus(itemIndex + _gridColumns, itemCount);
+      }
       return KeyEventResult.handled;
     }
     return KeyEventResult.ignored;
@@ -172,6 +243,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    Theme.of(context); // Refresh cached download rows after a theme switch.
     // Self-contained (Scaffold) so it renders correctly whether it's a sidebar
     // tab (wrapped by the shell) or pushed as a route from Profile.
     final canBack = Navigator.of(context).canPop();
@@ -255,7 +327,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                       padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
                       children: [
                         LumenFilterPill(
-                          focusNode: _filterFocus[0],
+                          focusNode: _filterNode(0),
                           onKeyEvent: (_, event) =>
                               _filterKey(0, visible.length, event),
                           label: 'All ${items.length}',
@@ -344,6 +416,27 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
   Widget _row(BuildContext context, DownloadItem d, int index, int itemCount) {
     final ready = d.status == DlStatus.completed;
     final failed = d.status == DlStatus.failed;
+    final actions = <(IconData, String, VoidCallback)>[
+      if (d.status == DlStatus.downloading)
+        (Icons.pause_rounded, 'Pause', () => Downloads.instance.pause(d.id)),
+      if (d.status == DlStatus.paused || d.status == DlStatus.failed)
+        (
+          Icons.play_arrow_rounded,
+          'Resume',
+          () => Downloads.instance.resume(d.id),
+        ),
+      if (d.status == DlStatus.completed)
+        (
+          Icons.delete_outline_rounded,
+          'Remove',
+          () => Downloads.instance.delete(d),
+        )
+      else
+        (Icons.close_rounded, 'Cancel', () => Downloads.instance.cancel(d.id)),
+    ];
+    for (var action = 0; action < actions.length; action++) {
+      _actionFocus[index][action].debugLabel = actions[action].$2;
+    }
     return RemoteTap(
       focusNode: _itemFocus[index],
       onKeyEvent: (_, event) => _itemKey(index, itemCount, event),
@@ -423,10 +516,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                       d.errorMessage ?? 'Download failed — resume to retry',
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Color(0xFFFF6B6B),
-                        fontSize: 12,
-                      ),
+                      style: TextStyle(color: dangerInk, fontSize: 12),
                     )
                   else if (d.status == DlStatus.queued)
                     Row(
@@ -478,29 +568,14 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
               ),
             ),
             const SizedBox(width: 2),
-            if (d.status == DlStatus.downloading)
+            for (var action = 0; action < actions.length; action++)
               _actionButton(
-                Icons.pause_rounded,
-                'Pause',
-                () => Downloads.instance.pause(d.id),
-              ),
-            if (d.status == DlStatus.paused || d.status == DlStatus.failed)
-              _actionButton(
-                Icons.play_arrow_rounded,
-                'Resume',
-                () => Downloads.instance.resume(d.id),
-              ),
-            if (d.status == DlStatus.completed)
-              _actionButton(
-                Icons.delete_outline_rounded,
-                'Remove',
-                () => Downloads.instance.delete(d),
-              )
-            else
-              _actionButton(
-                Icons.close_rounded,
-                'Cancel',
-                () => Downloads.instance.cancel(d.id),
+                actions[action].$1,
+                actions[action].$2,
+                actions[action].$3,
+                focusNode: _actionFocus[index][action],
+                onKeyEvent: (_, event) =>
+                    _actionKey(index, action, actions.length, itemCount, event),
               ),
           ],
         ),
@@ -508,18 +583,25 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
     );
   }
 
-  Widget _actionButton(IconData icon, String label, VoidCallback onTap) =>
-      Tooltip(
-        message: label,
-        child: RemoteTap(
-          onTap: onTap,
-          semanticLabel: label,
-          focusRadius: 12,
-          child: SizedBox(
-            width: 42,
-            height: 42,
-            child: Icon(icon, color: accentInk, size: 22),
-          ),
-        ),
-      );
+  Widget _actionButton(
+    IconData icon,
+    String label,
+    VoidCallback onTap, {
+    required FocusNode focusNode,
+    required FocusOnKeyEventCallback onKeyEvent,
+  }) => Tooltip(
+    message: label,
+    child: RemoteTap(
+      focusNode: focusNode,
+      onKeyEvent: onKeyEvent,
+      onTap: onTap,
+      semanticLabel: label,
+      focusRadius: 12,
+      child: SizedBox(
+        width: 42,
+        height: 42,
+        child: Icon(icon, color: accentInk, size: 22),
+      ),
+    ),
+  );
 }

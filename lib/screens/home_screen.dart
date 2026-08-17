@@ -656,6 +656,9 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    Theme.of(
+      context,
+    ); // Rebuild palette-backed cached Home content on mode changes.
     return FutureBuilder<_HomeData>(
       future: _future,
       initialData: _visibleData,

@@ -66,6 +66,11 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   int _capabilityLoad = 0;
   final GlobalKey<SearchScreenState> _searchKey =
       GlobalKey<SearchScreenState>();
+  final Map<int, GlobalKey<SearchScreenState>> _catalogKeys = {
+    4: GlobalKey<SearchScreenState>(),
+    5: GlobalKey<SearchScreenState>(),
+    6: GlobalKey<SearchScreenState>(),
+  };
   // Auto-refresh the catalog when the app returns to the foreground (throttled),
   // so recently-added movies surface without a manual Refresh.
   DateTime _lastRefresh = DateTime.now();
@@ -96,6 +101,12 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     debugLabel: 'Command profile',
   );
   final FocusNode _myListEntryFocus = FocusNode(debugLabel: 'My List filter 0');
+  final FocusNode _profileEntryFocus = FocusNode(
+    debugLabel: 'Profile add account',
+  );
+  final FocusNode _downloadsEntryFocus = FocusNode(
+    debugLabel: 'Downloads filter 0',
+  );
   final Map<int, Widget> _pageCache = <int, Widget>{};
   bool _exitDialogOpen = false;
 
@@ -192,6 +203,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     _commandRefreshFocus.dispose();
     _commandProfileFocus.dispose();
     _myListEntryFocus.dispose();
+    _profileEntryFocus.dispose();
+    _downloadsEntryFocus.dispose();
     super.dispose();
   }
 
@@ -239,20 +252,25 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       onLogout: widget.onLogout,
       onSwitch: widget.onSwitch,
       shellRailFocusNode: _dockFocusNodes[3],
+      shellTopFocusNode: _commandSearchFocus,
+      entryFocusNode: _profileEntryFocus,
     ),
     4 => SearchScreen(
+      key: _catalogKeys[4],
       client: widget.client,
       initialSection: 'movie',
       shellRailFocusNode: _dockFocusNodes[4],
       shellTopFocusNode: _commandSearchFocus,
     ),
     5 => SearchScreen(
+      key: _catalogKeys[5],
       client: widget.client,
       initialSection: 'series',
       shellRailFocusNode: _dockFocusNodes[5],
       shellTopFocusNode: _commandSearchFocus,
     ),
     6 => SearchScreen(
+      key: _catalogKeys[6],
       client: widget.client,
       initialSection: 'live',
       shellRailFocusNode: _dockFocusNodes[6],
@@ -262,6 +280,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       client: widget.client,
       shellRailFocusNode: _dockFocusNodes[7],
       shellTopFocusNode: _commandSearchFocus,
+      entryFocusNode: _downloadsEntryFocus,
     ),
   };
 
@@ -341,6 +360,10 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         _searchKey.currentState?.focusSearch();
         return;
       }
+      if (page >= 4 && page <= 6) {
+        _catalogKeys[page]?.currentState?.focusCatalogEntry();
+        return;
+      }
       final scope = _pageFocusScopes[page];
       if (scope == null) return;
       // My List can change from an empty, non-focusable page to a populated
@@ -350,6 +373,18 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           _myListEntryFocus.context != null &&
           _myListEntryFocus.canRequestFocus) {
         scope.requestFocus(_myListEntryFocus);
+        return;
+      }
+      if (page == 3 &&
+          _profileEntryFocus.context != null &&
+          _profileEntryFocus.canRequestFocus) {
+        scope.requestFocus(_profileEntryFocus);
+        return;
+      }
+      if (page == 7 &&
+          _downloadsEntryFocus.context != null &&
+          _downloadsEntryFocus.canRequestFocus) {
+        scope.requestFocus(_downloadsEntryFocus);
         return;
       }
       final candidates = <FocusNode>[];
@@ -515,11 +550,18 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
             child: Padding(
               padding: const EdgeInsets.fromLTRB(0, 10, 10, 10),
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(26),
+                borderRadius: BorderRadius.circular(28),
                 child: DecoratedBox(
                   decoration: BoxDecoration(
-                    color: bg.withValues(alpha: isDark ? 0.88 : 0.92),
-                    border: Border.all(color: line),
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        surface.withValues(alpha: isDark ? 0.92 : 0.96),
+                        bg.withValues(alpha: isDark ? 0.96 : 0.94),
+                      ],
+                    ),
+                    border: Border.all(color: lineStrong),
                   ),
                   child: Column(
                     children: [
@@ -1007,7 +1049,27 @@ class _SignalDock extends StatelessWidget {
         child: Column(
           children: [
             const SizedBox(height: 6),
-            Tooltip(message: 'Lumen', child: LumenMark(size: 27)),
+            Tooltip(
+              message: 'Lumen',
+              child: Container(
+                width: 46,
+                height: 46,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      accentInk.withValues(alpha: isDark ? .16 : .10),
+                      accentInk.withValues(alpha: .025),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: lineStrong),
+                ),
+                child: const LumenMark(size: 25),
+              ),
+            ),
             const SizedBox(height: 26),
             for (final nav in main)
               _DockItem(
@@ -1073,20 +1135,30 @@ class _DockItem extends StatelessWidget {
         },
         onTap: onTap,
         builder: (context, active) => AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          width: 52,
-          height: 44,
+          duration: lumenMotion,
+          width: 54,
+          height: 46,
           // Nine dock entries must fit a 540dp TV viewport after SafeArea.
           margin: const EdgeInsets.only(bottom: 2),
           decoration: BoxDecoration(
+            gradient: selected
+                ? LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      accentInk.withValues(alpha: isDark ? .20 : .13),
+                      accentInk.withValues(alpha: isDark ? .08 : .045),
+                    ],
+                  )
+                : null,
             color: selected
-                ? accentInk.withValues(alpha: isDark ? 0.14 : 0.09)
-                : (active ? surfaceHi : Colors.transparent),
-            borderRadius: BorderRadius.circular(14),
+                ? null
+                : (active ? surfaceRaised : Colors.transparent),
+            borderRadius: BorderRadius.circular(15),
             border: Border.all(
               color: selected
-                  ? accentInk.withValues(alpha: isDark ? 0.32 : 0.42)
-                  : Colors.transparent,
+                  ? accentInk.withValues(alpha: isDark ? 0.36 : 0.48)
+                  : (active ? lineStrong : Colors.transparent),
             ),
           ),
           child: Stack(
@@ -1101,8 +1173,8 @@ class _DockItem extends StatelessWidget {
               if (selected)
                 Positioned(
                   left: 3,
-                  top: 15,
-                  bottom: 15,
+                  top: 13,
+                  bottom: 13,
                   child: Container(
                     width: 2,
                     decoration: BoxDecoration(
@@ -1224,13 +1296,19 @@ class _CommandBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 66,
+    return Container(
+      height: 72,
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: line)),
+      ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 22),
+        padding: const EdgeInsets.symmetric(horizontal: 24),
         child: Row(
           children: [
-            Text(_titles[index] ?? 'Lumen', style: kTitle()),
+            Text(
+              _titles[index] ?? 'Lumen',
+              style: kTitle().copyWith(fontSize: 25),
+            ),
             const SizedBox(width: 12),
             Container(
               width: 5,
@@ -1247,14 +1325,14 @@ class _CommandBar extends StatelessWidget {
                 onKeyEvent: _moveCommandFocus,
                 onTap: onSearch,
                 builder: (_, active) => AnimatedContainer(
-                  duration: const Duration(milliseconds: 160),
-                  width: 236,
-                  height: 40,
+                  duration: lumenMotion,
+                  width: 252,
+                  height: 42,
                   padding: const EdgeInsets.symmetric(horizontal: 14),
                   decoration: BoxDecoration(
-                    color: active ? surfaceHi : surface,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: active ? accentInk : line),
+                    color: active ? surfaceRaised : surface,
+                    borderRadius: BorderRadius.circular(15),
+                    border: Border.all(color: active ? accentInk : lineStrong),
                   ),
                   child: Row(
                     children: [
@@ -1266,12 +1344,23 @@ class _CommandBar extends StatelessWidget {
                           style: TextStyle(color: subtle, fontSize: 13),
                         ),
                       ),
-                      Text(
-                        '⌘ K',
-                        style: TextStyle(
-                          color: subtle,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: surfaceHi,
+                          borderRadius: BorderRadius.circular(7),
+                          border: Border.all(color: line),
+                        ),
+                        child: Text(
+                          '⌘ K',
+                          style: TextStyle(
+                            color: muted,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
                     ],
@@ -1298,12 +1387,12 @@ class _CommandBar extends StatelessWidget {
               builder: (_, active) => Tooltip(
                 message: 'Refresh library',
                 child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 160),
-                  width: 36,
-                  height: 36,
+                  duration: lumenMotion,
+                  width: 40,
+                  height: 40,
                   decoration: BoxDecoration(
                     color: active ? accent : Colors.transparent,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(13),
                     border: Border.all(
                       color: active ? accent : Colors.transparent,
                     ),
@@ -1317,19 +1406,19 @@ class _CommandBar extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(width: 2),
+            const SizedBox(width: 6),
             FocusableTap(
               focusNode: profileFocusNode,
               onKeyEvent: _moveCommandFocus,
               onTap: onProfile,
               builder: (_, active) => AnimatedContainer(
-                duration: const Duration(milliseconds: 160),
-                width: 36,
-                height: 36,
+                duration: lumenMotion,
+                width: 40,
+                height: 40,
                 decoration: BoxDecoration(
-                  color: active ? accent : surfaceHi,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: active ? accent : line),
+                  color: active ? accent : surfaceRaised,
+                  borderRadius: BorderRadius.circular(13),
+                  border: Border.all(color: active ? accent : lineStrong),
                 ),
                 child: Icon(
                   Icons.person_outline_rounded,

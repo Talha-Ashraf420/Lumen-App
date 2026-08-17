@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lumen_tv/main.dart';
 import 'package:lumen_tv/theme.dart';
 
 void main() {
@@ -62,4 +63,34 @@ void main() {
       }
     }
   });
+
+  testWidgets(
+    'System mode republishes palette when platform brightness flips',
+    (tester) async {
+      tester.binding.platformDispatcher.platformBrightnessTestValue =
+          Brightness.dark;
+      addTearDown(
+        tester.binding.platformDispatcher.clearPlatformBrightnessTestValue,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildTheme(lightPalette),
+          darkTheme: buildTheme(darkPalette),
+          themeMode: ThemeMode.system,
+          builder: (context, child) => LumenPaletteScope(
+            mode: ThemeMode.system,
+            child: child ?? const SizedBox.shrink(),
+          ),
+          home: const SizedBox.shrink(),
+        ),
+      );
+      expect(activePalette.brightness, Brightness.dark);
+
+      tester.binding.platformDispatcher.platformBrightnessTestValue =
+          Brightness.light;
+      await tester.pump();
+      expect(activePalette.brightness, Brightness.light);
+    },
+  );
 }

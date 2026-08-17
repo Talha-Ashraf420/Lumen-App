@@ -618,6 +618,69 @@ void main() {
     await disposeUi(tester);
   });
 
+  testWidgets('catalog focus crosses columns and scrolls back upward', (
+    tester,
+  ) async {
+    final client = _PagedClient();
+    addTearDown(client.close);
+    await pumpAt(
+      tester,
+      FocusTraversalGroup(
+        policy: RemoteFocusTraversalPolicy(),
+        child: SearchScreen(client: client, initialSection: 'movie'),
+      ),
+      const Size(1280, 800),
+    );
+    await waitFor(
+      tester,
+      () => find.text('Movie 01 (2026)').evaluate().isNotEmpty,
+    );
+
+    final category = tester.widget<FocusableActionDetector>(
+      find
+          .ancestor(
+            of: find.text('Large library'),
+            matching: find.byType(FocusableActionDetector),
+          )
+          .first,
+    );
+    category.focusNode!.requestFocus();
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'Catalog tile 0');
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'Catalog tile 1');
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'Catalog tile 2');
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pump();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'Catalog tile 1');
+
+    final grid = tester.widget<GridView>(find.byType(GridView));
+    for (var i = 0; i < 6; i++) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pumpAndSettle();
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        startsWith('Catalog tile '),
+      );
+    }
+    final lowerOffset = grid.controller!.offset;
+    expect(lowerOffset, greaterThan(0));
+
+    for (var i = 0; i < 4; i++) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      await tester.pumpAndSettle();
+    }
+    expect(grid.controller!.offset, lessThan(lowerOffset));
+    expect(tester.takeException(), isNull);
+    await disposeUi(tester);
+  });
+
   testWidgets('Movies browse appends a second page near the grid end', (
     tester,
   ) async {

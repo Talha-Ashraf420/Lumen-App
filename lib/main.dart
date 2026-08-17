@@ -100,11 +100,6 @@ class LumenApp extends StatelessWidget {
       builder: (context, _) {
         final mode = ThemeController.instance.mode.value;
         final accent = ThemeController.instance.accent.value;
-        // Resolve & publish the active palette for this build (used by the
-        // theme-aware colour getters across the app).
-        final platform =
-            MediaQuery.maybePlatformBrightnessOf(context) ?? Brightness.dark;
-        resolvePalette(mode, platform);
         return MaterialApp(
           title: 'Lumen',
           debugShowCheckedModeBanner: false,
@@ -120,55 +115,61 @@ class LumenApp extends StatelessWidget {
           // slider) and a text style, while passing clicks through wherever the
           // player isn't painting — so the app stays interactive (e.g. while the
           // mini is docked).
-          builder: (context, child) => FocusTraversalGroup(
-            policy: _remoteFocusPolicy,
-            child: RemoteFocusVisibility(
-              child: AnimatedBuilder(
-                animation: PlaybackController.instance,
-                child: Stack(
-                  children: [
-                    AnimatedBuilder(
-                      animation: PlaybackController.instance,
-                      child: child ?? const SizedBox.shrink(),
-                      builder: (context, app) {
-                        final playback = PlaybackController.instance;
-                        return ExcludeFocus(
-                          excluding: playback.hasMedia && !playback.minimized,
-                          child: app!,
-                        );
-                      },
-                    ),
-                    Positioned.fill(
-                      child: Material(
-                        type: MaterialType.transparency,
-                        child: Overlay(
-                          initialEntries: [
-                            OverlayEntry(
-                              maintainState: true,
-                              opaque: false,
-                              builder: (_) => PlayerHost.overlay(),
-                            ),
-                          ],
+          builder: (context, child) {
+            return LumenPaletteScope(
+              mode: mode,
+              child: FocusTraversalGroup(
+                policy: _remoteFocusPolicy,
+                child: RemoteFocusVisibility(
+                  child: AnimatedBuilder(
+                    animation: PlaybackController.instance,
+                    child: Stack(
+                      children: [
+                        AnimatedBuilder(
+                          animation: PlaybackController.instance,
+                          child: child ?? const SizedBox.shrink(),
+                          builder: (context, app) {
+                            final playback = PlaybackController.instance;
+                            return ExcludeFocus(
+                              excluding:
+                                  playback.hasMedia && !playback.minimized,
+                              child: app!,
+                            );
+                          },
                         ),
-                      ),
+                        Positioned.fill(
+                          child: Material(
+                            type: MaterialType.transparency,
+                            child: Overlay(
+                              initialEntries: [
+                                OverlayEntry(
+                                  maintainState: true,
+                                  opaque: false,
+                                  builder: (_) => PlayerHost.overlay(),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-                builder: (context, stack) {
-                  final playback = PlaybackController.instance;
-                  final playerOwnsBack =
-                      playback.hasMedia && !playback.minimized;
-                  return PopScope(
-                    canPop: !playerOwnsBack,
-                    onPopInvokedWithResult: (didPop, _) {
-                      if (!didPop) PlayerHost.handleSystemBack();
+                    builder: (context, stack) {
+                      final playback = PlaybackController.instance;
+                      final playerOwnsBack =
+                          playback.hasMedia && !playback.minimized;
+                      return PopScope(
+                        canPop: !playerOwnsBack,
+                        onPopInvokedWithResult: (didPop, _) {
+                          if (!didPop) PlayerHost.handleSystemBack();
+                        },
+                        child: stack!,
+                      );
                     },
-                    child: stack!,
-                  );
-                },
+                  ),
+                ),
               ),
-            ),
-          ),
+            );
+          },
           home: LaunchGate(
             startup: startup,
             minimumDuration: minimumSplashDuration,
@@ -177,6 +178,24 @@ class LumenApp extends StatelessWidget {
         );
       },
     );
+  }
+}
+
+/// Publishes the semantic palette below MaterialApp's MediaQuery.
+///
+/// Keeping this as a widget makes System brightness changes observable and
+/// regression-testable. Resolving above MaterialApp has no MediaQuery and can
+/// leave palette-backed cards on the previous brightness.
+class LumenPaletteScope extends StatelessWidget {
+  const LumenPaletteScope({super.key, required this.mode, required this.child});
+
+  final ThemeMode mode;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    resolvePalette(mode, MediaQuery.platformBrightnessOf(context));
+    return child;
   }
 }
 

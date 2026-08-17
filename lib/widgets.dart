@@ -391,6 +391,7 @@ class _FocusableTapState extends State<FocusableTap> {
 
   @override
   Widget build(BuildContext context) {
+    Theme.of(context);
     final detector = FocusableActionDetector(
       focusNode: _effectiveFocusNode,
       autofocus: widget.autofocus,
@@ -413,16 +414,16 @@ class _FocusableTapState extends State<FocusableTap> {
           behavior: HitTestBehavior.opaque,
           onTap: widget.onTap,
           child: AnimatedContainer(
-            duration: const Duration(milliseconds: 130),
+            duration: lumenMotionFast,
             foregroundDecoration: widget.showFocusRing && _focus
                 ? BoxDecoration(
                     borderRadius: BorderRadius.circular(widget.focusRadius),
-                    border: Border.all(color: accentInk, width: 3.5),
+                    border: Border.all(color: accentInk, width: 3),
                     boxShadow: [
                       BoxShadow(
-                        color: accent.withValues(alpha: .55),
-                        blurRadius: 18,
-                        spreadRadius: 2,
+                        color: accent.withValues(alpha: isDark ? .48 : .32),
+                        blurRadius: 20,
+                        spreadRadius: 1,
                       ),
                     ],
                   )
@@ -538,7 +539,10 @@ class _RemoteTapState extends State<RemoteTap> {
   void _attachKeyHandler() {
     final external = widget.focusNode;
     if (external == null) {
-      _ownedFocusNode = FocusNode(onKeyEvent: _installedNodeHandler);
+      _ownedFocusNode = FocusNode(
+        debugLabel: widget.semanticLabel,
+        onKeyEvent: _installedNodeHandler,
+      );
       _previousNodeHandler = null;
       return;
     }
@@ -579,6 +583,7 @@ class _RemoteTapState extends State<RemoteTap> {
 
   @override
   Widget build(BuildContext context) {
+    Theme.of(context);
     final enabled = widget.onTap != null;
     final active = enabled && (_focused || _hovered);
     final detector = FocusableActionDetector(
@@ -604,19 +609,19 @@ class _RemoteTapState extends State<RemoteTap> {
         onTap: widget.onTap,
         child: AnimatedScale(
           scale: active ? 1.025 : 1,
-          duration: const Duration(milliseconds: 130),
+          duration: lumenMotionFast,
           curve: Curves.easeOut,
           child: AnimatedContainer(
-            duration: const Duration(milliseconds: 130),
+            duration: lumenMotionFast,
             foregroundDecoration: widget.showFocusRing && _focused
                 ? BoxDecoration(
                     borderRadius: BorderRadius.circular(widget.focusRadius),
-                    border: Border.all(color: accentInk, width: 3.5),
+                    border: Border.all(color: accentInk, width: 3),
                     boxShadow: [
                       BoxShadow(
-                        color: accent.withValues(alpha: .55),
-                        blurRadius: 18,
-                        spreadRadius: 2,
+                        color: accent.withValues(alpha: isDark ? .48 : .32),
+                        blurRadius: 20,
+                        spreadRadius: 1,
                       ),
                     ],
                   )
@@ -714,13 +719,16 @@ class LumenMark extends StatelessWidget {
   const LumenMark({super.key, this.size = 24, this.signal, this.frame});
 
   @override
-  Widget build(BuildContext context) => CustomPaint(
-    size: Size.square(size),
-    painter: _LumenMarkPainter(
-      signal: signal ?? accentInk,
-      frame: frame ?? textHi,
-    ),
-  );
+  Widget build(BuildContext context) {
+    Theme.of(context);
+    return CustomPaint(
+      size: Size.square(size),
+      painter: _LumenMarkPainter(
+        signal: signal ?? accentInk,
+        frame: frame ?? textHi,
+      ),
+    );
+  }
 }
 
 class _LumenMarkPainter extends CustomPainter {
@@ -822,18 +830,30 @@ class Glass extends StatelessWidget {
   });
   @override
   Widget build(BuildContext context) {
+    Theme.of(context);
     final tintColor = tint ?? surfaceHi;
     final tintAlpha = tint == null
         ? (isDark ? 0.55 : 0.72)
         : tintColor.a < 0.99
         ? tintColor.a
         : (isDark ? 0.18 : 0.13);
+    final topTint = Color.alphaBlend(
+      Colors.white.withValues(alpha: isDark ? 0.045 : 0.38),
+      tintColor,
+    );
     final content = Container(
       padding: padding,
       decoration: BoxDecoration(
-        color: tintColor.withValues(alpha: tintAlpha),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            topTint.withValues(alpha: tintAlpha),
+            tintColor.withValues(alpha: tintAlpha),
+          ],
+        ),
         borderRadius: BorderRadius.circular(radius),
-        border: Border.all(color: line),
+        border: Border.all(color: lineStrong),
       ),
       child: child,
     );
@@ -902,11 +922,18 @@ class EditorialPageHeader extends StatelessWidget {
           const SizedBox(width: 12),
         ],
         Container(
-          width: 46,
-          height: 46,
+          width: 48,
+          height: 48,
           decoration: BoxDecoration(
-            color: accentInk.withValues(alpha: isDark ? 0.13 : 0.09),
-            borderRadius: BorderRadius.circular(15),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                accentInk.withValues(alpha: isDark ? 0.18 : 0.12),
+                accentInk.withValues(alpha: isDark ? 0.08 : 0.06),
+              ],
+            ),
+            borderRadius: BorderRadius.circular(lumenRadiusMd),
             border: Border.all(
               color: accentInk.withValues(alpha: isDark ? 0.24 : 0.38),
             ),
@@ -925,7 +952,7 @@ class EditorialPageHeader extends StatelessWidget {
                 title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: kTitle(),
+                style: kTitle().copyWith(fontSize: 25),
               ),
               const SizedBox(height: 2),
               Text(
@@ -963,103 +990,108 @@ class LumenEmptyState extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) => Center(
-    child: Padding(
-      padding: const EdgeInsets.all(24),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 460),
-        child: Glass(
-          radius: 28,
-          padding: const EdgeInsets.fromLTRB(28, 26, 28, 28),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Stack(
-                alignment: Alignment.center,
-                children: [
-                  Container(
-                    width: 82,
-                    height: 82,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
+  Widget build(BuildContext context) {
+    Theme.of(context);
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 460),
+          child: Glass(
+            radius: 28,
+            padding: const EdgeInsets.fromLTRB(28, 26, 28, 28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Container(
+                      width: 82,
+                      height: 82,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: accentInk.withValues(
+                            alpha: isDark ? 0.25 : 0.38,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Container(
+                      width: 60,
+                      height: 60,
+                      decoration: BoxDecoration(
                         color: accentInk.withValues(
-                          alpha: isDark ? 0.25 : 0.38,
+                          alpha: isDark ? 0.14 : 0.09,
+                        ),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Icon(icon, color: accentInk, size: 29),
+                    ),
+                    Positioned(
+                      right: 3,
+                      top: 7,
+                      child: Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: accentInk,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                Text(eyebrow.toUpperCase(), style: kSection(color: accentInk)),
+                const SizedBox(height: 7),
+                Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.35,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: muted, height: 1.5, fontSize: 13.5),
+                ),
+                if (actionLabel != null && onAction != null) ...[
+                  const SizedBox(height: 20),
+                  RemoteTap(
+                    onTap: onAction,
+                    focusRadius: 14,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 12,
+                      ),
+                      decoration: BoxDecoration(
+                        color: accent,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Text(
+                        actionLabel!,
+                        style: TextStyle(
+                          color: onAccent,
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
                     ),
                   ),
-                  Container(
-                    width: 60,
-                    height: 60,
-                    decoration: BoxDecoration(
-                      color: accentInk.withValues(alpha: isDark ? 0.14 : 0.09),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Icon(icon, color: accentInk, size: 29),
-                  ),
-                  Positioned(
-                    right: 3,
-                    top: 7,
-                    child: Container(
-                      width: 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        color: accentInk,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                  ),
                 ],
-              ),
-              const SizedBox(height: 18),
-              Text(eyebrow.toUpperCase(), style: kSection(color: accentInk)),
-              const SizedBox(height: 7),
-              Text(
-                title,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.35,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                message,
-                textAlign: TextAlign.center,
-                style: TextStyle(color: muted, height: 1.5, fontSize: 13.5),
-              ),
-              if (actionLabel != null && onAction != null) ...[
-                const SizedBox(height: 20),
-                RemoteTap(
-                  onTap: onAction,
-                  focusRadius: 14,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 12,
-                    ),
-                    decoration: BoxDecoration(
-                      color: accent,
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Text(
-                      actionLabel!,
-                      style: TextStyle(
-                        color: onAccent,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                ),
               ],
-            ],
+            ),
           ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 /// Compact filter control with a consistent remote-focus treatment.
@@ -1272,25 +1304,38 @@ class Aurora extends StatelessWidget {
   const Aurora({super.key});
   @override
   Widget build(BuildContext context) {
+    Theme.of(context);
+    final animate =
+        !DeviceProfile.isTelevision && !MediaQuery.disableAnimationsOf(context);
     return RepaintBoundary(
       child: IgnorePointer(
         child: Stack(
           children: [
             Positioned.fill(child: ColoredBox(color: bg)),
             Positioned(
-              top: -160,
-              left: -120,
-              child: _blob(accent.withValues(alpha: 0.22), 380, animated: true),
+              top: -190,
+              left: -150,
+              child: _blob(
+                accent.withValues(alpha: isDark ? 0.20 : 0.11),
+                430,
+                animated: animate,
+              ),
             ),
             Positioned(
-              top: 80,
-              right: -140,
-              child: _blob(accent2.withValues(alpha: 0.14), 340),
+              top: 30,
+              right: -180,
+              child: _blob(
+                accentDark.withValues(alpha: isDark ? 0.13 : 0.07),
+                390,
+              ),
             ),
             Positioned(
-              bottom: -160,
-              left: 20,
-              child: _blob(const Color(0xFF11433A).withValues(alpha: 0.4), 320),
+              bottom: -210,
+              left: 10,
+              child: _blob(
+                const Color(0xFF0F5B50).withValues(alpha: isDark ? 0.28 : 0.08),
+                400,
+              ),
             ),
           ],
         ),
@@ -1548,25 +1593,39 @@ class PillButton extends StatelessWidget {
     return FocusableTap(
       onTap: onTap,
       builder: (context, active) => AnimatedScale(
-        scale: active ? 1.04 : 1.0,
-        duration: const Duration(milliseconds: 140),
+        scale: active ? 1.025 : 1.0,
+        duration: lumenMotionFast,
         curve: Curves.easeOut,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 13),
+          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
           decoration: BoxDecoration(
             color: filled
                 ? accent
-                : surfaceHi.withValues(alpha: active ? 1 : 0.82),
-            borderRadius: BorderRadius.circular(14),
+                : (active ? surfaceRaised : surfaceHi.withValues(alpha: 0.82)),
+            borderRadius: BorderRadius.circular(lumenRadiusMd),
             border: filled
-                ? null
+                ? Border.all(
+                    color: active
+                        ? foregroundFor(accent).withValues(alpha: .32)
+                        : accent,
+                  )
                 : Border.all(
-                    color: active ? accent : line,
+                    color: active ? accentInk : lineStrong,
                     width: active ? 1.5 : 1,
                   ),
             boxShadow: filled
-                ? glow(accent, blur: active ? 34 : 26, y: 10)
-                : (active ? glow(Colors.white, blur: 18, y: 6, a: 0.18) : null),
+                ? [
+                    BoxShadow(
+                      color: accent.withValues(
+                        alpha: active
+                            ? (isDark ? .32 : .22)
+                            : (isDark ? .18 : .12),
+                      ),
+                      blurRadius: active ? 28 : 18,
+                      offset: const Offset(0, 8),
+                    ),
+                  ]
+                : null,
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -1708,10 +1767,11 @@ class PosterCard extends StatelessWidget {
 
   Widget _visual(BuildContext context, bool active) {
     final w = this;
+    const radius = 16.0;
     final card = AspectRatio(
       aspectRatio: 2 / 3,
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(11),
+        borderRadius: BorderRadius.circular(radius),
         child: Stack(
           fit: StackFit.expand,
           children: [
@@ -1734,7 +1794,7 @@ class PosterCard extends StatelessWidget {
                   begin: Alignment.bottomCenter,
                   end: Alignment.topCenter,
                   colors: [Colors.black, Colors.transparent],
-                  stops: [0.0, 0.55],
+                  stops: [0.0, 0.68],
                 ),
               ),
             ),
@@ -1810,15 +1870,17 @@ class PosterCard extends StatelessWidget {
               opacity: active ? 1 : 0,
               duration: const Duration(milliseconds: 180),
               child: ColoredBox(
-                color: Colors.black.withValues(alpha: 0.32),
+                color: Colors.black.withValues(alpha: 0.22),
                 child: Center(
                   child: Container(
-                    padding: const EdgeInsets.all(10),
+                    width: 44,
+                    height: 44,
                     decoration: BoxDecoration(
                       color: accent,
-                      borderRadius: BorderRadius.circular(11),
+                      shape: BoxShape.circle,
                       boxShadow: glow(accent),
                     ),
+                    alignment: Alignment.center,
                     child: Icon(
                       Icons.play_arrow_rounded,
                       color: onAccent,
@@ -1831,8 +1893,13 @@ class PosterCard extends StatelessWidget {
             // hairline edge
             DecoratedBox(
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
+                borderRadius: BorderRadius.circular(radius),
+                border: Border.all(
+                  color: active
+                      ? accentInk.withValues(alpha: 0.72)
+                      : Colors.white.withValues(alpha: 0.09),
+                  width: active ? 1.5 : 1,
+                ),
               ),
             ),
           ],
@@ -1841,19 +1908,19 @@ class PosterCard extends StatelessWidget {
     );
 
     return AnimatedScale(
-      scale: active ? 1.05 : 1.0,
-      duration: const Duration(milliseconds: 170),
+      scale: active ? 1.035 : 1.0,
+      duration: lumenMotion,
       curve: Curves.easeOut,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 170),
+        duration: lumenMotion,
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(11),
+          borderRadius: BorderRadius.circular(radius),
           boxShadow: active
               ? [
                   BoxShadow(
                     color: accent.withValues(alpha: 0.34),
-                    blurRadius: 26,
-                    offset: const Offset(0, 12),
+                    blurRadius: 24,
+                    offset: const Offset(0, 10),
                   ),
                 ]
               : [
@@ -1993,11 +2060,11 @@ class ChannelCard extends StatelessWidget {
       onFocusChange: onFocusChange,
       onTap: onTap,
       builder: (context, active) => AnimatedScale(
-        scale: active ? 1.05 : 1.0,
-        duration: const Duration(milliseconds: 150),
+        scale: active ? 1.035 : 1.0,
+        duration: lumenMotionFast,
         curve: Curves.easeOut,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
+          duration: lumenMotionFast,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
             boxShadow: active

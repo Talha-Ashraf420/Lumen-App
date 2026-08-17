@@ -616,6 +616,19 @@ class SearchScreenState extends State<SearchScreen>
       if (node.context != null && node.canRequestFocus) {
         _pendingGridFocus = null;
         node.requestFocus();
+        // Android TV does not automatically reveal focus inside lazy grids.
+        // Keep the newly focused row visible in both directions, especially
+        // when walking back upward from the bottom of a long catalog.
+        final targetContext = node.context!;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || !node.hasFocus || !targetContext.mounted) return;
+          Scrollable.ensureVisible(
+            targetContext,
+            alignment: 0.18,
+            duration: const Duration(milliseconds: 120),
+            curve: Curves.easeOutCubic,
+          );
+        });
         return;
       }
       if (_gridScroll.hasClients && _gridScroll.position.hasContentDimensions) {
@@ -694,6 +707,24 @@ class SearchScreenState extends State<SearchScreen>
 
   void focusSearch() {
     _showSearchKeyboard();
+  }
+
+  /// Stable shell entry for the dedicated Movies, Series and Live pages.
+  /// Geometry traversal is not reliable while a lazy catalog grid is loading,
+  /// so the shell enters through the always-mounted sort control.
+  void focusCatalogEntry() {
+    void request(int remaining) {
+      if (!mounted) return;
+      if (_sortFocus.context != null && _sortFocus.canRequestFocus) {
+        _sortFocus.requestFocus();
+      } else if (remaining > 0) {
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => request(remaining - 1),
+        );
+      }
+    }
+
+    request(4);
   }
 
   void _showSearchKeyboard() {
@@ -990,6 +1021,7 @@ class SearchScreenState extends State<SearchScreen>
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    Theme.of(context); // Refresh cached catalog surfaces after a theme switch.
     // Self-contained Scaffold so it renders correctly whether it's a shell tab
     // or pushed as a route (e.g. Home's "See all") — otherwise text loses its
     // theme (red/yellow unstyled rendering) with no Material ancestor.

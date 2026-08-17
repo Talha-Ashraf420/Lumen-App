@@ -196,6 +196,7 @@ class _MyListScreenState extends State<MyListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    Theme.of(context); // Refresh cached library tiles after a theme switch.
     final wideShell = isWide(context);
     return AnimatedBuilder(
       animation: Library.instance,
