@@ -392,7 +392,7 @@ class CatalogCache {
             sort: sort,
             name: (item) => item.name,
             rating: (item) => item.rating,
-            recent: (item) => int.tryParse(item.added) ?? 0,
+            recent: (item) => mediaAddedValue(item.added),
             year: (item) => _yearValue(item.name),
           );
   }
@@ -436,7 +436,7 @@ class CatalogCache {
       sort: sort,
       name: (item) => item.name,
       rating: (item) => item.rating,
-      recent: (item) => int.tryParse(item.added) ?? 0,
+      recent: (item) => mediaAddedValue(item.added),
       year: (item) => _yearValue(item.name),
     );
   }

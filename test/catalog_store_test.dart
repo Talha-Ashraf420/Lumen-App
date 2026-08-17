@@ -5,6 +5,40 @@ import 'package:lumen_tv/models.dart';
 void main() {
   final store = CatalogStore.instance;
 
+  test(
+    'provider added values sort reliably and keep undated movies stable',
+    () {
+      expect(mediaAddedValue('1700000000'), 1700000000000);
+      expect(mediaAddedValue('1700000000000'), 1700000000000);
+      expect(
+        mediaAddedValue('2026-08-17T10:00:00Z'),
+        DateTime.utc(2026, 8, 17, 10).millisecondsSinceEpoch,
+      );
+
+      final sorted = moviesRecentlyAdded([
+        VodStream(1, 'Older', '', 'cat', 'mp4', 0, '1700000000'),
+        VodStream(2, 'No date A', '', 'cat', 'mp4', 0, ''),
+        VodStream(3, 'Newest', '', 'cat', 'mp4', 0, '1800000000'),
+        VodStream(4, 'No date B', '', 'cat', 'mp4', 0, ''),
+      ]);
+      expect(sorted.map((movie) => movie.name), [
+        'Newest',
+        'Older',
+        'No date A',
+        'No date B',
+      ]);
+    },
+  );
+
+  test('series shelves use the newest available release date', () {
+    final sorted = seriesRecentlyAdded([
+      Series(1, 'Older', '', '', '', 0, '2023-01-01', 'cat'),
+      Series(2, 'Newest', '', '', '', 0, '2026-06-01', 'cat'),
+      Series(3, 'Middle', '', '', '', 0, '2025', 'cat'),
+    ]);
+    expect(sorted.map((series) => series.name), ['Newest', 'Middle', 'Older']);
+  });
+
   setUp(() async {
     await store.useInMemoryForTests();
   });

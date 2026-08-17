@@ -1,12 +1,14 @@
 package com.talhaashraf.lumen
 
 import android.content.Intent
+import android.app.Activity
 import android.app.PictureInPictureParams
 import android.app.UiModeManager
 import android.content.Context
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.os.Build
+import android.provider.OpenableColumns
 import android.util.Rational
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -16,8 +18,11 @@ class MainActivity : FlutterActivity() {
     private val channelName = "lumen/pip"
     private val media3ChannelName = "lumen/media3"
     private val deviceChannelName = "lumen/device"
+    private val subtitleChannelName = "lumen/subtitles"
+    private val subtitleRequestCode = 6204
     private var pipAllowed = false
     private var methodChannel: MethodChannel? = null
+    private var pendingSubtitleResult: MethodChannel.Result? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -103,6 +108,102 @@ class MainActivity : FlutterActivity() {
                 "isTelevision" -> result.success(isTelevision())
                 else -> result.notImplemented()
             }
+        }
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            subtitleChannelName
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "pick" -> pickSubtitleFile(result)
+                else -> result.notImplemented()
+            }
+        }
+    }
+
+    private fun pickSubtitleFile(result: MethodChannel.Result) {
+        if (pendingSubtitleResult != null) {
+            result.error("picker_busy", "A subtitle picker is already open.", null)
+            return
+        }
+        val picker = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+            putExtra(
+                Intent.EXTRA_MIME_TYPES,
+                arrayOf(
+                    "application/x-subrip",
+                    "text/srt",
+                    "text/vtt",
+                    "text/plain",
+                    "text/x-ssa",
+                    "text/x-ass",
+                    "application/ttml+xml"
+                )
+            )
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+        }
+        pendingSubtitleResult = result
+        try {
+            startActivityForResult(picker, subtitleRequestCode)
+        } catch (error: Exception) {
+            pendingSubtitleResult = null
+            result.error(
+                "picker_unavailable",
+                "No file browser is available on this device.",
+                error.message
+            )
+        }
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != subtitleRequestCode) return
+        val result = pendingSubtitleResult ?: return
+        pendingSubtitleResult = null
+        val uri = data?.data
+        if (resultCode != Activity.RESULT_OK || uri == null) {
+            result.success(null)
+            return
+        }
+        try {
+            val flags = (data?.flags ?: 0) and
+                (Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+            if (flags != 0) {
+                contentResolver.takePersistableUriPermission(uri, flags)
+            }
+        } catch (_: SecurityException) {
+            // The temporary grant is enough for the immediate import.
+        }
+        try {
+            val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                ?: throw IllegalStateException("The selected subtitle could not be read.")
+            if (bytes.size > 5 * 1024 * 1024) {
+                throw IllegalArgumentException("Subtitle files must be smaller than 5 MB.")
+            }
+            var displayName = "External subtitle"
+            contentResolver.query(
+                uri,
+                arrayOf(OpenableColumns.DISPLAY_NAME),
+                null,
+                null,
+                null
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    displayName = cursor.getString(0) ?: displayName
+                }
+            }
+            result.success(
+                mapOf(
+                    "name" to displayName,
+                    "data" to String(bytes, Charsets.UTF_8).removePrefix("\uFEFF"),
+                    "mimeType" to (contentResolver.getType(uri) ?: "text/plain")
+                )
+            )
+        } catch (error: Exception) {
+            result.error("subtitle_read_failed", error.message, null)
         }
     }
 

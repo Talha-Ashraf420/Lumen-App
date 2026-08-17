@@ -745,17 +745,15 @@ class _HomeScreenState extends State<HomeScreen>
                       .vodStreams(c, trendCat)
                       .catchError((_) => <VodStream>[]);
             final heroFuture = primarySource.then((items) {
-              final ranked = items.where((m) => m.icon.isNotEmpty).toList()
-                ..sort(
-                  (a, b) => (int.tryParse(b.added) ?? 0).compareTo(
-                    int.tryParse(a.added) ?? 0,
-                  ),
-                );
+              final ranked = moviesRecentlyAdded(
+                items.where((m) => m.icon.isNotEmpty),
+              );
               return ranked.take(8).toList();
             });
             final trendFuture = trendSource.then((items) {
-              final ranked = items.where((m) => m.icon.isNotEmpty).toList()
-                ..sort((a, b) => b.rating.compareTo(a.rating));
+              final ranked = moviesRecentlyAdded(
+                items.where((m) => m.icon.isNotEmpty),
+              );
               return ranked.take(10).toList();
             });
 
@@ -770,15 +768,12 @@ class _HomeScreenState extends State<HomeScreen>
               if (heroCat != null)
                 _Shelf(
                   key: ValueKey('fresh:$heroCat'),
-                  title: 'Fresh picks',
+                  title: 'Recently added',
                   revision: _loadGeneration,
                   load: () => primarySource.then((items) {
-                    final ranked =
-                        items.where((m) => m.icon.isNotEmpty).toList()..sort(
-                          (a, b) => (int.tryParse(b.added) ?? 0).compareTo(
-                            int.tryParse(a.added) ?? 0,
-                          ),
-                        );
+                    final ranked = moviesRecentlyAdded(
+                      items.where((m) => m.icon.isNotEmpty),
+                    );
                     return ranked.skip(8).take(20).map(_movie).toList();
                   }),
                   onMore: d.vodCats.isNotEmpty
@@ -890,11 +885,9 @@ class _HomeScreenState extends State<HomeScreen>
             load: () => CatalogCache.instance
                 .vodStreams(c, cat.id)
                 .then(
-                  (l) => l
-                      .where((m) => m.icon.isNotEmpty)
-                      .take(16)
-                      .map(_movie)
-                      .toList(),
+                  (l) => moviesRecentlyAdded(
+                    l.where((m) => m.icon.isNotEmpty),
+                  ).take(16).map(_movie).toList(),
                 )
                 .catchError((_) => <HItem>[]),
             onMore: () => _openCategory(c, 'movie', cat.id, cat.name),
@@ -926,7 +919,7 @@ class _HomeScreenState extends State<HomeScreen>
           revision: _loadGeneration,
           load: () => CatalogCache.instance
               .vodStreams(c, s.id)
-              .then((l) => l.take(16).map(_movie).toList())
+              .then((l) => moviesRecentlyAdded(l).take(16).map(_movie).toList())
               .catchError((_) => <HItem>[]),
           onMore: () => _openCategory(c, 'movie', s.id, s.name),
         );
@@ -937,7 +930,9 @@ class _HomeScreenState extends State<HomeScreen>
           revision: _loadGeneration,
           load: () => CatalogCache.instance
               .seriesItems(c, s.id)
-              .then((l) => l.take(16).map(_series).toList())
+              .then(
+                (l) => seriesRecentlyAdded(l).take(16).map(_series).toList(),
+              )
               .catchError((_) => <HItem>[]),
           onMore: () => _openCategory(c, 'series', s.id, s.name),
         );
@@ -2375,7 +2370,7 @@ class _TopTenShelfState extends State<_TopTenShelf> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SectionHeader(title: 'Top 10 this week'),
+              const SectionHeader(title: 'Latest arrivals'),
               SizedBox(
                 height: 196,
                 child: items.isEmpty

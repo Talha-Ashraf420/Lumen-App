@@ -208,6 +208,13 @@ class _CategoryOnlyClient extends XtreamClient {
 }
 
 void main() {
+  test('movie and series catalogs default to recently added', () {
+    expect(catalogDefaultSort('movie'), 'recent');
+    expect(catalogDefaultSort('series'), 'recent');
+    expect(catalogDefaultSort('live'), 'default');
+    expect(catalogDefaultSort('all'), 'default');
+  });
+
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUp(() async {
@@ -633,7 +640,7 @@ void main() {
     );
     await waitFor(
       tester,
-      () => find.text('Movie 01 (2026)').evaluate().isNotEmpty,
+      () => find.text('Movie 60 (2026)').evaluate().isNotEmpty,
     );
 
     final category = tester.widget<FocusableActionDetector>(

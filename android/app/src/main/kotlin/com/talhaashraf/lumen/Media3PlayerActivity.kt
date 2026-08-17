@@ -2,6 +2,7 @@ package com.talhaashraf.lumen
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
@@ -11,6 +12,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.provider.OpenableColumns
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
@@ -20,6 +22,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
+import android.widget.Toast
 import androidx.annotation.OptIn
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -29,6 +32,7 @@ import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
@@ -64,6 +68,7 @@ class Media3PlayerActivity : Activity() {
         private const val CONTROLS_TIMEOUT_MS = 5_000L
         private const val PROGRESS_INTERVAL_MS = 500L
         private const val SEEK_INCREMENT_MS = 10_000L
+        private const val SUBTITLE_REQUEST_CODE = 6205
         private val RETRY_DELAYS_MS = longArrayOf(1_000, 3_000, 5_000)
     }
 
@@ -105,6 +110,8 @@ class Media3PlayerActivity : Activity() {
     private var hasRenderedVideoFrame = false
     private var controlsVisible = false
     private var changingProgress = false
+    private var externalSubtitleUri: Uri? = null
+    private var externalSubtitleName = ""
 
     private data class TrackChoice(
         val group: Tracks.Group,
@@ -298,8 +305,10 @@ class Media3PlayerActivity : Activity() {
             )
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
+        // DefaultDataSource delegates network requests to the hardened HTTP
+        // factory and content:// subtitle files to Android's content resolver.
         val mediaSourceFactory = DefaultMediaSourceFactory(this)
-            .setDataSourceFactory(http)
+            .setDataSourceFactory(DefaultDataSource.Factory(this, http))
             .setLoadErrorHandlingPolicy(DefaultLoadErrorHandlingPolicy(3))
         val renderers = DefaultRenderersFactory(this)
             // If a TV advertises a broken preferred decoder, allow Media3 to
@@ -449,9 +458,9 @@ class Media3PlayerActivity : Activity() {
             if (isLive) "Channel  ›" else "Episode  ›",
             if (isLive) "Next channel" else "Next episode"
         ) { openPlaylistItem(playlistIndex + 1) }
-        subtitleButton = themedButton("CC", "Choose subtitles") {
-            showTrackDialog(C.TRACK_TYPE_TEXT, "Subtitles", allowOff = true)
-        }.apply { isEnabled = false }
+        subtitleButton = themedButton("CC / Add", "Choose or add subtitles") {
+            showSubtitleDialog()
+        }.apply { isEnabled = !isLive }
         audioButton = themedButton("Audio", "Choose audio track") {
             showTrackDialog(C.TRACK_TYPE_AUDIO, "Audio", allowOff = false)
         }.apply { isEnabled = false }
@@ -470,7 +479,7 @@ class Media3PlayerActivity : Activity() {
         transport.addView(playPauseButton, transportParams(dp(116)))
         transport.addView(forwardButton, transportParams(dp(92)))
         transport.addView(nextButton, transportParams(dp(132)))
-        transport.addView(subtitleButton, transportParams(dp(96)))
+        transport.addView(subtitleButton, transportParams(dp(110)))
         transport.addView(audioButton, transportParams(dp(96)))
         panel.addView(
             progressRow,
@@ -615,6 +624,8 @@ class Media3PlayerActivity : Activity() {
         terminalError = false
         playlistIndex = index
         url = playlistUrls[index]
+        externalSubtitleUri = null
+        externalSubtitleName = ""
         updateNavigationUi()
         open()
         showControls()
@@ -660,14 +671,18 @@ class Media3PlayerActivity : Activity() {
         if (!::subtitleButton.isInitialized || !::audioButton.isInitialized) return
         val subtitleCount = trackChoices(tracks, C.TRACK_TYPE_TEXT).size
         val audioCount = trackChoices(tracks, C.TRACK_TYPE_AUDIO).size
-        subtitleButton.isEnabled = subtitleCount > 0
+        // Movies can always import a local subtitle, even when the stream has
+        // no embedded text tracks. Live keeps the button only for embedded CC.
+        subtitleButton.isEnabled = !isLive || subtitleCount > 0
         audioButton.isEnabled = audioCount > 1
-        subtitleButton.text = if (
+        subtitleButton.text = if (externalSubtitleUri != null) {
+            "CC Added"
+        } else if (
             player.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)
         ) {
             "CC Off"
         } else {
-            "CC"
+            "CC / Add"
         }
         updateFocusGraph()
     }
@@ -710,6 +725,192 @@ class Media3PlayerActivity : Activity() {
             }
         }
         return choices
+    }
+
+    private fun showSubtitleDialog() {
+        val choices = trackChoices(player.currentTracks, C.TRACK_TYPE_TEXT)
+        val canAddFile = !isLive
+        if (choices.isEmpty() && !canAddFile) return
+        handler.removeCallbacks(hideControls)
+        val labels = buildList {
+            add("Off")
+            addAll(choices.map { it.label })
+            if (canAddFile) add("＋  Add subtitle file…")
+        }.toTypedArray()
+        val typeDisabled = player.trackSelectionParameters.disabledTrackTypes
+            .contains(C.TRACK_TYPE_TEXT)
+        val selectedChoice = choices.indexOfFirst {
+            it.group.isTrackSelected(it.trackIndex)
+        }
+        val selected = if (typeDisabled || selectedChoice < 0) {
+            0
+        } else {
+            selectedChoice + 1
+        }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Subtitles")
+            .setSingleChoiceItems(labels, selected) { activeDialog, itemIndex ->
+                when {
+                    canAddFile && itemIndex == labels.lastIndex -> {
+                        activeDialog.dismiss()
+                        openSubtitlePicker()
+                    }
+                    itemIndex == 0 -> {
+                        player.trackSelectionParameters =
+                            player.trackSelectionParameters
+                                .buildUpon()
+                                .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                                .build()
+                        activeDialog.dismiss()
+                    }
+                    else -> {
+                        val choice = choices[itemIndex - 1]
+                        player.trackSelectionParameters =
+                            player.trackSelectionParameters
+                                .buildUpon()
+                                .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                                .addOverride(
+                                    TrackSelectionOverride(
+                                        choice.group.mediaTrackGroup,
+                                        choice.trackIndex
+                                    )
+                                )
+                                .build()
+                        activeDialog.dismiss()
+                    }
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.window?.setBackgroundDrawable(
+                roundedRect(0xFF111511.toInt(), 0xFF596157.toInt(), 1)
+            )
+        }
+        dialog.setOnDismissListener {
+            updateTrackButtons()
+            showControls()
+            subtitleButton.post { subtitleButton.requestFocus() }
+        }
+        dialog.show()
+    }
+
+    private fun openSubtitlePicker() {
+        val picker = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+            putExtra(
+                Intent.EXTRA_MIME_TYPES,
+                arrayOf(
+                    "application/x-subrip",
+                    "text/srt",
+                    "text/vtt",
+                    "text/plain",
+                    "text/x-ssa",
+                    "text/x-ass",
+                    "application/ttml+xml"
+                )
+            )
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+        }
+        try {
+            startActivityForResult(picker, SUBTITLE_REQUEST_CODE)
+        } catch (_: Exception) {
+            Toast.makeText(
+                this,
+                "No file browser is available on this TV.",
+                Toast.LENGTH_LONG
+            ).show()
+            showControls()
+            subtitleButton.requestFocus()
+        }
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != SUBTITLE_REQUEST_CODE) return
+        val uri = data?.data
+        if (resultCode != RESULT_OK || uri == null) {
+            showControls()
+            subtitleButton.requestFocus()
+            return
+        }
+        try {
+            val flags = (data?.flags ?: 0) and
+                (Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+            if (flags != 0) {
+                contentResolver.takePersistableUriPermission(uri, flags)
+            }
+        } catch (_: SecurityException) {
+            // The activity grant still remains valid for this playback.
+        }
+        externalSubtitleUri = uri
+        externalSubtitleName = subtitleDisplayName(uri)
+        val position = player.currentPosition.coerceAtLeast(0L)
+        val shouldPlay = player.playWhenReady
+        player.setMediaItem(buildMediaItem(), position)
+        player.trackSelectionParameters = player.trackSelectionParameters
+            .buildUpon()
+            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+            .build()
+        player.prepare()
+        player.playWhenReady = shouldPlay
+        Toast.makeText(
+            this,
+            "Added $externalSubtitleName",
+            Toast.LENGTH_SHORT
+        ).show()
+        showControls()
+        subtitleButton.requestFocus()
+    }
+
+    private fun subtitleDisplayName(uri: Uri): String {
+        contentResolver.query(
+            uri,
+            arrayOf(OpenableColumns.DISPLAY_NAME),
+            null,
+            null,
+            null
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                cursor.getString(0)?.takeIf { it.isNotBlank() }?.let { return it }
+            }
+        }
+        return uri.lastPathSegment?.substringAfterLast('/') ?: "External subtitle"
+    }
+
+    private fun subtitleMimeType(uri: Uri): String {
+        val reported = contentResolver.getType(uri).orEmpty()
+        if (reported.isNotBlank() && reported != "text/plain") return reported
+        return when (subtitleDisplayName(uri).substringAfterLast('.', "").lowercase()) {
+            "vtt" -> "text/vtt"
+            "ssa" -> "text/x-ssa"
+            "ass" -> "text/x-ass"
+            "ttml", "xml" -> "application/ttml+xml"
+            else -> "application/x-subrip"
+        }
+    }
+
+    private fun buildMediaItem(): MediaItem {
+        val builder = MediaItem.Builder().setUri(Uri.parse(url))
+        externalSubtitleUri?.let { subtitleUri ->
+            builder.setSubtitleConfigurations(
+                listOf(
+                    MediaItem.SubtitleConfiguration.Builder(subtitleUri)
+                        .setMimeType(subtitleMimeType(subtitleUri))
+                        .setLabel(externalSubtitleName)
+                        .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                        .build()
+                )
+            )
+        }
+        return builder.build()
     }
 
     private fun showTrackDialog(type: Int, title: String, allowOff: Boolean) {
@@ -942,7 +1143,7 @@ class Media3PlayerActivity : Activity() {
         hasRenderedVideoFrame = false
         player.stop()
         player.volume = 0f
-        player.setMediaItem(MediaItem.fromUri(Uri.parse(url)))
+        player.setMediaItem(buildMediaItem())
         player.playWhenReady = true
         player.prepare()
     }

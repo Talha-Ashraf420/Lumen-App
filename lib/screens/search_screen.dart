@@ -18,6 +18,11 @@ import 'series_detail_screen.dart';
 
 String _year(String s) => RegExp(r'(19|20)\d{2}').firstMatch(s)?.group(0) ?? '';
 
+/// Movies and series open newest-first. Live TV has no meaningful provider
+/// added timestamp, while mixed search keeps relevance/provider ordering.
+String catalogDefaultSort(String section) =>
+    section == 'movie' || section == 'series' ? 'recent' : 'default';
+
 class _Res {
   final String name, image, subtitle;
   final double rating;
@@ -105,7 +110,7 @@ class SearchScreenState extends State<SearchScreen>
   late String _section =
       widget.initialSection ?? 'all'; // all | movie | series | live
   late String _cat = widget.initialCategory ?? 'all';
-  String _sort = 'default';
+  late String _sort = catalogDefaultSort(widget.initialSection ?? 'all');
 
   // Streams cached per category id ('all' = whole catalog). Many providers
   // return nothing for the no-category "list all" call, so we fetch per
@@ -776,7 +781,7 @@ class SearchScreenState extends State<SearchScreen>
     setState(() {
       _section = section;
       _cat = 'all';
-      _sort = 'default';
+      _sort = catalogDefaultSort(section);
       _lastGridIndex = 0;
     });
   }

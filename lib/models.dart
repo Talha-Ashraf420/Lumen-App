@@ -51,6 +51,65 @@ double _toDouble(dynamic v) =>
     v is num ? v.toDouble() : double.tryParse('${v ?? ''}') ?? 0;
 String _toStr(dynamic v) => v == null ? '' : '$v';
 
+/// Normalises the provider's loosely-typed `added` field for reliable sorting.
+/// Xtream panels commonly return Unix seconds, but a few return milliseconds
+/// or an ISO/date string. Keeping one comparison format prevents a mixed
+/// catalog from quietly falling back to provider order.
+int mediaAddedValue(String value) {
+  final text = value.trim();
+  if (text.isEmpty) return 0;
+  final numeric = int.tryParse(text);
+  if (numeric != null) {
+    if (numeric <= 0) return 0;
+    // Unix seconds are currently 10 digits; values beyond year 2286 are much
+    // more likely to already be milliseconds.
+    return numeric < 10000000000 ? numeric * 1000 : numeric;
+  }
+  return DateTime.tryParse(text)?.millisecondsSinceEpoch ?? 0;
+}
+
+/// Returns a stable newest-first movie list. Items without usable provider
+/// timestamps remain visible after dated items in their original order.
+List<VodStream> moviesRecentlyAdded(Iterable<VodStream> values) {
+  final indexed = values.indexed.toList(growable: false);
+  indexed.sort((a, b) {
+    final byDate = mediaAddedValue(
+      b.$2.added,
+    ).compareTo(mediaAddedValue(a.$2.added));
+    return byDate != 0 ? byDate : a.$1.compareTo(b.$1);
+  });
+  return [for (final entry in indexed) entry.$2];
+}
+
+int _catalogDateValue(String value) {
+  final text = value.trim();
+  final year = RegExp(r'(19|20)\d{2}').firstMatch(text)?.group(0);
+  if (year != null && (text.length == 4 || !RegExp(r'^\d+$').hasMatch(text))) {
+    final parsed = DateTime.tryParse(text);
+    if (parsed != null) return parsed.millisecondsSinceEpoch;
+    return DateTime.utc(int.parse(year)).millisecondsSinceEpoch;
+  }
+  return mediaAddedValue(text);
+}
+
+/// Series providers rarely expose the movie-style `added` epoch. Use the
+/// release date (or a year embedded in the title) as the best available,
+/// deterministic newest-first signal for series shelves.
+List<Series> seriesRecentlyAdded(Iterable<Series> values) {
+  final indexed = values.indexed.toList(growable: false);
+  indexed.sort((a, b) {
+    final aValue = _catalogDateValue(
+      a.$2.releaseDate.isEmpty ? a.$2.name : a.$2.releaseDate,
+    );
+    final bValue = _catalogDateValue(
+      b.$2.releaseDate.isEmpty ? b.$2.name : b.$2.releaseDate,
+    );
+    final byDate = bValue.compareTo(aValue);
+    return byDate != 0 ? byDate : a.$1.compareTo(b.$1);
+  });
+  return [for (final entry in indexed) entry.$2];
+}
+
 class Category {
   final String id;
   final String name;

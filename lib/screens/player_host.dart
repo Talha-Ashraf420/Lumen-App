@@ -9,6 +9,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 import 'package:window_manager/window_manager.dart';
 import '../android_compatibility_player.dart';
+import '../android_subtitle_picker.dart';
 import '../device_profile.dart';
 import '../library.dart';
 import '../opensubtitles.dart';
@@ -103,7 +104,7 @@ class _PlayerHostState extends State<PlayerHost> {
   bool _subBusy = false;
   String _subLang = 'en';
   String? _subError;
-  String? _appliedSubName; // label of an applied external subtitle
+  String? _appliedSubName; // label of an applied online or local subtitle
   List<SubResult> _subResults = [];
   final TextEditingController _subQueryCtrl = TextEditingController();
 
@@ -2263,8 +2264,8 @@ class _PlayerHostState extends State<PlayerHost> {
       if (!mounted) return;
       setState(() {
         _appliedSubName = s.langName.isEmpty
-            ? s.name
-            : '${s.langName} · ${s.name}';
+            ? 'Online · ${s.name}'
+            : 'Online · ${s.langName} · ${s.name}';
         _subBusy = false;
       });
       _closePanel();
@@ -2276,6 +2277,43 @@ class _PlayerHostState extends State<PlayerHost> {
               ? e.message
               : 'Couldn’t load that subtitle. Try another.';
         });
+    }
+  }
+
+  Future<void> _pickLocalSubtitle() async {
+    if (_subBusy || !AndroidSubtitlePicker.isAvailable) return;
+    setState(() {
+      _subBusy = true;
+      _subError = null;
+    });
+    try {
+      final picked = await AndroidSubtitlePicker.pick();
+      if (!mounted) return;
+      if (picked == null) {
+        setState(() => _subBusy = false);
+        return;
+      }
+      await pc.player!.setSubtitleTrack(
+        SubtitleTrack.data(picked.data, title: picked.name),
+      );
+      if (!mounted) return;
+      setState(() {
+        _appliedSubName = 'Local · ${picked.name}';
+        _subBusy = false;
+      });
+      _closePanel();
+    } on PlatformException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _subBusy = false;
+        _subError = error.message ?? 'Couldn’t read that subtitle file.';
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _subBusy = false;
+        _subError = 'Couldn’t load that subtitle file.';
+      });
     }
   }
 
@@ -2422,11 +2460,7 @@ class _PlayerHostState extends State<PlayerHost> {
           _closePanel();
         }),
         if (_appliedSubName != null)
-          _subRow(
-            '$_appliedSubName  (online)',
-            current.id != 'no',
-            () => _closePanel(),
-          ),
+          _subRow(_appliedSubName!, current.id != 'no', () => _closePanel()),
         ...real.map((t) {
           final label = [
             t.title,
@@ -2455,6 +2489,19 @@ class _PlayerHostState extends State<PlayerHost> {
           indent: 20,
           endIndent: 20,
         ),
+        if (AndroidSubtitlePicker.isAvailable)
+          ListTile(
+            onTap: _pickLocalSubtitle,
+            leading: Icon(Icons.folder_open_rounded, color: accent),
+            title: const Text(
+              'Add subtitle file',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+            subtitle: const Text(
+              'SRT, VTT, SSA, ASS or TTML',
+              style: TextStyle(color: Colors.white54, fontSize: 12),
+            ),
+          ),
         // Online search (OpenSubtitles)
         ListTile(
           onTap: () => setState(() => _subsOnline = !_subsOnline),
