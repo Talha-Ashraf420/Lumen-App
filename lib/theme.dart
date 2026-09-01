@@ -424,7 +424,8 @@ class ThemeController {
 }
 
 /// Resolves the active palette for the current mode + platform brightness,
-/// assigns the global `activePalette`, and syncs the status-bar icon colour.
+/// assigns the global `activePalette`, and keeps both Android system bars
+/// readable while the app draws edge-to-edge.
 Palette resolvePalette(ThemeMode mode, Brightness platform) {
   final wantDark = switch (mode) {
     ThemeMode.dark => true,
@@ -439,6 +440,12 @@ Palette resolvePalette(ThemeMode mode, Brightness platform) {
       statusBarColor: Colors.transparent,
       statusBarIconBrightness: wantDark ? Brightness.light : Brightness.dark,
       statusBarBrightness: wantDark ? Brightness.dark : Brightness.light,
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarDividerColor: Colors.transparent,
+      systemNavigationBarIconBrightness: wantDark
+          ? Brightness.light
+          : Brightness.dark,
+      systemNavigationBarContrastEnforced: false,
     ),
   );
   return p;

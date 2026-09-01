@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:window_manager/window_manager.dart';
 import 'catalog_cache.dart';
@@ -29,6 +30,9 @@ import 'screens/splash_screen.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await DeviceProfile.detect();
+  if (!kIsWeb && Platform.isAndroid && !DeviceProfile.isTelevision) {
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  }
   // Catalog artwork is decoded to tile-sized buffers. Keep a generous but
   // bounded cache so large libraries cannot crowd video playback out of RAM.
   final imageCache = PaintingBinding.instance.imageCache;

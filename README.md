@@ -9,41 +9,33 @@ A native, premium **IPTV player** for your own Xtream / X3U subscription — Liv
 ![Platforms](https://img.shields.io/badge/platforms-Android%20·%20TV%20·%20iOS%20·%20macOS%20·%20Windows%20·%20Linux-3DDC84)
 [![Stars](https://img.shields.io/github/stars/Talha-Ashraf420/Lumen-App?style=social)](https://github.com/Talha-Ashraf420/Lumen-App/stargazers)
 
+[**Visit the Lumen website**](https://lumen-launch.vercel.app/) · [**View on Google Play**](https://play.google.com/store/apps/details?id=com.talhaashraf.lumen)
+
 ---
 
-## ⬇️ Download (one click)
+## ⬇️ Get Lumen
 
-Grab the latest build for your platform — no login required:
+Android and Android TV releases are distributed through Google Play. Lumen is
+currently in closed testing; visit the website to request tester access.
+
+[![Lumen website](https://img.shields.io/badge/Official%20website-Lumen-BCFF3C?style=for-the-badge)](https://lumen-launch.vercel.app/)
+[![Get it on Google Play](https://img.shields.io/badge/Get%20it%20on-Google%20Play-414141?style=for-the-badge&logo=googleplay&logoColor=white)](https://play.google.com/store/apps/details?id=com.talhaashraf.lumen)
+
+Desktop builds remain available from GitHub Releases:
 
 [![Windows](https://img.shields.io/badge/Download-Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/Talha-Ashraf420/Lumen-App/releases/latest/download/Lumen-Windows.zip)
 [![macOS](https://img.shields.io/badge/Download-macOS-000000?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/Talha-Ashraf420/Lumen-App/releases/latest/download/Lumen-macOS.zip)
 [![Linux](https://img.shields.io/badge/Download-Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black)](https://github.com/Talha-Ashraf420/Lumen-App/releases/latest/download/Lumen-Linux-x64.tar.gz)
-[![Android](https://img.shields.io/badge/Download-Android%20%2F%20Android%20TV-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/Talha-Ashraf420/Lumen-App/releases/latest/download/Lumen-Android.apk)
-[![iOS](https://img.shields.io/badge/Download-iOS%20(unsigned)-999999?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/Talha-Ashraf420/Lumen-App/releases/latest/download/Lumen-iOS-unsigned.zip)
 
-➡️ Or browse all builds on the **[Releases page](https://github.com/Talha-Ashraf420/Lumen-App/releases/latest)**.
+➡️ Browse all published desktop builds on the **[Releases page](https://github.com/Talha-Ashraf420/Lumen-App/releases/latest)**.
 
 | Platform | File | Install |
 |----------|------|---------|
 | **Windows** | `Lumen-Windows.zip` | Unzip → run `Lumen.exe` |
 | **macOS** | `Lumen-macOS.zip` | Unzip → open `lumen_tv.app` *(right-click → Open the first time)* |
 | **Linux** | `Lumen-Linux-x64.tar.gz` | Extract → run the `lumen_tv` binary |
-| **Android / Android TV** | `Lumen-Android.apk` | Sideload, or `adb install Lumen-Android.apk` |
-| **iOS** | `Lumen-iOS-unsigned.zip` | Unsigned — sideload with AltStore / Sideloadly |
 
 > The download links resolve once the first CI run finishes publishing the **latest** release.
-
-### 🔄 Auto-update on Android (recommended)
-
-Install via **[Obtainium](https://github.com/ImranR98/Obtainium)** to get Lumen *and automatic updates* straight from GitHub Releases — no app store needed:
-
-[![Get it on Obtainium](https://img.shields.io/badge/Get%20it%20on-Obtainium-1A237E?style=for-the-badge&logo=android&logoColor=white)](https://apps.obtainium.imranr98.dev/redirect.html?r=obtainium://add/https://github.com/Talha-Ashraf420/Lumen-App)
-
-1. Install Obtainium, tap **Add App**.
-2. Paste `https://github.com/Talha-Ashraf420/Lumen-App` → **Add**.
-3. Obtainium installs it and notifies you whenever a new build is released.
-
-> First sideloaded install on Android shows the system "install unknown apps" prompt once — that's normal. Lumen also has a built-in updater (Profile → Check for updates).
 
 Looking to list Lumen on a store? See **[STORE_LISTING.md](STORE_LISTING.md)**.
 
@@ -73,7 +65,7 @@ The complete 1920×1080 Android TV upload set and specifications are available i
 
 ## ✨ Features
 
-- **Live TV** with EPG (now/next), catch-up, and a polished channel guide
+- **Live TV** with fast categories, favorites, and direct channel switching
 - **Movies & Series** with TMDB-enriched art, ratings, cast and trailers
 - **Immersive home** — full-bleed spotlight hero + scrollable shelves
 - **My List**, Continue Watching, Recently watched, and watch stats
@@ -95,7 +87,7 @@ Flutter • [media_kit](https://pub.dev/packages/media_kit) (libmpv) for native 
 
 ## 🤖 Builds
 
-Every push to `main` triggers [GitHub Actions](https://github.com/Talha-Ashraf420/Lumen-App/actions) which builds all six targets and publishes them to the **latest** release. You can also run the workflow manually from the **Actions** tab.
+Every push to `main` triggers [GitHub Actions](https://github.com/Talha-Ashraf420/Lumen-App/actions) for quality checks and platform builds. Official Android releases are delivered through Google Play; desktop artifacts are published on GitHub Releases.
 
 Build locally:
 

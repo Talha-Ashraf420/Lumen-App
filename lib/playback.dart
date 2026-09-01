@@ -77,11 +77,19 @@ class PlaybackPolicy {
 /// broadcast. Movies and episodes trade a little startup time for a deeper
 /// buffer that can absorb normal provider and Wi-Fi jitter.
 class PlaybackBufferPolicy {
-  static const maxMemoryBytes = 64 * 1024 * 1024;
-  static const liveAhead = Duration(seconds: 12);
-  static const vodAhead = Duration(seconds: 30);
-  static const liveResume = Duration(seconds: 3);
-  static const vodResume = Duration(seconds: 5);
+  // `bufferSize` is the demuxer's forward-memory ceiling. 128 MiB is large
+  // enough to hold a useful cushion for high-bitrate VOD without creating an
+  // unbounded cache. Android TV uses the separately bounded Media3 profile.
+  static const maxMemoryBytes = 128 * 1024 * 1024;
+
+  // Do not let already-played packets consume the forward-buffer budget. A
+  // small back buffer is still useful for quick backwards seeks.
+  static const maxBackBufferBytes = 16 * 1024 * 1024;
+
+  static const liveAhead = Duration(seconds: 18);
+  static const vodAhead = Duration(seconds: 90);
+  static const liveResume = Duration(seconds: 5);
+  static const vodResume = Duration(seconds: 15);
 
   static Duration aheadFor(bool live) => live ? liveAhead : vodAhead;
   static Duration resumeFor(bool live) => live ? liveResume : vodResume;
@@ -118,20 +126,26 @@ const androidSurfaceVideoConfiguration = VideoControllerConfiguration(
   androidAttachSurfaceAfterVideoParameters: false,
 );
 
-VideoControllerConfiguration videoConfigurationFor(TargetPlatform platform) =>
-    platform == TargetPlatform.android
+VideoControllerConfiguration videoConfigurationFor(
+  TargetPlatform platform, {
+  bool television = false,
+}) => platform == TargetPlatform.android && television
     ? androidSurfaceVideoConfiguration
     : const VideoControllerConfiguration();
 
 VideoController createVideoController(Player player) => VideoController(
   player,
-  configuration: videoConfigurationFor(defaultTargetPlatform),
+  configuration: videoConfigurationFor(
+    defaultTargetPlatform,
+    television: DeviceProfile.isTelevision,
+  ),
 );
 
 Map<String, String> streamingPropertiesFor(TargetPlatform platform) => {
   'cache': 'yes',
   'cache-on-disk': 'no',
   'cache-pause': 'yes',
+  'demuxer-max-back-bytes': '${PlaybackBufferPolicy.maxBackBufferBytes}',
   'demuxer-hysteresis-secs': '0',
   'network-timeout': '15',
   if (platform == TargetPlatform.android) ...{

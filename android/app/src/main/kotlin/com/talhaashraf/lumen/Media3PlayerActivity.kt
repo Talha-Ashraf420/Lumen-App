@@ -294,14 +294,16 @@ class Media3PlayerActivity : Activity() {
             .setUserAgent(userAgent)
             .setDefaultRequestProperties(headers)
 
-        // Live keeps a responsive window; VOD builds a deeper cushion to absorb
-        // Wi-Fi/provider jitter before playback and after an underrun.
+        // Live keeps a responsive window; VOD builds a substantially deeper
+        // cushion to absorb Wi-Fi/provider jitter. In particular, do not resume
+        // a movie immediately after collecting only a few seconds: that causes
+        // a fill/drain/rebuffer loop on bursty IPTV providers.
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                if (isLive) 15_000 else 30_000,
-                if (isLive) 35_000 else 60_000,
-                if (isLive) 4_000 else 8_000,
-                if (isLive) 6_000 else 10_000
+                if (isLive) 18_000 else 45_000,
+                if (isLive) 40_000 else 90_000,
+                if (isLive) 5_000 else 10_000,
+                if (isLive) 8_000 else 18_000
             )
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()

@@ -606,8 +606,11 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           ),
         Align(
           alignment: Alignment.bottomCenter,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 22),
+          child: SafeArea(
+            top: false,
+            // Draw the page edge-to-edge, but keep every navigation target
+            // above Android's gesture handle or three-button navigation bar.
+            minimum: const EdgeInsets.fromLTRB(16, 0, 16, 22),
             child:
                 Container(
                       padding: const EdgeInsets.symmetric(

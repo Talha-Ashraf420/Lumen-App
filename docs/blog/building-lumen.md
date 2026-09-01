@@ -56,7 +56,7 @@ Flutter skips rebuilding identical const instances — de-`const` them and they 
 ## Shipping to six platforms
 A single GitHub Actions workflow builds **all six** targets and publishes them to a
 rolling "latest" release. For Android I added a stable signing key + auto-incrementing
-`versionCode`, so an **in-app updater** (and Obtainium) can install new builds cleanly
+`versionCode`, so Google Play can deliver new Android builds cleanly
 with no signature conflicts.
 
 ## Lessons

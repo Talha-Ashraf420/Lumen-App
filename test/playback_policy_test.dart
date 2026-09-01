@@ -139,18 +139,38 @@ void main() {
       streamingPlayerConfiguration.bufferSize,
       PlaybackBufferPolicy.maxMemoryBytes,
     );
-    expect(PlaybackBufferPolicy.aheadFor(true), const Duration(seconds: 12));
-    expect(PlaybackBufferPolicy.resumeFor(true), const Duration(seconds: 3));
-    expect(PlaybackBufferPolicy.aheadFor(false), const Duration(seconds: 30));
-    expect(PlaybackBufferPolicy.resumeFor(false), const Duration(seconds: 5));
+    expect(PlaybackBufferPolicy.aheadFor(true), const Duration(seconds: 18));
+    expect(PlaybackBufferPolicy.resumeFor(true), const Duration(seconds: 5));
+    expect(PlaybackBufferPolicy.aheadFor(false), const Duration(seconds: 90));
+    expect(PlaybackBufferPolicy.resumeFor(false), const Duration(seconds: 15));
+
+    final baseProperties = streamingPropertiesFor(TargetPlatform.android);
+    expect(
+      baseProperties['demuxer-max-back-bytes'],
+      '${PlaybackBufferPolicy.maxBackBufferBytes}',
+    );
   });
 
-  test('Android playback uses an embedded hardware surface', () {
-    final android = videoConfigurationFor(TargetPlatform.android);
-    expect(android.vo, 'mediacodec_embed');
-    expect(android.hwdec, 'mediacodec');
-    expect(android.enableHardwareAcceleration, isTrue);
-    expect(android.androidAttachSurfaceAfterVideoParameters, isFalse);
+  test('Android phones keep codec fallback while TVs use a native surface', () {
+    final phone = videoConfigurationFor(
+      TargetPlatform.android,
+      television: false,
+    );
+    // Null selects media_kit's Android defaults: gpu + auto-safe. This can
+    // fall back when an IPTV channel uses a codec the phone cannot decode in
+    // hardware instead of leaving audio playing over a black frame.
+    expect(phone.vo, isNull);
+    expect(phone.hwdec, isNull);
+    expect(phone.enableHardwareAcceleration, isTrue);
+
+    final television = videoConfigurationFor(
+      TargetPlatform.android,
+      television: true,
+    );
+    expect(television.vo, 'mediacodec_embed');
+    expect(television.hwdec, 'mediacodec');
+    expect(television.enableHardwareAcceleration, isTrue);
+    expect(television.androidAttachSurfaceAfterVideoParameters, isFalse);
   });
 
   test('Android streaming follows the audio clock to prevent drift', () {
@@ -175,10 +195,10 @@ void main() {
       vod,
     );
     expect(liveProperties['audio-delay'], '0');
-    expect(liveProperties['cache-secs'], '12');
-    expect(liveProperties['cache-pause-wait'], '3');
-    expect(vodProperties['cache-secs'], '30');
-    expect(vodProperties['cache-pause-wait'], '5');
+    expect(liveProperties['cache-secs'], '18');
+    expect(liveProperties['cache-pause-wait'], '5');
+    expect(vodProperties['cache-secs'], '90');
+    expect(vodProperties['cache-pause-wait'], '15');
   });
 
   test('Xtream URLs never end with an empty extension', () {
