@@ -26,6 +26,52 @@ enum PlayerBackAction { closePanel, minimize }
 PlayerBackAction playerBackActionFor({required bool panelOpen}) =>
     panelOpen ? PlayerBackAction.closePanel : PlayerBackAction.minimize;
 
+enum PlayerKeyboardCommand {
+  togglePlayPause,
+  seekBackward,
+  seekForward,
+  volumeUp,
+  volumeDown,
+  toggleMute,
+  toggleFullscreen,
+  stop,
+}
+
+/// Maps physical-keyboard shortcuts without stealing D-pad arrows from a TV
+/// remote. Letter shortcuts still work when a keyboard is connected to a TV.
+PlayerKeyboardCommand? playerKeyboardCommandFor(
+  LogicalKeyboardKey key, {
+  required bool isTelevision,
+}) {
+  if (key == LogicalKeyboardKey.space || key == LogicalKeyboardKey.keyK) {
+    return PlayerKeyboardCommand.togglePlayPause;
+  }
+  if (key == LogicalKeyboardKey.keyJ ||
+      (!isTelevision && key == LogicalKeyboardKey.arrowLeft)) {
+    return PlayerKeyboardCommand.seekBackward;
+  }
+  if (key == LogicalKeyboardKey.keyL ||
+      (!isTelevision && key == LogicalKeyboardKey.arrowRight)) {
+    return PlayerKeyboardCommand.seekForward;
+  }
+  if (!isTelevision && key == LogicalKeyboardKey.arrowUp) {
+    return PlayerKeyboardCommand.volumeUp;
+  }
+  if (!isTelevision && key == LogicalKeyboardKey.arrowDown) {
+    return PlayerKeyboardCommand.volumeDown;
+  }
+  if (key == LogicalKeyboardKey.keyM) {
+    return PlayerKeyboardCommand.toggleMute;
+  }
+  if (key == LogicalKeyboardKey.keyF) {
+    return PlayerKeyboardCommand.toggleFullscreen;
+  }
+  if (key == LogicalKeyboardKey.keyS || key == LogicalKeyboardKey.mediaStop) {
+    return PlayerKeyboardCommand.stop;
+  }
+  return null;
+}
+
 /// The one and only player view — a persistent app-level overlay. A single
 /// [Video] (never recreated) animates between full-screen and a docked mini, so
 /// playback is continuous and there's never a second video surface (which races
@@ -766,6 +812,19 @@ class _PlayerHostState extends State<PlayerHost> {
     setState(() {});
   }
 
+  void _adjustVolume(double delta) {
+    final current = _muted ? _curVol : pc.player!.state.volume;
+    _curVol = (current + delta).clamp(0.0, 100.0);
+    _muted = _curVol == 0;
+    pc.player!.setVolume(_curVol);
+    _flashHud(
+      '${_curVol.round()}%',
+      _muted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+      value: _curVol / 100,
+    );
+    _scheduleHide();
+  }
+
   // ---- build ----
   @override
   Widget build(BuildContext context) {
@@ -1076,6 +1135,73 @@ class _PlayerHostState extends State<PlayerHost> {
         k == LogicalKeyboardKey.mediaPlayPause ||
         k == LogicalKeyboardKey.mediaPlay ||
         k == LogicalKeyboardKey.mediaPause;
+    final keyboardCommand = playerKeyboardCommandFor(
+      k,
+      isTelevision: DeviceProfile.isTelevision,
+    );
+
+    // Dedicated media keys are also global on desktop. Android TV remotes can
+    // report their centre button as Play/Pause, so TV keeps the focused-control
+    // activation behavior below instead.
+    if (isMediaPlayPause && !DeviceProfile.isTelevision) {
+      if (e is KeyRepeatEvent) return KeyEventResult.handled;
+      if (k == LogicalKeyboardKey.mediaPlay) {
+        pc.player!.play();
+      } else if (k == LogicalKeyboardKey.mediaPause) {
+        pc.player!.pause();
+      } else {
+        pc.togglePlayPause();
+      }
+      setState(() => _controls = true);
+      _scheduleHide();
+      return KeyEventResult.handled;
+    }
+
+    // Keyboard transport controls are global within the player. They must keep
+    // working when a visible button, slider, or side panel owns primary focus.
+    // Only seek and volume commands repeat while a key is held down.
+    if (keyboardCommand != null) {
+      final repeatable =
+          keyboardCommand == PlayerKeyboardCommand.seekBackward ||
+          keyboardCommand == PlayerKeyboardCommand.seekForward ||
+          keyboardCommand == PlayerKeyboardCommand.volumeUp ||
+          keyboardCommand == PlayerKeyboardCommand.volumeDown;
+      if (e is KeyRepeatEvent && !repeatable) {
+        return KeyEventResult.handled;
+      }
+      switch (keyboardCommand) {
+        case PlayerKeyboardCommand.togglePlayPause:
+          pc.togglePlayPause();
+          setState(() => _controls = true);
+          _scheduleHide();
+        case PlayerKeyboardCommand.seekBackward:
+          if (!_isLive) {
+            _seekBy(-10);
+            _flashHud('−10s', Icons.replay_10_rounded);
+          }
+        case PlayerKeyboardCommand.seekForward:
+          if (!_isLive) {
+            _seekBy(10);
+            _flashHud('+10s', Icons.forward_10_rounded);
+          }
+        case PlayerKeyboardCommand.volumeUp:
+          _adjustVolume(5);
+        case PlayerKeyboardCommand.volumeDown:
+          _adjustVolume(-5);
+        case PlayerKeyboardCommand.toggleMute:
+          _toggleMute();
+          _flashHud(
+            _muted ? 'Muted' : '${_curVol.round()}%',
+            _muted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+            value: _muted ? 0 : _curVol / 100,
+          );
+        case PlayerKeyboardCommand.toggleFullscreen:
+          _toggleFullscreen();
+        case PlayerKeyboardCommand.stop:
+          _close();
+      }
+      return KeyEventResult.handled;
+    }
     // Once a visible control owns focus, let Flutter's directional traversal
     // and ActivateIntent handle the D-pad. Back always returns to the prior
     // app screen in one press, except while a side panel is open (where it
@@ -1108,7 +1234,6 @@ class _PlayerHostState extends State<PlayerHost> {
         k == LogicalKeyboardKey.select ||
         k == LogicalKeyboardKey.enter ||
         k == LogicalKeyboardKey.numpadEnter ||
-        k == LogicalKeyboardKey.space ||
         k == LogicalKeyboardKey.accept ||
         k == LogicalKeyboardKey.execute ||
         k == LogicalKeyboardKey.gameButtonA;
@@ -1152,12 +1277,6 @@ class _PlayerHostState extends State<PlayerHost> {
       // First direction enters the player focus group. Subsequent directions
       // are handled by Flutter's spatial traversal on the focused control.
       _enterControlFocus();
-    } else if (k == LogicalKeyboardKey.keyF) {
-      _toggleFullscreen();
-    } else if (k == LogicalKeyboardKey.keyM) {
-      _toggleMute();
-    } else if (k == LogicalKeyboardKey.mediaStop) {
-      _close();
     } else if (isBack) {
       _minimize();
     } else {

@@ -14,6 +14,7 @@ import android.os.Looper
 import android.os.SystemClock
 import android.provider.OpenableColumns
 import android.view.Gravity
+import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
@@ -110,6 +111,8 @@ class Media3PlayerActivity : Activity() {
     private var hasRenderedVideoFrame = false
     private var controlsVisible = false
     private var changingProgress = false
+    private var keyboardMuted = false
+    private var volumeBeforeMute = 1f
     private var externalSubtitleUri: Uri? = null
     private var externalSubtitleName = ""
 
@@ -261,7 +264,7 @@ class Media3PlayerActivity : Activity() {
                 // Do not let audio run ahead over a black surface. Sound is
                 // released only when Android confirms that a video frame has
                 // actually reached the television display.
-                player.volume = 1f
+                player.volume = if (keyboardMuted) 0f else volumeBeforeMute
                 markHealthy(
                     SystemClock.elapsedRealtime(),
                     player.currentPosition.coerceAtLeast(0L)
@@ -648,6 +651,22 @@ class Media3PlayerActivity : Activity() {
             player.play()
         }
         updateTransportUi()
+    }
+
+    private fun toggleKeyboardMute() {
+        if (keyboardMuted) {
+            keyboardMuted = false
+            player.volume = volumeBeforeMute.coerceAtLeast(0.1f)
+        } else {
+            if (player.volume > 0f) volumeBeforeMute = player.volume
+            keyboardMuted = true
+            player.volume = 0f
+        }
+        Toast.makeText(
+            this,
+            if (keyboardMuted) "Muted" else "Sound on",
+            Toast.LENGTH_SHORT
+        ).show()
     }
 
     private fun seekBy(offsetMs: Long) {
@@ -1229,6 +1248,69 @@ class Media3PlayerActivity : Activity() {
         if (::errorPanel.isInitialized && errorPanel.visibility == View.VISIBLE) {
             return super.dispatchKeyEvent(event)
         }
+        if (event.action == KeyEvent.ACTION_DOWN) {
+            val alphabeticKeyboard =
+                event.device?.keyboardType == InputDevice.KEYBOARD_TYPE_ALPHABETIC
+            when (event.keyCode) {
+                KeyEvent.KEYCODE_SPACE,
+                KeyEvent.KEYCODE_K,
+                KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
+                    if (event.repeatCount == 0) togglePlayPause()
+                    showControls(requestTransportFocus = false)
+                    scheduleControlsHide()
+                    return true
+                }
+                KeyEvent.KEYCODE_MEDIA_PLAY -> {
+                    player.play()
+                    showControls(requestTransportFocus = false)
+                    scheduleControlsHide()
+                    return true
+                }
+                KeyEvent.KEYCODE_MEDIA_PAUSE -> {
+                    player.pause()
+                    showControls(requestTransportFocus = false)
+                    return true
+                }
+                KeyEvent.KEYCODE_J,
+                KeyEvent.KEYCODE_MEDIA_REWIND -> {
+                    seekBy(-SEEK_INCREMENT_MS)
+                    showControls(requestTransportFocus = false)
+                    scheduleControlsHide()
+                    return true
+                }
+                KeyEvent.KEYCODE_L,
+                KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
+                    seekBy(SEEK_INCREMENT_MS)
+                    showControls(requestTransportFocus = false)
+                    scheduleControlsHide()
+                    return true
+                }
+                KeyEvent.KEYCODE_S,
+                KeyEvent.KEYCODE_MEDIA_STOP -> {
+                    if (event.repeatCount == 0) {
+                        player.stop()
+                        finish()
+                    }
+                    return true
+                }
+                KeyEvent.KEYCODE_M -> {
+                    if (event.repeatCount == 0) toggleKeyboardMute()
+                    return true
+                }
+                KeyEvent.KEYCODE_DPAD_LEFT -> if (alphabeticKeyboard) {
+                    seekBy(-SEEK_INCREMENT_MS)
+                    showControls(requestTransportFocus = false)
+                    scheduleControlsHide()
+                    return true
+                }
+                KeyEvent.KEYCODE_DPAD_RIGHT -> if (alphabeticKeyboard) {
+                    seekBy(SEEK_INCREMENT_MS)
+                    showControls(requestTransportFocus = false)
+                    scheduleControlsHide()
+                    return true
+                }
+            }
+        }
         if (
             event.action == KeyEvent.ACTION_DOWN &&
             event.keyCode != KeyEvent.KEYCODE_VOLUME_UP &&
@@ -1250,26 +1332,6 @@ class Media3PlayerActivity : Activity() {
                 KeyEvent.KEYCODE_CHANNEL_DOWN,
                 KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
                     openPlaylistItem(playlistIndex - 1)
-                    return true
-                }
-                KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
-                    togglePlayPause()
-                    return true
-                }
-                KeyEvent.KEYCODE_MEDIA_PLAY -> {
-                    player.play()
-                    return true
-                }
-                KeyEvent.KEYCODE_MEDIA_PAUSE -> {
-                    player.pause()
-                    return true
-                }
-                KeyEvent.KEYCODE_MEDIA_REWIND -> {
-                    seekBy(-SEEK_INCREMENT_MS)
-                    return true
-                }
-                KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
-                    seekBy(SEEK_INCREMENT_MS)
                     return true
                 }
             }

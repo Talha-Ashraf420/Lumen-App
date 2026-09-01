@@ -75,6 +75,22 @@ The complete 1920×1080 Android TV upload set and specifications are available i
 - **TV remote / D-pad** navigation on Android TV (focus highlights, direct transport)
 - **Desktop-native** layout (sidebar, keyboard shortcuts, real fullscreen)
 
+### Player keyboard shortcuts
+
+| Key | Action |
+| --- | --- |
+| `Space` or `K` | Play / pause |
+| `Left` or `J` | Seek backward 10 seconds |
+| `Right` or `L` | Seek forward 10 seconds |
+| `Up` / `Down` | Volume up / down |
+| `M` | Mute / unmute |
+| `F` | Toggle fullscreen |
+| `S` | Stop and close the player |
+| `Escape` | Return to the app |
+
+Arrow keys remain dedicated to focus navigation on Android TV remotes; a
+physical keyboard connected to a TV can use `J` and `L` to seek.
+
 ## 📺 Android TV
 
 The APK is leanback-enabled and appears on the Android TV / Google TV home row.
