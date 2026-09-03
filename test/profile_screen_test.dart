@@ -292,6 +292,7 @@ void main() {
       'Downloads',
       'Refresh library',
       'Clear watch history',
+      'Diagnostics & feedback',
       'Legal & privacy',
       if (Updater.instance.isEnabled) 'Check for updates',
       'Sign out of Lumen',

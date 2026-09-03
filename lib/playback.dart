@@ -256,6 +256,14 @@ class PlayerItem {
   });
 }
 
+/// Returns the active playlist item without trusting transient controller
+/// state. Session changes can clear [items] before the native player has been
+/// disposed, so cleanup code must treat an empty or stale index as no media.
+PlayerItem? playbackItemAt(List<PlayerItem> items, int index) {
+  if (index < 0 || index >= items.length) return null;
+  return items[index];
+}
+
 enum PlaybackFailureKind {
   invalidAddress,
   authorization,
@@ -499,8 +507,10 @@ class PlaybackController extends ChangeNotifier {
 
   Timer? _reconnectTimer;
 
-  bool get hasMedia => player != null && items.isNotEmpty;
-  PlayerItem get item => items[index];
+  PlayerItem? get currentItem =>
+      player == null ? null : playbackItemAt(items, index);
+  bool get hasMedia => currentItem != null;
+  PlayerItem get item => currentItem!;
   bool get isLive => hasMedia && item.isLive;
   bool get hasNext => index < items.length - 1;
   bool get hasPrev => index > 0;
@@ -1050,16 +1060,19 @@ class PlaybackController extends ChangeNotifier {
   }
 
   void persistProgress() {
-    if (player == null || isLive || item.progressKey == null) return;
+    final current = currentItem;
+    if (current == null || current.isLive || current.progressKey == null) {
+      return;
+    }
     final dur = player!.state.duration, pos = player!.state.position;
     if (dur.inSeconds <= 0) return;
     Library.instance.saveProgress(
       Progress(
-        key: item.progressKey!,
-        title: item.title,
-        poster: item.poster,
-        url: item.url,
-        ext: item.ext,
+        key: current.progressKey!,
+        title: current.title,
+        poster: current.poster,
+        url: current.url,
+        ext: current.ext,
         position: pos.inSeconds,
         duration: dur.inSeconds,
         updatedAt: DateTime.now().millisecondsSinceEpoch,

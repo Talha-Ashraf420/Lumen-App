@@ -257,6 +257,13 @@ class LegalScreen extends StatelessWidget {
                                         body:
                                             'You are responsible for configured services, media rights and applicable laws. Do not use Lumen to infringe copyright or bypass access controls.',
                                       ),
+                                      _Section(
+                                        width: cardWidth,
+                                        index: '06',
+                                        title: 'Diagnostics you control',
+                                        body:
+                                            'Lumen keeps a short, in-memory event log for troubleshooting. A diagnostic report is created only when you open it, removes provider addresses, credentials, playlist URLs, media titles and watch history, and is never uploaded unless you choose to share it.',
+                                      ),
                                     ],
                                   ),
                                   const SizedBox(height: 24),

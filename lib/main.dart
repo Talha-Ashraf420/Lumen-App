@@ -9,6 +9,7 @@ import 'catalog_cache.dart';
 import 'demo_catalog.dart';
 import 'downloads.dart';
 import 'device_profile.dart';
+import 'diagnostics.dart';
 import 'home_config.dart';
 import 'models.dart';
 import 'playback.dart';
@@ -29,7 +30,31 @@ import 'screens/splash_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  final previousFlutterError = FlutterError.onError;
+  FlutterError.onError = (details) {
+    AppDiagnostics.instance.record(
+      'App',
+      'Framework error (${details.exception.runtimeType})',
+    );
+    if (previousFlutterError != null) {
+      previousFlutterError(details);
+    } else {
+      FlutterError.presentError(details);
+    }
+  };
+  final previousPlatformError = PlatformDispatcher.instance.onError;
+  PlatformDispatcher.instance.onError = (error, stack) {
+    AppDiagnostics.instance.record(
+      'App',
+      'Unhandled error (${error.runtimeType})',
+    );
+    return previousPlatformError?.call(error, stack) ?? false;
+  };
   await DeviceProfile.detect();
+  AppDiagnostics.instance.record(
+    'App',
+    DeviceProfile.isTelevision ? 'Started on television' : 'Started',
+  );
   if (!kIsWeb && Platform.isAndroid && !DeviceProfile.isTelevision) {
     await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   }
@@ -243,6 +268,12 @@ class _SessionGateState extends State<SessionGate> {
       _legalAccepted = values[1] as bool;
       _loading = false;
     });
+    AppDiagnostics.instance.record(
+      'Session',
+      credentials == null
+          ? 'Restored signed-out session'
+          : 'Restored ${AppDiagnostics.sourceLabel(credentials)} session',
+    );
     unawaited(_guardProfileState(profileState));
   }
 
@@ -268,6 +299,10 @@ class _SessionGateState extends State<SessionGate> {
     try {
       await activation;
     } catch (error, stack) {
+      AppDiagnostics.instance.record(
+        'Session',
+        'Profile state hydration failed (${error.runtimeType})',
+      );
       debugPrint('Profile state hydration failed: $error\n$stack');
     }
   }
@@ -286,6 +321,12 @@ class _SessionGateState extends State<SessionGate> {
       _client = null;
       _loading = false;
     });
+    AppDiagnostics.instance.record(
+      'Session',
+      credentials == null
+          ? 'Activated signed-out state'
+          : 'Activated ${AppDiagnostics.sourceLabel(credentials)}',
+    );
 
     _guardSessionStep('previous client', () => previousClient?.close());
     activeClient = null;
@@ -307,20 +348,33 @@ class _SessionGateState extends State<SessionGate> {
     try {
       action();
     } catch (error, stack) {
+      AppDiagnostics.instance.record(
+        'Session',
+        '$label cleanup failed (${error.runtimeType})',
+      );
       debugPrint('Session $label cleanup failed: $error\n$stack');
     }
   }
 
   void _onLogin(XtreamCredentials c) {
+    AppDiagnostics.instance.record(
+      'Session',
+      'Login completed (${AppDiagnostics.sourceLabel(c)})',
+    );
     _activate(c);
   }
 
   Future<void> _switchTo(XtreamCredentials c) async {
     await Store.setActive(c);
+    AppDiagnostics.instance.record(
+      'Session',
+      'Profile switched (${AppDiagnostics.sourceLabel(c)})',
+    );
     if (mounted) _activate(c);
   }
 
   Future<void> _onLogout() async {
+    AppDiagnostics.instance.record('Session', 'Sign-out started');
     final change = ++_sessionChange;
     final previousClient = _client;
     if (mounted) {
@@ -331,7 +385,11 @@ class _SessionGateState extends State<SessionGate> {
     }
     try {
       await Store.logout().timeout(const Duration(seconds: 6));
-    } catch (_) {
+    } catch (error) {
+      AppDiagnostics.instance.record(
+        'Session',
+        'Sign-out failed (${error.runtimeType})',
+      );
       if (mounted && change == _sessionChange) {
         setState(() => _loading = false);
       }
@@ -350,6 +408,7 @@ class _SessionGateState extends State<SessionGate> {
       _loading = false;
       _loadingLabel = 'RESTORING YOUR SESSION';
     });
+    AppDiagnostics.instance.record('Session', 'Sign-out completed');
     activeClient = null;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {

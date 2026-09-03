@@ -37,6 +37,25 @@ enum PlayerKeyboardCommand {
   stop,
 }
 
+enum PlayerRecoveryFocusTarget { none, retryAction, player }
+
+/// Recovery UI is inserted after the player already owns focus. Explicitly
+/// move focus into the failure actions when retries end, then return it to the
+/// player when a retry starts or a new source is selected.
+PlayerRecoveryFocusTarget playerRecoveryFocusTargetFor({
+  required bool wasExhausted,
+  required bool isExhausted,
+  required bool hasMedia,
+  required bool minimized,
+}) {
+  if (!hasMedia || minimized || wasExhausted == isExhausted) {
+    return PlayerRecoveryFocusTarget.none;
+  }
+  return isExhausted
+      ? PlayerRecoveryFocusTarget.retryAction
+      : PlayerRecoveryFocusTarget.player;
+}
+
 /// Maps physical-keyboard shortcuts without stealing D-pad arrows from a TV
 /// remote. Letter shortcuts still work when a keyboard is connected to a TV.
 PlayerKeyboardCommand? playerKeyboardCommandFor(
@@ -94,6 +113,9 @@ class _PlayerHostState extends State<PlayerHost> {
   final pc = PlaybackController.instance;
   final FocusNode _focus = FocusNode();
   final FocusNode _transportFocus = FocusNode(debugLabel: 'player transport');
+  final FocusNode _recoveryActionFocus = FocusNode(
+    debugLabel: 'player retry action',
+  );
   final FocusScopeNode _playerFocusScope = FocusScopeNode(
     debugLabel: 'player controls',
   );
@@ -111,6 +133,7 @@ class _PlayerHostState extends State<PlayerHost> {
   double _rate = 1.0;
   double _zoomScale = 1.0, _zoomStart = 1.0;
   bool _hadMedia = false;
+  bool _wasRetryExhausted = false;
   String? _lastItemUrl;
   bool _introDismissed = false; // hides the Skip-intro pill once used/dismissed
 
@@ -198,6 +221,7 @@ class _PlayerHostState extends State<PlayerHost> {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     }
     _subQueryCtrl.dispose();
+    _recoveryActionFocus.dispose();
     _transportFocus.dispose();
     _focus.dispose();
     _panelFocusScope.dispose();
@@ -650,6 +674,12 @@ class _PlayerHostState extends State<PlayerHost> {
 
   void _onPc() {
     final has = pc.hasMedia;
+    final recoveryFocusTarget = playerRecoveryFocusTargetFor(
+      wasExhausted: _wasRetryExhausted,
+      isExhausted: pc.retryExhausted,
+      hasMedia: has,
+      minimized: pc.minimized,
+    );
     final itemUrl = has
         ? '${pc.item.url}\n${pc.item.progressKey ?? ''}\n${pc.item.title}'
         : null;
@@ -671,7 +701,24 @@ class _PlayerHostState extends State<PlayerHost> {
     }
     _lastItemUrl = itemUrl;
     _hadMedia = has;
+    _wasRetryExhausted = pc.retryExhausted;
     if (mounted) setState(() {});
+    if (recoveryFocusTarget != PlayerRecoveryFocusTarget.none) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !pc.hasMedia || pc.minimized) return;
+        switch (recoveryFocusTarget) {
+          case PlayerRecoveryFocusTarget.retryAction:
+            if (_recoveryActionFocus.context != null &&
+                _recoveryActionFocus.canRequestFocus) {
+              _recoveryActionFocus.requestFocus();
+            }
+          case PlayerRecoveryFocusTarget.player:
+            _focus.requestFocus();
+          case PlayerRecoveryFocusTarget.none:
+            break;
+        }
+      });
+    }
   }
 
   void _resetForItem() {
@@ -1642,6 +1689,7 @@ class _PlayerHostState extends State<PlayerHost> {
         children: [
           FilledButton.icon(
             autofocus: true,
+            focusNode: _recoveryActionFocus,
             style: FilledButton.styleFrom(
               backgroundColor: accent,
               foregroundColor: onAccent,

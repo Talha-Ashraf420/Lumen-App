@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../device_profile.dart';
 import '../downloads.dart';
 import '../home_config.dart';
 import '../library.dart';
@@ -14,6 +15,7 @@ import '../widgets.dart';
 import '../xtream.dart';
 import 'customize_home_screen.dart';
 import 'downloads_screen.dart';
+import 'diagnostics_screen.dart';
 import 'login_screen.dart';
 import 'legal_screen.dart';
 import 'update_dialog.dart';
@@ -41,6 +43,15 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   final _entryFocus = FocusNode(debugLabel: 'Profile add account');
+  final _customizeFocus = FocusNode(debugLabel: 'Customize Home');
+  final _insightsFocus = FocusNode(debugLabel: 'Watch insights');
+  final _downloadsFocus = FocusNode(debugLabel: 'Downloads');
+  final _refreshFocus = FocusNode(debugLabel: 'Refresh library');
+  final _historyFocus = FocusNode(debugLabel: 'Clear watch history');
+  final _diagnosticsFocus = FocusNode(debugLabel: 'Diagnostics & feedback');
+  final _legalFocus = FocusNode(debugLabel: 'Legal & privacy');
+  final _updateFocus = FocusNode(debugLabel: 'Check for updates');
+  final _signOutFocus = FocusNode(debugLabel: 'Sign out of Lumen');
   Map<String, dynamic>? _info;
   List<XtreamCredentials> _profiles = [];
   bool _accountInfoLoading = true;
@@ -86,6 +97,40 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   FocusNode get _entryFocusNode => widget.entryFocusNode ?? _entryFocus;
+
+  KeyEventResult _moveVertically(
+    KeyEvent event, {
+    FocusNode? up,
+    FocusNode? down,
+  }) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    final target = switch (event.logicalKey) {
+      LogicalKeyboardKey.arrowUp => up,
+      LogicalKeyboardKey.arrowDown => down,
+      _ => null,
+    };
+    if (target == null || !target.canRequestFocus) {
+      return KeyEventResult.ignored;
+    }
+    target.requestFocus();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final targetContext = target.context;
+      if (!mounted || !target.hasFocus || targetContext == null) return;
+      Scrollable.ensureVisible(
+        targetContext,
+        duration: DeviceProfile.isTelevision
+            ? Duration.zero
+            : const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+        alignmentPolicy: event.logicalKey == LogicalKeyboardKey.arrowUp
+            ? ScrollPositionAlignmentPolicy.keepVisibleAtStart
+            : ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+      );
+    });
+    return KeyEventResult.handled;
+  }
 
   @override
   void initState() {
@@ -310,6 +355,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void dispose() {
     _entryFocus.dispose();
+    _customizeFocus.dispose();
+    _insightsFocus.dispose();
+    _downloadsFocus.dispose();
+    _refreshFocus.dispose();
+    _historyFocus.dispose();
+    _diagnosticsFocus.dispose();
+    _legalFocus.dispose();
+    _updateFocus.dispose();
+    _signOutFocus.dispose();
     super.dispose();
   }
 
@@ -640,6 +694,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       AnimatedBuilder(
         animation: HomeConfig.instance,
         builder: (_, child) => _actionRow(
+          focusNode: _customizeFocus,
+          onKeyEvent: (_, event) =>
+              _moveVertically(event, down: _insightsFocus),
           icon: Icons.dashboard_customize_rounded,
           title: 'Customize Home',
           subtitle: HomeConfig.instance.isCustom
@@ -661,6 +718,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     subtitle: 'Manage viewing activity, offline items and catalog data.',
     body: [
       _actionRow(
+        focusNode: _insightsFocus,
+        onKeyEvent: (_, event) =>
+            _moveVertically(event, up: _customizeFocus, down: _downloadsFocus),
         icon: Icons.insights_rounded,
         title: 'Watch insights',
         subtitle: 'See your viewing activity',
@@ -674,6 +734,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         builder: (_, child) {
           final n = Downloads.instance.completedCount;
           return _actionRow(
+            focusNode: _downloadsFocus,
+            onKeyEvent: (_, event) =>
+                _moveVertically(event, up: _insightsFocus, down: _refreshFocus),
             icon: Icons.download_rounded,
             title: 'Downloads',
             subtitle: n == 0 ? 'No offline items' : '$n available offline',
@@ -687,6 +750,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
       _divider(),
       _actionRow(
+        focusNode: _refreshFocus,
+        onKeyEvent: (_, event) =>
+            _moveVertically(event, up: _downloadsFocus, down: _historyFocus),
         icon: Icons.refresh_rounded,
         title: 'Refresh library',
         subtitle: 'Reload channels, films and series',
@@ -704,6 +770,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
       _divider(),
       _actionRow(
+        focusNode: _historyFocus,
+        onKeyEvent: (_, event) =>
+            _moveVertically(event, up: _refreshFocus, down: _diagnosticsFocus),
         icon: Icons.history_rounded,
         title: 'Clear watch history',
         subtitle: 'Remove Continue watching and Recent',
@@ -720,6 +789,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
     subtitle: 'Review policies and keep this installation current.',
     body: [
       _actionRow(
+        focusNode: _diagnosticsFocus,
+        onKeyEvent: (_, event) =>
+            _moveVertically(event, up: _historyFocus, down: _legalFocus),
+        icon: Icons.bug_report_outlined,
+        title: 'Diagnostics & feedback',
+        subtitle: 'Review a private, redacted support report',
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => DiagnosticsScreen(credentials: widget.client.creds),
+          ),
+        ),
+      ),
+      _divider(),
+      _actionRow(
+        focusNode: _legalFocus,
+        onKeyEvent: (_, event) => _moveVertically(
+          event,
+          up: _diagnosticsFocus,
+          down: Updater.instance.isEnabled ? _updateFocus : _signOutFocus,
+        ),
         icon: Icons.privacy_tip_outlined,
         title: 'Legal & privacy',
         subtitle: privacyPolicyUrl.contains('github.io')
@@ -732,6 +821,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (Updater.instance.isEnabled) ...[
         _divider(),
         _actionRow(
+          focusNode: _updateFocus,
+          onKeyEvent: (_, event) =>
+              _moveVertically(event, up: _legalFocus, down: _signOutFocus),
           icon: Icons.system_update_rounded,
           title: 'Check for updates',
           subtitle: _checkingUpdate
@@ -809,6 +901,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   );
 
   Widget _actionRow({
+    FocusNode? focusNode,
+    FocusOnKeyEventCallback? onKeyEvent,
     required IconData icon,
     required String title,
     required String subtitle,
@@ -820,6 +914,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final dangerColor = dangerInk;
     final iconColor = danger ? dangerColor : accentInk;
     return RemoteTap(
+      focusNode: focusNode,
+      onKeyEvent: onKeyEvent,
       onTap: onTap,
       semanticLabel: title,
       focusRadius: 14,
@@ -875,6 +971,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _signOutButton() => RemoteTap(
+    focusNode: _signOutFocus,
+    onKeyEvent: (_, event) => _moveVertically(
+      event,
+      up: Updater.instance.isEnabled ? _updateFocus : _legalFocus,
+    ),
     onTap: _signingOut ? null : _requestLogout,
     semanticLabel: 'Sign out of Lumen',
     focusRadius: 18,

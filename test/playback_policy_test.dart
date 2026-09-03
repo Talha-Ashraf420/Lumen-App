@@ -54,6 +54,19 @@ void main() {
     );
   });
 
+  test('stale playlist indexes are safe during session cleanup', () {
+    const item = PlayerItem(
+      'https://provider.example/movie.mp4',
+      'Movie',
+      progressKey: 'movie:1',
+    );
+
+    expect(playbackItemAt(const [], 0), isNull);
+    expect(playbackItemAt(const [item], -1), isNull);
+    expect(playbackItemAt(const [item], 1), isNull);
+    expect(playbackItemAt(const [item], 0), same(item));
+  });
+
   test(
     'playback rejects missing addresses and accepts streaming protocols',
     () {

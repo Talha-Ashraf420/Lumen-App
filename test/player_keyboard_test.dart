@@ -3,6 +3,36 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen_tv/screens/player_host.dart';
 
 void main() {
+  test('recovery focus enters actions and returns to the player', () {
+    expect(
+      playerRecoveryFocusTargetFor(
+        wasExhausted: false,
+        isExhausted: true,
+        hasMedia: true,
+        minimized: false,
+      ),
+      PlayerRecoveryFocusTarget.retryAction,
+    );
+    expect(
+      playerRecoveryFocusTargetFor(
+        wasExhausted: true,
+        isExhausted: false,
+        hasMedia: true,
+        minimized: false,
+      ),
+      PlayerRecoveryFocusTarget.player,
+    );
+    expect(
+      playerRecoveryFocusTargetFor(
+        wasExhausted: false,
+        isExhausted: true,
+        hasMedia: true,
+        minimized: true,
+      ),
+      PlayerRecoveryFocusTarget.none,
+    );
+  });
+
   test('desktop player maps standard transport shortcuts', () {
     expect(
       playerKeyboardCommandFor(LogicalKeyboardKey.space, isTelevision: false),
