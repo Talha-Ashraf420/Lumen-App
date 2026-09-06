@@ -179,9 +179,47 @@ bool _isRemoteTextActivation(KeyEvent event) {
 /// Android TV does not consistently open its IME when a remote activates a
 /// focused Flutter text field, so OK/Enter explicitly asks the platform to
 /// show it.
-class RemoteTextInput extends StatelessWidget {
+class RemoteTextInput extends StatefulWidget {
   const RemoteTextInput({super.key, required this.child});
   final Widget child;
+
+  @override
+  State<RemoteTextInput> createState() => _RemoteTextInputState();
+}
+
+class _RemoteTextInputState extends State<RemoteTextInput> {
+  final GlobalKey _editableSubtreeKey = GlobalKey();
+
+  EditableTextState? _editableTextState() {
+    final root = _editableSubtreeKey.currentContext;
+    if (root == null) return null;
+
+    EditableTextState? result;
+    void visit(Element element) {
+      if (result != null) return;
+      if (element is StatefulElement && element.state is EditableTextState) {
+        result = element.state as EditableTextState;
+        return;
+      }
+      element.visitChildElements(visit);
+    }
+
+    root.visitChildElements(visit);
+    return result;
+  }
+
+  void _requestKeyboard() {
+    final editable = _editableTextState();
+    if (editable != null) {
+      // requestKeyboard establishes (or repairs) the TextInputClient before
+      // asking Android to display its IME. Calling TextInput.show directly can
+      // leave some Android TV keyboards visible but disconnected from the
+      // Flutter field, so selected characters never reach the controller.
+      editable.requestKeyboard();
+      return;
+    }
+    unawaited(SystemChannels.textInput.invokeMethod<void>('TextInput.show'));
+  }
 
   @override
   Widget build(BuildContext context) => Focus(
@@ -189,9 +227,7 @@ class RemoteTextInput extends StatelessWidget {
     skipTraversal: true,
     onKeyEvent: (_, event) {
       if (_isRemoteTextActivation(event)) {
-        unawaited(
-          SystemChannels.textInput.invokeMethod<void>('TextInput.show'),
-        );
+        _requestKeyboard();
         return KeyEventResult.handled;
       }
       if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
@@ -208,7 +244,7 @@ class RemoteTextInput extends StatelessWidget {
           ? KeyEventResult.handled
           : KeyEventResult.ignored;
     },
-    child: child,
+    child: KeyedSubtree(key: _editableSubtreeKey, child: widget.child),
   );
 }
 

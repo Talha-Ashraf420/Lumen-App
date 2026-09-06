@@ -8,6 +8,7 @@ import 'package:lumen_tv/device_profile.dart';
 import 'package:lumen_tv/models.dart';
 import 'package:lumen_tv/screens/login_screen.dart';
 import 'package:lumen_tv/theme.dart';
+import 'package:lumen_tv/widgets.dart';
 import 'package:lumen_tv/xtream.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -290,6 +291,56 @@ void main() {
       isNotEmpty,
     );
     expect(urlField.focusNode!.hasFocus, isTrue);
+  });
+
+  testWidgets('TV OK reconnects a closed keyboard to the login field', (
+    tester,
+  ) async {
+    DeviceProfile.isTelevision = true;
+    addTearDown(() => DeviceProfile.isTelevision = false);
+
+    await pumpLogin(tester, clientFactory: _SuccessfulLoginClient.new);
+    final urlFinder = find.byType(TextField).first;
+    final urlField = tester.widget<TextField>(urlFinder);
+    urlField.focusNode!.requestFocus();
+    await tester.pump();
+    expect(urlField.focusNode!.hasFocus, isTrue);
+    expect(tester.testTextInput.hasAnyClients, isTrue);
+
+    tester.testTextInput.closeConnection();
+    await tester.pumpAndSettle();
+    expect(urlField.focusNode!.hasFocus, isFalse);
+
+    final remoteInput = find.ancestor(
+      of: urlFinder,
+      matching: find.byType(RemoteTextInput),
+    );
+    final activationFocus = find
+        .descendant(
+          of: remoteInput,
+          matching: find.byWidgetPredicate(
+            (widget) => widget is Focus && widget.onKeyEvent != null,
+          ),
+        )
+        .first;
+    final focusWidget = tester.widget<Focus>(activationFocus);
+    final result = focusWidget.onKeyEvent!(
+      FocusNode(),
+      const KeyDownEvent(
+        physicalKey: PhysicalKeyboardKey.select,
+        logicalKey: LogicalKeyboardKey.select,
+        timeStamp: Duration.zero,
+      ),
+    );
+    await tester.pump();
+
+    expect(result, KeyEventResult.handled);
+    expect(urlField.focusNode!.hasFocus, isTrue);
+    expect(tester.testTextInput.hasAnyClients, isTrue);
+
+    tester.testTextInput.enterText('http://tv.example');
+    await tester.pump();
+    expect(find.text('http://tv.example'), findsOneWidget);
   });
 
   test('provider errors never expose a credential-bearing URI', () {
