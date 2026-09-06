@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io' show Platform;
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
@@ -19,6 +18,11 @@ class DeviceProfile {
 
   static bool isTelevision = false;
 
+  /// Native panel mode rather than Flutter's render-surface size. Several 4K
+  /// Android TVs render applications into a 1080p surface, so MediaQuery alone
+  /// cannot tell that their density needs normalising.
+  static Size? televisionPanelSize;
+
   static Future<void> detect() async {
     // Lets local/emulator builds exercise the real TV paths without changing
     // production detection. The flag is absent from shipping builds.
@@ -28,6 +32,7 @@ class DeviceProfile {
     }
     if (kIsWeb || !Platform.isAndroid) {
       isTelevision = false;
+      televisionPanelSize = null;
       return;
     }
     try {
@@ -39,6 +44,22 @@ class DeviceProfile {
     } catch (_) {
       // Feature detection is an optimization, never a startup requirement.
       isTelevision = false;
+    }
+    televisionPanelSize = null;
+    if (isTelevision) {
+      try {
+        final dimensions = await _channel
+            .invokeMapMethod<String, dynamic>('displaySize')
+            .timeout(const Duration(milliseconds: 500));
+        final width = (dimensions?['width'] as num?)?.toDouble() ?? 0;
+        final height = (dimensions?['height'] as num?)?.toDouble() ?? 0;
+        televisionPanelSize = width > 0 && height > 0
+            ? Size(width, height)
+            : null;
+      } catch (_) {
+        // Retain television behaviour if an unusual vendor cannot expose its
+        // native panel mode; Flutter surface metrics remain the fallback.
+      }
     }
   }
 }

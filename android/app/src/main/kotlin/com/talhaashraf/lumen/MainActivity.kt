@@ -106,6 +106,26 @@ class MainActivity : FlutterActivity() {
         ).setMethodCallHandler { call, result ->
             when (call.method) {
                 "isTelevision" -> result.success(isTelevision())
+                "displaySize" -> {
+                    val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        // Android TV may render its launcher and apps at 1080p
+                        // even while driving a 4K panel. The largest supported
+                        // mode reveals the real panel class more reliably than
+                        // only inspecting the currently selected mode.
+                        display?.supportedModes?.maxByOrNull {
+                            it.physicalWidth.toLong() * it.physicalHeight.toLong()
+                        } ?: display?.mode
+                    } else {
+                        null
+                    }
+                    val metrics = resources.displayMetrics
+                    result.success(
+                        mapOf(
+                            "width" to (mode?.physicalWidth ?: metrics.widthPixels),
+                            "height" to (mode?.physicalHeight ?: metrics.heightPixels)
+                        )
+                    )
+                }
                 else -> result.notImplemented()
             }
         }
