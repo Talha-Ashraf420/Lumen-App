@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -164,8 +165,20 @@ class _RemoteFocusVisibilityState extends State<RemoteFocusVisibility> {
   Widget build(BuildContext context) => widget.child;
 }
 
+bool _isRemoteTextActivation(KeyEvent event) {
+  if (event is! KeyDownEvent) return false;
+  return event.logicalKey == LogicalKeyboardKey.select ||
+      event.logicalKey == LogicalKeyboardKey.enter ||
+      event.logicalKey == LogicalKeyboardKey.numpadEnter ||
+      event.logicalKey == LogicalKeyboardKey.space ||
+      event.logicalKey == LogicalKeyboardKey.gameButtonA;
+}
+
 /// Text fields consume arrow keys for cursor movement. On TV, Up and Down are
 /// navigation commands, so pass them back to directional focus traversal.
+/// Android TV does not consistently open its IME when a remote activates a
+/// focused Flutter text field, so OK/Enter explicitly asks the platform to
+/// show it.
 class RemoteTextInput extends StatelessWidget {
   const RemoteTextInput({super.key, required this.child});
   final Widget child;
@@ -175,6 +188,12 @@ class RemoteTextInput extends StatelessWidget {
     canRequestFocus: false,
     skipTraversal: true,
     onKeyEvent: (_, event) {
+      if (_isRemoteTextActivation(event)) {
+        unawaited(
+          SystemChannels.textInput.invokeMethod<void>('TextInput.show'),
+        );
+        return KeyEventResult.handled;
+      }
       if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
         return KeyEventResult.ignored;
       }

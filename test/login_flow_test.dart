@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+import 'package:lumen_tv/device_profile.dart';
 import 'package:lumen_tv/models.dart';
 import 'package:lumen_tv/screens/login_screen.dart';
 import 'package:lumen_tv/theme.dart';
@@ -33,6 +34,7 @@ void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
     activePalette = darkPalette;
+    DeviceProfile.isTelevision = false;
   });
 
   Future<void> pumpLogin(
@@ -233,6 +235,61 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
     await tester.pump(const Duration(milliseconds: 220));
     expect(playlist.focusNode!.hasFocus, isTrue);
+  });
+
+  testWidgets('TV login starts on the server field instead of submit', (
+    tester,
+  ) async {
+    DeviceProfile.isTelevision = true;
+    addTearDown(() => DeviceProfile.isTelevision = false);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildTheme(darkPalette),
+        home: LoginScreen(
+          onLogin: (_) {},
+          clientFactory: _SuccessfulLoginClient.new,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final fields = tester
+        .widgetList<TextField>(find.byType(TextField))
+        .toList();
+    final submit = tester.widget<FilledButton>(find.bySubtype<FilledButton>());
+    expect(fields.first.focusNode!.hasFocus, isTrue);
+    expect(submit.focusNode!.hasFocus, isFalse);
+  });
+
+  testWidgets('TV OK opens the keyboard for a focused login field', (
+    tester,
+  ) async {
+    final textInputCalls = <MethodCall>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.textInput, (call) async {
+          textInputCalls.add(call);
+          return null;
+        });
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.textInput, null),
+    );
+
+    await pumpLogin(tester, clientFactory: _SuccessfulLoginClient.new);
+    final urlField = tester.widget<TextField>(find.byType(TextField).first);
+    urlField.focusNode!.requestFocus();
+    await tester.pump();
+    textInputCalls.clear();
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await tester.pump();
+
+    expect(
+      textInputCalls.where((call) => call.method == 'TextInput.show'),
+      isNotEmpty,
+    );
+    expect(urlField.focusNode!.hasFocus, isTrue);
   });
 
   test('provider errors never expose a credential-bearing URI', () {

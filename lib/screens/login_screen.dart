@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../device_profile.dart';
 import '../models.dart';
 import '../distribution.dart';
 import '../responsive.dart';
@@ -593,6 +594,7 @@ class _LoginScreenState extends State<LoginScreen> {
           focusNode: _urlFocus,
           nextFocus: _userFocus,
           hint: 'https://host:443',
+          autofocus: DeviceProfile.isTelevision,
         ),
         const SizedBox(height: 11),
         Row(
@@ -673,7 +675,7 @@ class _LoginScreenState extends State<LoginScreen> {
           width: double.infinity,
           child: FilledButton.icon(
             focusNode: _submitFocus,
-            autofocus: true,
+            autofocus: !DeviceProfile.isTelevision,
             style: FilledButton.styleFrom(
               backgroundColor: accent,
               foregroundColor: onAccent,
@@ -792,11 +794,13 @@ class _LoginScreenState extends State<LoginScreen> {
     required FocusNode nextFocus,
     String? hint,
     bool obscure = false,
+    bool autofocus = false,
   }) {
     return RemoteTextInput(
       child: TextField(
         controller: c,
         focusNode: focusNode,
+        autofocus: autofocus,
         obscureText: obscure,
         autocorrect: false,
         enableSuggestions: false,
