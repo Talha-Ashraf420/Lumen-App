@@ -444,9 +444,18 @@ void main() {
     await tester.pump();
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
     await tester.pump();
-    expect(FocusManager.instance.primaryFocus?.debugLabel, 'Catalog sort');
-    await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
-    await tester.pump();
+    expect(
+      FocusManager.instance.primaryFocus?.debugLabel,
+      'movie category all',
+    );
+    for (var i = 0; i < 4; i++) {
+      if (FocusManager.instance.primaryFocus?.debugLabel ==
+          'Command find anything') {
+        break;
+      }
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      await tester.pump();
+    }
     expect(
       FocusManager.instance.primaryFocus?.debugLabel,
       'Command find anything',
@@ -508,9 +517,9 @@ void main() {
       ('Search', ('Search library', 'Command refresh')),
       ('My List', ('My List filter 0', 'Command find anything')),
       ('Profile', ('Profile add account', 'Command find anything')),
-      ('Movies', ('Catalog sort', 'Command find anything')),
-      ('Series', ('Catalog sort', 'Command find anything')),
-      ('Live', ('Catalog sort', 'Command find anything')),
+      ('Movies', ('movie category all', 'Command find anything')),
+      ('Series', ('series category all', 'Command find anything')),
+      ('Live', ('live category all', 'Command find anything')),
       ('Downloads', ('Downloads filter 0', 'Command find anything')),
     ];
 
@@ -532,8 +541,13 @@ void main() {
         route.$2.$1,
         reason: '${route.$1} must have a stable page entry.',
       );
-      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
-      await tester.pump(const Duration(milliseconds: 80));
+      for (var i = 0; i < 5; i++) {
+        if (FocusManager.instance.primaryFocus?.debugLabel == route.$2.$2) {
+          break;
+        }
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+        await tester.pump(const Duration(milliseconds: 80));
+      }
       expect(
         FocusManager.instance.primaryFocus?.debugLabel,
         route.$2.$2,

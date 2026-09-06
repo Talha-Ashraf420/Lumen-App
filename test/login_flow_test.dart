@@ -8,7 +8,6 @@ import 'package:lumen_tv/device_profile.dart';
 import 'package:lumen_tv/models.dart';
 import 'package:lumen_tv/screens/login_screen.dart';
 import 'package:lumen_tv/theme.dart';
-import 'package:lumen_tv/widgets.dart';
 import 'package:lumen_tv/xtream.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -63,9 +62,18 @@ void main() {
       ),
     );
     await tester.pump();
-    await tester.enterText(find.byType(TextField).at(0), 'provider.example');
-    await tester.enterText(find.byType(TextField).at(1), 'viewer');
-    await tester.enterText(find.byType(TextField).at(2), 'secret');
+    for (final entry in <(int, String)>[
+      (0, 'provider.example'),
+      (1, 'viewer'),
+      (2, 'secret'),
+    ]) {
+      final field = tester.widget<TextField>(
+        find.byType(TextField).at(entry.$1),
+      );
+      field.controller!.text = entry.$2;
+      field.onChanged?.call(entry.$2);
+    }
+    await tester.pump(const Duration(seconds: 1));
   }
 
   testWidgets('login timeout always releases the busy state', (tester) async {
@@ -284,16 +292,18 @@ void main() {
     textInputCalls.clear();
 
     await tester.sendKeyEvent(LogicalKeyboardKey.select);
-    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
 
     expect(
       textInputCalls.where((call) => call.method == 'TextInput.show'),
       isNotEmpty,
     );
     expect(urlField.focusNode!.hasFocus, isTrue);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 1));
   });
 
-  testWidgets('TV OK reconnects a closed keyboard to the login field', (
+  testWidgets('TV OK opens a D-pad keyboard that edits the login field', (
     tester,
   ) async {
     DeviceProfile.isTelevision = true;
@@ -305,42 +315,22 @@ void main() {
     urlField.focusNode!.requestFocus();
     await tester.pump();
     expect(urlField.focusNode!.hasFocus, isTrue);
-    expect(tester.testTextInput.hasAnyClients, isTrue);
 
-    tester.testTextInput.closeConnection();
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
     await tester.pumpAndSettle();
-    expect(urlField.focusNode!.hasFocus, isFalse);
 
-    final remoteInput = find.ancestor(
-      of: urlFinder,
-      matching: find.byType(RemoteTextInput),
-    );
-    final activationFocus = find
-        .descendant(
-          of: remoteInput,
-          matching: find.byWidgetPredicate(
-            (widget) => widget is Focus && widget.onKeyEvent != null,
-          ),
-        )
-        .first;
-    final focusWidget = tester.widget<Focus>(activationFocus);
-    final result = focusWidget.onKeyEvent!(
-      FocusNode(),
-      const KeyDownEvent(
-        physicalKey: PhysicalKeyboardKey.select,
-        logicalKey: LogicalKeyboardKey.select,
-        timeStamp: Duration.zero,
-      ),
-    );
+    expect(find.text('TYPE WITH YOUR REMOTE'), findsOneWidget);
+
+    // The first keyboard key is focused automatically, so remote OK must
+    // write directly to the controller even on TVs with a broken vendor IME.
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
     await tester.pump();
+    expect(urlField.controller!.text, 'provider.example1');
 
-    expect(result, KeyEventResult.handled);
+    await tester.tap(find.text('DONE'));
+    await tester.pumpAndSettle();
+    expect(find.text('TYPE WITH YOUR REMOTE'), findsNothing);
     expect(urlField.focusNode!.hasFocus, isTrue);
-    expect(tester.testTextInput.hasAnyClients, isTrue);
-
-    tester.testTextInput.enterText('http://tv.example');
-    await tester.pump();
-    expect(find.text('http://tv.example'), findsOneWidget);
   });
 
   test('provider errors never expose a credential-bearing URI', () {

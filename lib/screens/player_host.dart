@@ -2698,6 +2698,8 @@ class _PlayerHostState extends State<PlayerHost> {
           RemoteTextInput(
             child: TextField(
               controller: _subQueryCtrl,
+              readOnly: DeviceProfile.isTelevision,
+              enableInteractiveSelection: !DeviceProfile.isTelevision,
               style: const TextStyle(color: Colors.white, fontSize: 14),
               textInputAction: TextInputAction.search,
               onSubmitted: (_) => _searchSubs(),

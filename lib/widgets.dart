@@ -189,6 +189,7 @@ class RemoteTextInput extends StatefulWidget {
 
 class _RemoteTextInputState extends State<RemoteTextInput> {
   final GlobalKey _editableSubtreeKey = GlobalKey();
+  bool _tvKeyboardOpen = false;
 
   EditableTextState? _editableTextState() {
     final root = _editableSubtreeKey.currentContext;
@@ -211,6 +212,10 @@ class _RemoteTextInputState extends State<RemoteTextInput> {
   void _requestKeyboard() {
     final editable = _editableTextState();
     if (editable != null) {
+      if (DeviceProfile.isTelevision) {
+        _showTvKeyboard(editable);
+        return;
+      }
       // requestKeyboard establishes (or repairs) the TextInputClient before
       // asking Android to display its IME. Calling TextInput.show directly can
       // leave some Android TV keyboards visible but disconnected from the
@@ -219,6 +224,44 @@ class _RemoteTextInputState extends State<RemoteTextInput> {
       return;
     }
     unawaited(SystemChannels.textInput.invokeMethod<void>('TextInput.show'));
+  }
+
+  void _showTvKeyboard(EditableTextState editable) {
+    if (_tvKeyboardOpen || !mounted) return;
+    _tvKeyboardOpen = true;
+    // Run after the activation key has completed. Opening a modal from inside
+    // Android's key dispatch can otherwise hand the same OK press to its first
+    // key and type an unwanted character.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) {
+        _tvKeyboardOpen = false;
+        return;
+      }
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: true,
+        builder: (_) => _TvKeyboardDialog(
+          controller: editable.widget.controller,
+          onChanged: editable.widget.onChanged,
+          obscureText: editable.widget.obscureText,
+          onDone: () => _tvKeyboardOpen = false,
+        ),
+      );
+      _tvKeyboardOpen = false;
+      if (!mounted) return;
+      // The field may have rebuilt while the dialog was editing its
+      // controller (search results do this on every character). Resolve the
+      // current EditableText after the route has closed and restore focus on
+      // the following frame so a second OK press can reopen the keyboard.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _editableTextState()?.widget.focusNode.requestFocus();
+      });
+    });
+    // A key event does not always schedule another frame (notably on some TV
+    // firmware and in widget tests). Without this, the deferred dialog can sit
+    // pending until unrelated UI activity occurs.
+    WidgetsBinding.instance.ensureVisualUpdate();
   }
 
   @override
@@ -246,6 +289,299 @@ class _RemoteTextInputState extends State<RemoteTextInput> {
     },
     child: KeyedSubtree(key: _editableSubtreeKey, child: widget.child),
   );
+}
+
+enum _TvKeyAction { insert, backspace, clear, done }
+
+class _TvKey {
+  const _TvKey(this.label, this.value, [this.action = _TvKeyAction.insert]);
+  final String label;
+  final String value;
+  final _TvKeyAction action;
+}
+
+/// A small D-pad-native keyboard used only on televisions. Several vendor TV
+/// keyboards draw correctly but never return selected letters to Flutter. This
+/// keeps credential entry usable on those devices without requiring a phone.
+class _TvKeyboardDialog extends StatefulWidget {
+  const _TvKeyboardDialog({
+    required this.controller,
+    required this.onDone,
+    this.onChanged,
+    this.obscureText = false,
+  });
+
+  final TextEditingController controller;
+  final VoidCallback onDone;
+  final ValueChanged<String>? onChanged;
+  final bool obscureText;
+
+  @override
+  State<_TvKeyboardDialog> createState() => _TvKeyboardDialogState();
+}
+
+class _TvKeyboardDialogState extends State<_TvKeyboardDialog> {
+  static const _columns = 10;
+  static const _keys = <_TvKey>[
+    _TvKey('1', '1'),
+    _TvKey('2', '2'),
+    _TvKey('3', '3'),
+    _TvKey('4', '4'),
+    _TvKey('5', '5'),
+    _TvKey('6', '6'),
+    _TvKey('7', '7'),
+    _TvKey('8', '8'),
+    _TvKey('9', '9'),
+    _TvKey('0', '0'),
+    _TvKey('q', 'q'),
+    _TvKey('w', 'w'),
+    _TvKey('e', 'e'),
+    _TvKey('r', 'r'),
+    _TvKey('t', 't'),
+    _TvKey('y', 'y'),
+    _TvKey('u', 'u'),
+    _TvKey('i', 'i'),
+    _TvKey('o', 'o'),
+    _TvKey('p', 'p'),
+    _TvKey('a', 'a'),
+    _TvKey('s', 's'),
+    _TvKey('d', 'd'),
+    _TvKey('f', 'f'),
+    _TvKey('g', 'g'),
+    _TvKey('h', 'h'),
+    _TvKey('j', 'j'),
+    _TvKey('k', 'k'),
+    _TvKey('l', 'l'),
+    _TvKey('⌫', '', _TvKeyAction.backspace),
+    _TvKey('z', 'z'),
+    _TvKey('x', 'x'),
+    _TvKey('c', 'c'),
+    _TvKey('v', 'v'),
+    _TvKey('b', 'b'),
+    _TvKey('n', 'n'),
+    _TvKey('m', 'm'),
+    _TvKey('.', '.'),
+    _TvKey('/', '/'),
+    _TvKey(':', ':'),
+    _TvKey('@', '@'),
+    _TvKey('-', '-'),
+    _TvKey('_', '_'),
+    _TvKey('?', '?'),
+    _TvKey('&', '&'),
+    _TvKey('=', '='),
+    _TvKey('.com', '.com'),
+    _TvKey('SPACE', ' '),
+    _TvKey('CLEAR', '', _TvKeyAction.clear),
+    _TvKey('DONE', '', _TvKeyAction.done),
+  ];
+
+  late final List<FocusNode> _focusNodes = List.generate(
+    _keys.length,
+    (index) => FocusNode(debugLabel: 'TV keyboard ${_keys[index].label}'),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_refresh);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focusNodes.first.requestFocus();
+    });
+  }
+
+  void _refresh() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_refresh);
+    for (final node in _focusNodes) {
+      node.dispose();
+    }
+    super.dispose();
+  }
+
+  void _insert(String insertion) {
+    final value = widget.controller.value;
+    var start = value.selection.start;
+    var end = value.selection.end;
+    if (start < 0 || end < 0) start = end = value.text.length;
+    final next = value.text.replaceRange(start, end, insertion);
+    widget.controller.value = value.copyWith(
+      text: next,
+      selection: TextSelection.collapsed(offset: start + insertion.length),
+      composing: TextRange.empty,
+    );
+    widget.onChanged?.call(next);
+  }
+
+  void _backspace() {
+    final value = widget.controller.value;
+    var start = value.selection.start;
+    var end = value.selection.end;
+    if (start < 0 || end < 0) start = end = value.text.length;
+    if (start == end && start > 0) start--;
+    if (start == end) return;
+    final next = value.text.replaceRange(start, end, '');
+    widget.controller.value = value.copyWith(
+      text: next,
+      selection: TextSelection.collapsed(offset: start),
+      composing: TextRange.empty,
+    );
+    widget.onChanged?.call(next);
+  }
+
+  void _activate(_TvKey key) {
+    switch (key.action) {
+      case _TvKeyAction.insert:
+        _insert(key.value);
+      case _TvKeyAction.backspace:
+        _backspace();
+      case _TvKeyAction.clear:
+        widget.controller.clear();
+        widget.onChanged?.call('');
+      case _TvKeyAction.done:
+        widget.onDone();
+        Navigator.of(context).pop();
+    }
+  }
+
+  KeyEventResult _move(int index, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    final row = index ~/ _columns;
+    final column = index % _columns;
+    final directional =
+        event.logicalKey == LogicalKeyboardKey.arrowLeft ||
+        event.logicalKey == LogicalKeyboardKey.arrowRight ||
+        event.logicalKey == LogicalKeyboardKey.arrowUp ||
+        event.logicalKey == LogicalKeyboardKey.arrowDown;
+    int? target;
+    if (event.logicalKey == LogicalKeyboardKey.arrowLeft && column > 0) {
+      target = index - 1;
+    } else if (event.logicalKey == LogicalKeyboardKey.arrowRight &&
+        column + 1 < _columns) {
+      target = index + 1;
+    } else if (event.logicalKey == LogicalKeyboardKey.arrowUp && row > 0) {
+      target = index - _columns;
+    } else if (event.logicalKey == LogicalKeyboardKey.arrowDown &&
+        index + _columns < _keys.length) {
+      target = index + _columns;
+    } else if (event.logicalKey == LogicalKeyboardKey.backspace) {
+      _backspace();
+      return KeyEventResult.handled;
+    }
+    if (target == null) {
+      return directional ? KeyEventResult.handled : KeyEventResult.ignored;
+    }
+    _focusNodes[target].requestFocus();
+    return KeyEventResult.handled;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final raw = widget.controller.text;
+    final preview = widget.obscureText && raw.isNotEmpty
+        ? List.filled(raw.length, '•').join()
+        : raw;
+    return Dialog(
+      backgroundColor: surface,
+      insetPadding: const EdgeInsets.all(28),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(24),
+        side: BorderSide(color: lineStrong),
+      ),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 900),
+        child: Padding(
+          padding: const EdgeInsets.all(22),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('TYPE WITH YOUR REMOTE', style: kSection()),
+              const SizedBox(height: 10),
+              Container(
+                height: 54,
+                alignment: Alignment.centerLeft,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                decoration: BoxDecoration(
+                  color: bg,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: line),
+                ),
+                child: Text(
+                  preview.isEmpty ? 'Start typing…' : preview,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: preview.isEmpty ? muted : textHi,
+                    fontSize: 18,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: _columns,
+                  childAspectRatio: 1.55,
+                  crossAxisSpacing: 7,
+                  mainAxisSpacing: 7,
+                ),
+                itemCount: _keys.length,
+                itemBuilder: (context, index) {
+                  final key = _keys[index];
+                  return FocusableTap(
+                    autofocus: index == 0,
+                    focusNode: _focusNodes[index],
+                    onKeyEvent: (_, event) => _move(index, event),
+                    onTap: () => _activate(key),
+                    focusRadius: 10,
+                    builder: (context, active) => AnimatedContainer(
+                      duration: const Duration(milliseconds: 90),
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: key.action == _TvKeyAction.done
+                            ? accent
+                            : active
+                            ? surfaceRaised
+                            : surfaceHi,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: active ? accentInk : line,
+                          width: active ? 2 : 1,
+                        ),
+                      ),
+                      child: Text(
+                        key.label,
+                        style: TextStyle(
+                          color: key.action == _TvKeyAction.done
+                              ? onAccent
+                              : textHi,
+                          fontSize: key.label.length > 2 ? 11 : 17,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Use the D-pad to choose a key. Press Back to close.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: muted, fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// Turns provider-style filenames into human-facing titles without stripping a
@@ -1307,6 +1643,8 @@ class _SearchFieldState extends State<SearchField> {
                     child: TextField(
                       controller: widget.controller,
                       focusNode: _focusNode,
+                      readOnly: DeviceProfile.isTelevision,
+                      enableInteractiveSelection: !DeviceProfile.isTelevision,
                       onChanged: widget.onChanged,
                       onSubmitted: widget.onSubmitted,
                       // Keep the remote anchored to Search after the IME's

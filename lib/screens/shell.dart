@@ -424,6 +424,10 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
 
     if (defer) {
       WidgetsBinding.instance.addPostFrameCallback((_) => request());
+      // Hardware key dispatch does not guarantee a subsequent frame. Make
+      // sure the rail-to-page handoff actually runs on Android TV instead of
+      // waiting for unrelated animation or pointer activity.
+      WidgetsBinding.instance.ensureVisualUpdate();
     } else {
       request();
     }

@@ -86,6 +86,7 @@ class SearchScreenState extends State<SearchScreen>
   final _sortFocus = FocusNode(debugLabel: 'Catalog sort');
   final _sortMenuKey = GlobalKey<PopupMenuButtonState<String>>();
   final _gridScroll = ScrollController();
+  final _categoryScroll = ScrollController();
   final _categoryScope = FocusScopeNode(debugLabel: 'Catalog categories');
   final _gridScope = FocusScopeNode(debugLabel: 'Catalog content grid');
   final List<FocusNode> _gridFocus = <FocusNode>[];
@@ -231,6 +232,7 @@ class SearchScreenState extends State<SearchScreen>
       ..removeListener(_onSortFocusChanged)
       ..dispose();
     _gridScroll.dispose();
+    _categoryScroll.dispose();
     _categoryScope.dispose();
     _gridScope.dispose();
     _categorySelectionTimer?.cancel();
@@ -264,25 +266,63 @@ class SearchScreenState extends State<SearchScreen>
   }
 
   void _requestVisibleCategoryFocus() {
+    final categories = <(String, String)>[
+      ('all', 'All categories'),
+      for (final c in _curCats) (c.id, c.name),
+    ];
+    final index = categories.indexWhere((category) => category.$1 == _cat);
+    _requestCategoryFocus(categories, index < 0 ? 0 : index);
+  }
+
+  void _requestCategoryFocus(
+    List<(String, String)> categories,
+    int requestedIndex,
+  ) {
+    if (categories.isEmpty) return;
     _categorySelectionTimer?.cancel();
-    final visibleIds = <String>{'all', for (final c in _curCats) c.id};
-    final id = visibleIds.contains(_cat) ? _cat : 'all';
-    final node = _categoryFocusNode(id);
+    final index = requestedIndex.clamp(0, categories.length - 1).toInt();
+    final node = _categoryFocusNode(categories[index].$1);
 
     void attempt(int remainingFrames) {
       if (!mounted) return;
       if (node.context != null && node.canRequestFocus) {
-        node.requestFocus();
+        // Re-enter through the category scope when focus comes from the
+        // sibling shell rail. A direct request can leave the rail primary on
+        // Android TV even though the category paints as selected.
+        _categoryScope.requestFocus(node);
+        final targetContext = node.context!;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || !node.hasFocus || !targetContext.mounted) return;
+          Scrollable.ensureVisible(
+            targetContext,
+            alignment: .35,
+            duration: DeviceProfile.isTelevision
+                ? Duration.zero
+                : const Duration(milliseconds: 140),
+          );
+        });
         return;
+      }
+      // Category rows below the viewport are not mounted yet. Reveal the row
+      // before retrying so a TV remote never gets stuck at the visible edge.
+      if (_categoryScroll.hasClients &&
+          _categoryScroll.position.hasContentDimensions) {
+        const approximateRowExtent = 52.0;
+        final desired = (index * approximateRowExtent).clamp(
+          _categoryScroll.position.minScrollExtent,
+          _categoryScroll.position.maxScrollExtent,
+        );
+        _categoryScroll.jumpTo(desired.toDouble());
       }
       if (remainingFrames > 0) {
         WidgetsBinding.instance.addPostFrameCallback(
           (_) => attempt(remainingFrames - 1),
         );
+        WidgetsBinding.instance.ensureVisualUpdate();
       }
     }
 
-    attempt(6);
+    attempt(10);
   }
 
   int get _sectionFocusIndex => switch (_section) {
@@ -300,7 +340,10 @@ class SearchScreenState extends State<SearchScreen>
     if (event.logicalKey == LogicalKeyboardKey.select ||
         event.logicalKey == LogicalKeyboardKey.gameButtonA) {
       _showSearchKeyboard();
-      return KeyEventResult.handled;
+      // Let RemoteTextInput receive the same activation on a television so it
+      // can open Lumen's D-pad keyboard. Claiming it here previously left the
+      // search field focused with no usable keyboard.
+      return KeyEventResult.ignored;
     }
     if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
       _sectionFocus[_sectionFocusIndex].requestFocus();
@@ -584,7 +627,7 @@ class SearchScreenState extends State<SearchScreen>
       return KeyEventResult.handled;
     }
     if (target >= categories.length) return KeyEventResult.handled;
-    _categoryFocusNode(categories[target].$1).requestFocus();
+    _requestCategoryFocus(categories, target);
     return KeyEventResult.handled;
   }
 
@@ -715,30 +758,18 @@ class SearchScreenState extends State<SearchScreen>
   }
 
   /// Stable shell entry for the dedicated Movies, Series and Live pages.
-  /// Geometry traversal is not reliable while a lazy catalog grid is loading,
-  /// so the shell enters through the always-mounted sort control.
+  /// Enter through the selected category. It is a stable target while results
+  /// load and makes the expected TV path explicit: Up/Down browses categories,
+  /// Right enters the movie, series or channel grid.
   void focusCatalogEntry() {
-    void request(int remaining) {
-      if (!mounted) return;
-      if (_sortFocus.context != null && _sortFocus.canRequestFocus) {
-        _sortFocus.requestFocus();
-      } else if (remaining > 0) {
-        WidgetsBinding.instance.addPostFrameCallback(
-          (_) => request(remaining - 1),
-        );
-      }
-    }
-
-    request(4);
+    _requestVisibleCategoryFocus();
   }
 
   void _showSearchKeyboard() {
     _searchFocus.requestFocus();
-    if (!DeviceProfile.isTelevision) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_searchFocus.hasFocus) return;
-      unawaited(SystemChannels.textInput.invokeMethod<void>('TextInput.show'));
-    });
+    // TV fields are read-only to the vendor IME and open Lumen's D-pad
+    // keyboard only when the user presses OK. Merely entering Search must not
+    // let a broken full-screen TV keyboard steal navigation focus.
   }
 
   String get _resultSignature => '${_q.trim()}\u0000$_sort';
@@ -1498,6 +1529,7 @@ class SearchScreenState extends State<SearchScreen>
             border: Border(right: BorderSide(color: line)),
           ),
           child: ListView(
+            controller: _categoryScroll,
             padding: const EdgeInsets.fromLTRB(12, 2, 12, 24),
             children: [
               Padding(

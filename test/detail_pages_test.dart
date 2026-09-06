@@ -541,6 +541,7 @@ void main() {
     tester,
   ) async {
     final client = _HomeClient();
+    final searchKey = GlobalKey<SearchScreenState>();
     final railFocus = FocusNode(debugLabel: 'Movies shell rail');
     addTearDown(client.close);
     addTearDown(railFocus.dispose);
@@ -556,6 +557,7 @@ void main() {
           ),
           Expanded(
             child: SearchScreen(
+              key: searchKey,
               client: client,
               initialSection: 'movie',
               shellRailFocusNode: railFocus,
@@ -569,6 +571,15 @@ void main() {
       tester,
       () => find.text('The Last Signal').evaluate().isNotEmpty,
     );
+
+    searchKey.currentState!.focusCatalogEntry();
+    await tester.pump();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'movie category 1');
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'movie category 2');
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+    await tester.pump();
 
     final categoryFinder = find.ancestor(
       of: find.text('Premieres'),
@@ -820,20 +831,27 @@ void main() {
     key.currentState!.focusSearch();
     await tester.pump();
     expect(FocusManager.instance.primaryFocus?.debugLabel, 'Search library');
-    expect(tester.testTextInput.isVisible, isTrue);
+    expect(tester.testTextInput.isVisible, isFalse);
 
-    await tester.enterText(find.byType(TextField), 'Signal');
-    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await tester.pumpAndSettle();
+    expect(find.text('TYPE WITH YOUR REMOTE'), findsOneWidget);
+    await tester.tap(find.text('s'));
+    await tester.pump();
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.controller!.text, 's');
+    await tester.pump(const Duration(milliseconds: 330));
     await waitFor(
       tester,
       () => find.text('The Last Signal').evaluate().isNotEmpty,
     );
+    await tester.tap(find.text('DONE'));
+    await tester.pumpAndSettle();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'Search library');
 
-    tester.testTextInput.hide();
-    expect(tester.testTextInput.isVisible, isFalse);
     await tester.sendKeyEvent(LogicalKeyboardKey.select);
-    await tester.pump();
-    expect(tester.testTextInput.isVisible, isTrue);
+    await tester.pumpAndSettle();
+    expect(find.text('TYPE WITH YOUR REMOTE'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await disposeUi(tester);
   });
@@ -852,7 +870,9 @@ void main() {
       SearchScreen(key: key, client: client),
       const Size(1280, 800),
     );
-    await tester.enterText(find.byType(TextField), 'Signal');
+    final field = tester.widget<TextField>(find.byType(TextField));
+    field.controller!.text = 'Signal';
+    field.onChanged?.call('Signal');
     await tester.pump(const Duration(milliseconds: 330));
     await waitFor(
       tester,

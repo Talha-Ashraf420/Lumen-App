@@ -250,6 +250,8 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
         RemoteTextInput(
           child: TextField(
             controller: _notes,
+            readOnly: DeviceProfile.isTelevision,
+            enableInteractiveSelection: !DeviceProfile.isTelevision,
             maxLength: 600,
             minLines: 2,
             maxLines: 4,

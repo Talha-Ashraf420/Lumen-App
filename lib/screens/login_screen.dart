@@ -382,6 +382,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: TextField(
                   autofocus: true,
                   controller: urlCtrl,
+                  readOnly: DeviceProfile.isTelevision,
+                  enableInteractiveSelection: !DeviceProfile.isTelevision,
                   autocorrect: false,
                   enableSuggestions: false,
                   minLines: 1,
@@ -802,6 +804,8 @@ class _LoginScreenState extends State<LoginScreen> {
         focusNode: focusNode,
         autofocus: autofocus,
         obscureText: obscure,
+        readOnly: DeviceProfile.isTelevision,
+        enableInteractiveSelection: !DeviceProfile.isTelevision,
         autocorrect: false,
         enableSuggestions: false,
         textInputAction: TextInputAction.next,
