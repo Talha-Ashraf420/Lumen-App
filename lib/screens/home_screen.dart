@@ -18,6 +18,49 @@ import 'series_detail_screen.dart';
 
 String _year(String s) => RegExp(r'(19|20)\d{2}').firstMatch(s)?.group(0) ?? '';
 
+/// Picks the provider's best English-film bucket for the Home spotlight.
+/// Xtream category names are provider-defined, so prefer an explicit
+/// "English movies" label, then a recent non-CAM English/FHD bucket, and use
+/// Hollywood only as a final synonym.
+Category? preferredEnglishMovieCategory(Iterable<Category> categories) {
+  Category? best;
+  var bestScore = 0;
+  for (final category in categories) {
+    final name = category.name.toLowerCase().replaceAll(
+      RegExp(r'[^a-z0-9]+'),
+      ' ',
+    );
+    final padded = ' $name ';
+    final isEnglish = padded.contains(' english ');
+    final isHollywood = padded.contains(' hollywood ');
+    if (!isEnglish && !isHollywood) continue;
+    if (padded.contains(' cam ') ||
+        padded.contains(' trailer ') ||
+        padded.contains(' series ') ||
+        padded.contains(' tv show ')) {
+      continue;
+    }
+
+    var score = isEnglish ? 700 : 400;
+    if (name.trim() == 'english movies') {
+      score += 1000;
+    } else if (name.contains('english movies')) {
+      score += 800;
+    }
+    if (padded.contains(' fhd ')) score += 30;
+    if (padded.contains(' 4k ') || padded.contains(' uhd ')) score += 20;
+    final years = RegExp(r'\b(20\d{2})\b').allMatches(name);
+    for (final match in years) {
+      score += (int.tryParse(match.group(1) ?? '') ?? 2000) - 2000;
+    }
+    if (score > bestScore) {
+      best = category;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
 /// Strip provider filename cruft from a title — year, quality tags, dots — so
 /// the hero shows a clean name (e.g. "Soul (2020).(4K)" → "Soul").
 String _clean(String s) {
@@ -687,13 +730,13 @@ class _HomeScreenState extends State<HomeScreen>
             final custom = HomeConfig.instance.isCustom;
 
             // hero source: first chosen movie shelf, else first movie category
-            String? heroCat;
-            if (custom) {
+            String? heroCat = preferredEnglishMovieCategory(d.vodCats)?.id;
+            if (heroCat == null && custom) {
               final mv = HomeConfig.instance.shelves.where(
                 (s) => s.type == 'movie',
               );
               if (mv.isNotEmpty) heroCat = mv.first.id;
-            } else if (d.vodCats.isNotEmpty) {
+            } else if (heroCat == null && d.vodCats.isNotEmpty) {
               heroCat = d.vodCats.first.id;
             }
 

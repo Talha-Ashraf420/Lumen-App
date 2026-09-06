@@ -31,6 +31,28 @@ void main() {
     CatalogCache.instance.clear();
   });
 
+  test('Home spotlight prefers a clean English movies category', () {
+    final categories = [
+      Category('awards', 'OSCAR WINNING MOVIES'),
+      Category('4k', 'ENGLISH (4K)'),
+      Category('cam', 'ENGLISH (2027) (CAM)'),
+      Category('fresh', 'ENGLISH FHD (2026)'),
+      Category('movies', 'English Movies'),
+    ];
+
+    expect(preferredEnglishMovieCategory(categories)?.id, 'movies');
+    expect(
+      preferredEnglishMovieCategory(
+        categories.where((c) => c.id != 'movies'),
+      )?.id,
+      'fresh',
+    );
+    expect(
+      preferredEnglishMovieCategory([Category('news', 'World News')]),
+      isNull,
+    );
+  });
+
   testWidgets('Home keeps visible content mounted during a slow refresh', (
     tester,
   ) async {
