@@ -86,9 +86,9 @@ class PlaybackBufferPolicy {
   // small back buffer is still useful for quick backwards seeks.
   static const maxBackBufferBytes = 16 * 1024 * 1024;
 
-  static const liveAhead = Duration(seconds: 18);
+  static const liveAhead = Duration(seconds: 30);
   static const vodAhead = Duration(seconds: 90);
-  static const liveResume = Duration(seconds: 5);
+  static const liveResume = Duration(seconds: 2);
   static const vodResume = Duration(seconds: 15);
 
   static Duration aheadFor(bool live) => live ? liveAhead : vodAhead;
@@ -401,9 +401,12 @@ PlaybackFailure classifyPlaybackFailure(
   );
 }
 
-/// Safe alternate URLs for Xtream-style paths. Arbitrary M3U addresses are
-/// intentionally left untouched; only a recognized /kind/user/pass/id.ext
-/// shape is eligible.
+/// Safe source URLs for Xtream-style paths. Live channels prefer HLS because
+/// its segment window lets the player build a real forward cushion and, when
+/// supplied as a master playlist, adapt quality to changing bandwidth. The
+/// provider's MPEG-TS endpoint remains an automatic compatibility fallback.
+/// Arbitrary M3U addresses are intentionally left untouched; only a recognized
+/// /kind/user/pass/id.ext shape is eligible.
 List<String> playbackSourceCandidates(PlayerItem item) {
   final original = item.url.trim();
   if (!isPlayableMediaUrl(original)) return [original];
@@ -423,13 +426,16 @@ List<String> playbackSourceCandidates(PlayerItem item) {
   final id = tail.group(1)!;
   final currentExtension = tail.group(2)!.toLowerCase();
   final alternatives = kind == 'live'
-      ? const ['ts', 'm3u8']
+      ? const ['m3u8', 'ts']
       : const ['mp4', 'mkv'];
-  final sources = <String>[original];
+  final sources = kind == 'live' ? <String>[] : <String>[original];
   for (final extension in alternatives) {
-    if (extension == currentExtension) continue;
+    if (kind != 'live' && extension == currentExtension) continue;
     segments[segments.length - 1] = '$id.$extension';
     sources.add(uri.replace(pathSegments: segments).toString());
+  }
+  if (kind == 'live' && !alternatives.contains(currentExtension)) {
+    sources.insert(0, original);
   }
   return sources;
 }
@@ -616,13 +622,21 @@ class PlaybackController extends ChangeNotifier {
     int safeIndex,
   ) async {
     final selected = newItems[safeIndex];
+    final selectedSources = playbackSourceCandidates(selected);
     final opened = await AndroidCompatibilityPlayer.open(
-      url: selected.url,
+      url: selectedSources.first,
       title: selected.title,
       isLive: selected.isLive,
       playlist: [
         for (final item in newItems)
-          AndroidCompatibilityPlaylistItem(url: item.url, title: item.title),
+          () {
+            final sources = playbackSourceCandidates(item);
+            return AndroidCompatibilityPlaylistItem(
+              url: sources.first,
+              title: item.title,
+              alternateUrl: sources.length > 1 ? sources[1] : null,
+            );
+          }(),
       ],
       initialIndex: safeIndex,
       headers: {

@@ -124,8 +124,18 @@ void main() {
       );
       final liveSources = playbackSourceCandidates(live);
       expect(liveSources, hasLength(2));
-      expect(liveSources.first, endsWith('/19.ts'));
-      expect(liveSources.last, endsWith('/19.m3u8'));
+      expect(liveSources.first, endsWith('/19.m3u8'));
+      expect(liveSources.last, endsWith('/19.ts'));
+
+      const hlsLive = PlayerItem(
+        'https://provider.example/live/viewer/secret/20.m3u8',
+        'HLS channel',
+        isLive: true,
+      );
+      expect(playbackSourceCandidates(hlsLive), [
+        'https://provider.example/live/viewer/secret/20.m3u8',
+        'https://provider.example/live/viewer/secret/20.ts',
+      ]);
 
       const movie = PlayerItem(
         'https://provider.example/movie/viewer/secret/8.mp4',
@@ -152,8 +162,8 @@ void main() {
       streamingPlayerConfiguration.bufferSize,
       PlaybackBufferPolicy.maxMemoryBytes,
     );
-    expect(PlaybackBufferPolicy.aheadFor(true), const Duration(seconds: 18));
-    expect(PlaybackBufferPolicy.resumeFor(true), const Duration(seconds: 5));
+    expect(PlaybackBufferPolicy.aheadFor(true), const Duration(seconds: 30));
+    expect(PlaybackBufferPolicy.resumeFor(true), const Duration(seconds: 2));
     expect(PlaybackBufferPolicy.aheadFor(false), const Duration(seconds: 90));
     expect(PlaybackBufferPolicy.resumeFor(false), const Duration(seconds: 15));
 
@@ -208,8 +218,8 @@ void main() {
       vod,
     );
     expect(liveProperties['audio-delay'], '0');
-    expect(liveProperties['cache-secs'], '18');
-    expect(liveProperties['cache-pause-wait'], '5');
+    expect(liveProperties['cache-secs'], '30');
+    expect(liveProperties['cache-pause-wait'], '2');
     expect(vodProperties['cache-secs'], '90');
     expect(vodProperties['cache-pause-wait'], '15');
   });

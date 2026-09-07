@@ -1349,83 +1349,172 @@ class _AccentPickerState extends State<_AccentPicker> {
   Future<void> _pickCustom(BuildContext context, Color initial) async {
     var picked = initial;
     var hsv = HSVColor.fromColor(initial);
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setLocal) => AlertDialog(
-          backgroundColor: surface,
-          title: const Text('Custom accent'),
-          content: SizedBox(
-            width: 430,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  height: 54,
+    final hueFocus = FocusNode(debugLabel: 'Custom accent hue');
+    final saturationFocus = FocusNode(debugLabel: 'Custom accent saturation');
+    final brightnessFocus = FocusNode(debugLabel: 'Custom accent brightness');
+    final cancelFocus = FocusNode(debugLabel: 'Custom accent cancel');
+    final applyFocus = FocusNode(debugLabel: 'Custom accent apply');
+
+    KeyEventResult actionKey(
+      KeyEvent event, {
+      required FocusNode left,
+      required FocusNode right,
+    }) {
+      if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+        return KeyEventResult.ignored;
+      }
+      if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+        brightnessFocus.requestFocus();
+        return KeyEventResult.handled;
+      }
+      if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+        left.requestFocus();
+        return KeyEventResult.handled;
+      }
+      if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+        right.requestFocus();
+        return KeyEventResult.handled;
+      }
+      return KeyEventResult.ignored;
+    }
+
+    try {
+      final result = await showDialog<Color>(
+        context: context,
+        requestFocus: true,
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setLocal) => AlertDialog(
+            backgroundColor: surface,
+            title: const Text('Custom accent'),
+            content: SizedBox(
+              width: 430,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    key: const ValueKey('custom-accent-preview'),
+                    height: 54,
+                    decoration: BoxDecoration(
+                      color: picked,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: Colors.white24),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    'Up/Down selects a control. Left/Right adjusts it.',
+                    style: TextStyle(color: muted, fontSize: 12),
+                  ),
+                  const SizedBox(height: 8),
+                  _colorSlider(
+                    label: 'Hue',
+                    value: hsv.hue,
+                    max: 360,
+                    divisions: 360,
+                    step: 5,
+                    focusNode: hueFocus,
+                    autofocus: true,
+                    onDown: saturationFocus,
+                    onChanged: (value) => setLocal(() {
+                      hsv = hsv.withHue(value);
+                      picked = hsv.toColor();
+                    }),
+                  ),
+                  _colorSlider(
+                    label: 'Saturation',
+                    value: hsv.saturation * 100,
+                    max: 100,
+                    divisions: 100,
+                    step: 2,
+                    focusNode: saturationFocus,
+                    onUp: hueFocus,
+                    onDown: brightnessFocus,
+                    onChanged: (value) => setLocal(() {
+                      hsv = hsv.withSaturation(value / 100);
+                      picked = hsv.toColor();
+                    }),
+                  ),
+                  _colorSlider(
+                    label: 'Brightness',
+                    value: hsv.value * 100,
+                    max: 100,
+                    divisions: 100,
+                    step: 2,
+                    focusNode: brightnessFocus,
+                    onUp: saturationFocus,
+                    onDown: applyFocus,
+                    onChanged: (value) => setLocal(() {
+                      hsv = hsv.withValue(value / 100);
+                      picked = hsv.toColor();
+                    }),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              RemoteTap(
+                focusNode: cancelFocus,
+                semanticLabel: 'Cancel custom accent',
+                focusRadius: 22,
+                onKeyEvent: (_, event) =>
+                    actionKey(event, left: cancelFocus, right: applyFocus),
+                onTap: () => Navigator.pop(ctx),
+                child: Container(
+                  height: 42,
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
+                  alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: picked,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: Colors.white24),
+                    color: surfaceHi,
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(color: line),
+                  ),
+                  child: Text(
+                    'Cancel',
+                    style: TextStyle(
+                      color: textHi,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
-                const SizedBox(height: 14),
-                Text(
-                  'Use Left/Right on the remote to adjust each value.',
-                  style: TextStyle(color: muted, fontSize: 12),
-                ),
-                const SizedBox(height: 8),
-                _colorSlider(
-                  label: 'Hue',
-                  value: hsv.hue,
-                  max: 360,
-                  divisions: 360,
-                  onChanged: (value) => setLocal(() {
-                    hsv = hsv.withHue(value);
-                    picked = hsv.toColor();
-                  }),
-                ),
-                _colorSlider(
-                  label: 'Saturation',
-                  value: hsv.saturation * 100,
-                  max: 100,
-                  divisions: 100,
-                  onChanged: (value) => setLocal(() {
-                    hsv = hsv.withSaturation(value / 100);
-                    picked = hsv.toColor();
-                  }),
-                ),
-                _colorSlider(
-                  label: 'Brightness',
-                  value: hsv.value * 100,
-                  max: 100,
-                  divisions: 100,
-                  onChanged: (value) => setLocal(() {
-                    hsv = hsv.withValue(value / 100);
-                    picked = hsv.toColor();
-                  }),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              autofocus: true,
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text('Cancel', style: TextStyle(color: muted)),
-            ),
-            FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: picked,
-                foregroundColor: foregroundFor(picked),
               ),
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Apply'),
-            ),
-          ],
+              RemoteTap(
+                focusNode: applyFocus,
+                semanticLabel: 'Apply custom accent',
+                focusRadius: 22,
+                onKeyEvent: (_, event) =>
+                    actionKey(event, left: cancelFocus, right: applyFocus),
+                onTap: () => Navigator.pop(ctx, picked),
+                child: Container(
+                  height: 42,
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: picked,
+                    borderRadius: BorderRadius.circular(22),
+                  ),
+                  child: Text(
+                    'Apply',
+                    style: TextStyle(
+                      color: foregroundFor(picked),
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
-    );
-    if (ok == true) ThemeController.instance.setAccent(picked);
+      );
+      if (result != null && mounted) {
+        await ThemeController.instance.setAccent(result);
+      }
+    } finally {
+      hueFocus.dispose();
+      saturationFocus.dispose();
+      brightnessFocus.dispose();
+      cancelFocus.dispose();
+      applyFocus.dispose();
+    }
   }
 
   Widget _colorSlider({
@@ -1433,33 +1522,104 @@ class _AccentPickerState extends State<_AccentPicker> {
     required double value,
     required double max,
     required int divisions,
+    required double step,
+    required FocusNode focusNode,
+    required FocusNode onDown,
+    FocusNode? onUp,
+    bool autofocus = false,
     required ValueChanged<double> onChanged,
-  }) => Row(
-    children: [
-      SizedBox(
-        width: 82,
-        child: Text(label, style: TextStyle(color: textHi, fontSize: 12)),
+  }) {
+    KeyEventResult handleKey(FocusNode _, KeyEvent event) {
+      if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+        return KeyEventResult.ignored;
+      }
+      if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+        onUp?.requestFocus();
+        return KeyEventResult.handled;
+      }
+      if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+        onDown.requestFocus();
+        return KeyEventResult.handled;
+      }
+      final direction = event.logicalKey == LogicalKeyboardKey.arrowLeft
+          ? -1
+          : event.logicalKey == LogicalKeyboardKey.arrowRight
+          ? 1
+          : 0;
+      if (direction == 0) return KeyEventResult.ignored;
+      final next = (value + (step * direction)).clamp(0, max).toDouble();
+      if (next != value) onChanged(next);
+      return KeyEventResult.handled;
+    }
+
+    return Focus(
+      focusNode: focusNode,
+      autofocus: autofocus,
+      onKeyEvent: handleKey,
+      descendantsAreFocusable: false,
+      child: AnimatedBuilder(
+        animation: focusNode,
+        builder: (context, child) {
+          final focused = focusNode.hasFocus;
+          return Listener(
+            onPointerDown: (_) => focusNode.requestFocus(),
+            child: AnimatedContainer(
+              key: ValueKey('custom-accent-${label.toLowerCase()}'),
+              duration: lumenMotionFast,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: focused
+                    ? accentInk.withValues(alpha: isDark ? .14 : .08)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: focused ? accentInk : Colors.transparent,
+                  width: focused ? 2 : 1,
+                ),
+              ),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 82,
+                    child: Text(
+                      label,
+                      style: TextStyle(
+                        color: focused ? textHi : muted,
+                        fontSize: 12,
+                        fontWeight: focused ? FontWeight.w800 : FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Slider(
+                      value: value.clamp(0, max),
+                      min: 0,
+                      max: max,
+                      divisions: divisions,
+                      label: value.round().toString(),
+                      onChanged: onChanged,
+                    ),
+                  ),
+                  SizedBox(
+                    width: 36,
+                    child: Text(
+                      value.round().toString(),
+                      textAlign: TextAlign.right,
+                      style: TextStyle(
+                        color: focused ? textHi : muted,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
       ),
-      Expanded(
-        child: Slider(
-          value: value.clamp(0, max),
-          min: 0,
-          max: max,
-          divisions: divisions,
-          label: value.round().toString(),
-          onChanged: onChanged,
-        ),
-      ),
-      SizedBox(
-        width: 36,
-        child: Text(
-          value.round().toString(),
-          textAlign: TextAlign.right,
-          style: TextStyle(color: muted, fontSize: 11),
-        ),
-      ),
-    ],
-  );
+    );
+  }
 
   @override
   Widget build(BuildContext context) {

@@ -371,4 +371,80 @@ void main() {
     );
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('custom accent dialog is fully operable with a TV D-pad', (
+    tester,
+  ) async {
+    final originalAccent = ThemeController.instance.accent.value;
+    ThemeController.instance.accent.value = const Color(0xFF4A8FD8);
+    addTearDown(() {
+      ThemeController.instance.accent.value = originalAccent;
+      activePalette = darkPaletteFor(originalAccent);
+    });
+
+    await pumpProfile(tester, const Size(1280, 900));
+    await tester.tap(find.byKey(const ValueKey('profile-accent-custom')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Custom accent'), findsOneWidget);
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'Custom accent hue');
+
+    double sliderValue(int index) =>
+        tester.widgetList<Slider>(find.byType(Slider)).elementAt(index).value;
+
+    final hue = sliderValue(0);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pumpAndSettle();
+    expect(sliderValue(0), greaterThan(hue));
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pumpAndSettle();
+    expect(
+      FocusManager.instance.primaryFocus?.debugLabel,
+      'Custom accent saturation',
+    );
+    final saturation = sliderValue(1);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pumpAndSettle();
+    expect(sliderValue(1), lessThan(saturation));
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pumpAndSettle();
+    expect(
+      FocusManager.instance.primaryFocus?.debugLabel,
+      'Custom accent brightness',
+    );
+    final brightness = sliderValue(2);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pumpAndSettle();
+    expect(sliderValue(2), lessThan(brightness));
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pumpAndSettle();
+    expect(
+      FocusManager.instance.primaryFocus?.debugLabel,
+      'Custom accent apply',
+    );
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pumpAndSettle();
+    expect(
+      FocusManager.instance.primaryFocus?.debugLabel,
+      'Custom accent cancel',
+    );
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pumpAndSettle();
+    expect(
+      FocusManager.instance.primaryFocus?.debugLabel,
+      'Custom accent apply',
+    );
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pumpAndSettle();
+    expect(find.text('Custom accent'), findsNothing);
+    expect(
+      ThemeController.instance.accent.value,
+      isNot(const Color(0xFF4A8FD8)),
+    );
+    expect(tester.takeException(), isNull);
+  });
 }

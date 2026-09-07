@@ -7,10 +7,12 @@ class AndroidCompatibilityPlaylistItem {
   const AndroidCompatibilityPlaylistItem({
     required this.url,
     required this.title,
+    this.alternateUrl,
   });
 
   final String url;
   final String title;
+  final String? alternateUrl;
 }
 
 /// Bridge to Lumen's native Media3 compatibility player.
@@ -56,7 +58,12 @@ class AndroidCompatibilityPlayer {
             'headers': headers,
             'playlist': [
               for (final item in window)
-                <String, String>{'url': item.url, 'title': item.title},
+                <String, Object?>{
+                  'url': item.url,
+                  'title': item.title,
+                  if (item.alternateUrl?.isNotEmpty ?? false)
+                    'alternateUrl': item.alternateUrl,
+                },
             ],
             'initialIndex': selected - start,
           }) ??

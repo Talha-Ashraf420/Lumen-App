@@ -71,12 +71,16 @@ class MainActivity : FlutterActivity() {
                         if (key is String && value is String) headers[key] = value
                     }
                     val playlistUrls = ArrayList<String>()
+                    val playlistAlternateUrls = ArrayList<String>()
                     val playlistTitles = ArrayList<String>()
                     (args["playlist"] as? List<*>)?.forEach { rawItem ->
                         val item = rawItem as? Map<*, *> ?: return@forEach
                         val itemUrl = item["url"] as? String
                         if (!itemUrl.isNullOrBlank()) {
                             playlistUrls.add(itemUrl)
+                            playlistAlternateUrls.add(
+                                item["alternateUrl"] as? String ?: ""
+                            )
                             playlistTitles.add(item["title"] as? String ?: "")
                         }
                     }
@@ -94,6 +98,10 @@ class MainActivity : FlutterActivity() {
                         putStringArrayListExtra(
                             Media3PlayerActivity.EXTRA_PLAYLIST_URLS,
                             playlistUrls
+                        )
+                        putStringArrayListExtra(
+                            Media3PlayerActivity.EXTRA_PLAYLIST_ALTERNATE_URLS,
+                            playlistAlternateUrls
                         )
                         putStringArrayListExtra(
                             Media3PlayerActivity.EXTRA_PLAYLIST_TITLES,

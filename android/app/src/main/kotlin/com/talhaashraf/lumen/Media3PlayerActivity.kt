@@ -28,6 +28,7 @@ import android.widget.Toast
 import androidx.annotation.OptIn
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
@@ -58,6 +59,7 @@ class Media3PlayerActivity : Activity() {
         const val EXTRA_IS_LIVE = "isLive"
         const val EXTRA_HEADERS = "headers"
         const val EXTRA_PLAYLIST_URLS = "playlistUrls"
+        const val EXTRA_PLAYLIST_ALTERNATE_URLS = "playlistAlternateUrls"
         const val EXTRA_PLAYLIST_TITLES = "playlistTitles"
         const val EXTRA_INITIAL_INDEX = "initialIndex"
 
@@ -105,8 +107,11 @@ class Media3PlayerActivity : Activity() {
     private var url = ""
     private var isLive = false
     private var playlistUrls = listOf<String>()
+    private var playlistAlternateUrls = listOf<String>()
     private var playlistTitles = listOf<String>()
     private var playlistIndex = 0
+    private var alternateUrl = ""
+    private var usingAlternateSource = false
     private var openedAtMs = 0L
     private var lastProgressAtMs = 0L
     private var lastPositionMs = 0L
@@ -190,15 +195,22 @@ class Media3PlayerActivity : Activity() {
         playlistUrls = intent.getStringArrayListExtra(EXTRA_PLAYLIST_URLS)
             ?.filter { it.isNotBlank() }
             .orEmpty()
+        playlistAlternateUrls = intent
+            .getStringArrayListExtra(EXTRA_PLAYLIST_ALTERNATE_URLS)
+            .orEmpty()
         playlistTitles = intent.getStringArrayListExtra(EXTRA_PLAYLIST_TITLES)
             .orEmpty()
         if (playlistUrls.isEmpty()) {
             playlistUrls = listOf(url)
+            playlistAlternateUrls = listOf("")
             playlistTitles = listOf(intent.getStringExtra(EXTRA_TITLE).orEmpty())
+        }
+        if (playlistAlternateUrls.size != playlistUrls.size) {
+            playlistAlternateUrls = List(playlistUrls.size) { "" }
         }
         playlistIndex = intent.getIntExtra(EXTRA_INITIAL_INDEX, 0)
             .coerceIn(0, playlistUrls.lastIndex)
-        url = playlistUrls[playlistIndex]
+        selectPreferredSource(playlistIndex)
         if (url.isBlank()) {
             finish()
             return
@@ -320,17 +332,20 @@ class Media3PlayerActivity : Activity() {
             .setUserAgent(userAgent)
             .setDefaultRequestProperties(headers)
 
-        // Keep a meaningful forward cushion on TV. IPTV servers often deliver
-        // in bursts; resuming live after only a few seconds creates the exact
-        // fill/drain/rebuffer loop viewers notice even on fast connections.
+        // Keep a meaningful forward cushion while using short start/resume
+        // gates. Loading continues in the background after playback begins.
+        val buffers = Media3PlaybackPolicy.buffers(isLive)
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                if (isLive) 30_000 else 45_000,
-                if (isLive) 75_000 else 120_000,
-                if (isLive) 7_000 else 10_000,
-                if (isLive) 15_000 else 22_000
+                buffers.minBufferMs,
+                buffers.maxBufferMs,
+                buffers.bufferForPlaybackMs,
+                buffers.bufferForPlaybackAfterRebufferMs
             )
-            .setBackBuffer(15_000, true)
+            .setBackBuffer(
+                buffers.backBufferMs,
+                buffers.retainBackBufferFromKeyframe
+            )
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
         // DefaultDataSource delegates network requests to the hardened HTTP
@@ -822,7 +837,7 @@ class Media3PlayerActivity : Activity() {
         retryScheduled = false
         terminalError = false
         playlistIndex = index
-        url = playlistUrls[index]
+        selectPreferredSource(index)
         externalSubtitleUri = null
         externalSubtitleName = ""
         updateNavigationUi()
@@ -1114,6 +1129,11 @@ class Media3PlayerActivity : Activity() {
 
     private fun buildMediaItem(): MediaItem {
         val builder = MediaItem.Builder().setUri(Uri.parse(url))
+        if (Uri.parse(url).path.orEmpty().endsWith(".m3u8", ignoreCase = true)) {
+            // Some IPTV endpoints omit a useful Content-Type. Declaring HLS
+            // prevents a bad server header from selecting the wrong parser.
+            builder.setMimeType(MimeTypes.APPLICATION_M3U8)
+        }
         externalSubtitleUri?.let { subtitleUri ->
             builder.setSubtitleConfigurations(
                 listOf(
@@ -1441,6 +1461,26 @@ class Media3PlayerActivity : Activity() {
 
     private fun scheduleRetry(message: String) {
         if (retryScheduled) return
+        if (
+            Media3PlaybackPolicy.shouldTryAlternate(
+                isLive = isLive,
+                usingAlternateSource = usingAlternateSource,
+                currentUrl = url,
+                alternateUrl = alternateUrl
+            )
+        ) {
+            usingAlternateSource = true
+            url = alternateUrl
+            retryScheduled = true
+            hideControls(force = true)
+            errorPanel.visibility = View.GONE
+            showBufferingStatus("Trying compatible live stream…")
+            handler.postDelayed({
+                retryScheduled = false
+                open()
+            }, 500L)
+            return
+        }
         if (retryAttempt >= RETRY_DELAYS_MS.size) {
             showError(message)
             return
@@ -1460,6 +1500,12 @@ class Media3PlayerActivity : Activity() {
             retryScheduled = false
             open()
         }, delay)
+    }
+
+    private fun selectPreferredSource(index: Int) {
+        url = playlistUrls[index]
+        alternateUrl = playlistAlternateUrls.getOrNull(index).orEmpty()
+        usingAlternateSource = false
     }
 
     private fun showError(message: String) {
