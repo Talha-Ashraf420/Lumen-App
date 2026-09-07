@@ -168,20 +168,7 @@ class LumenApp extends StatelessWidget {
                               );
                             },
                           ),
-                          Positioned.fill(
-                            child: Material(
-                              type: MaterialType.transparency,
-                              child: Overlay(
-                                initialEntries: [
-                                  OverlayEntry(
-                                    maintainState: true,
-                                    opaque: false,
-                                    builder: (_) => PlayerHost.overlay(),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
+                          const Positioned.fill(child: _PlayerOverlayLayer()),
                         ],
                       ),
                       builder: (context, stack) {
@@ -209,6 +196,48 @@ class LumenApp extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// Owns the persistent player [OverlayEntry] for exactly as long as its
+/// [Overlay] exists.
+///
+/// Keeping the entry inside a prebuilt AnimatedBuilder child allowed Flutter
+/// to briefly reuse it while rebuilding the root for a different TV density.
+/// A 4K viewport change could then try to mount one entry in two overlays.
+class _PlayerOverlayLayer extends StatefulWidget {
+  const _PlayerOverlayLayer();
+
+  @override
+  State<_PlayerOverlayLayer> createState() => _PlayerOverlayLayerState();
+}
+
+class _PlayerOverlayLayerState extends State<_PlayerOverlayLayer> {
+  late final OverlayEntry _entry;
+
+  @override
+  void initState() {
+    super.initState();
+    _entry = OverlayEntry(
+      maintainState: true,
+      opaque: false,
+      builder: (_) => PlayerHost.overlay(),
+    );
+  }
+
+  @override
+  void dispose() {
+    if (_entry.mounted) _entry.remove();
+    _entry.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      type: MaterialType.transparency,
+      child: Overlay(initialEntries: [_entry]),
     );
   }
 }

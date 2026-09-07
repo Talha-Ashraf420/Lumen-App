@@ -20,10 +20,14 @@ int gridColumns(double width, {double tile = 170, int min = 3, int max = 8}) {
   return n.clamp(min, max);
 }
 
-/// Returns the paint scale needed to give a 4K television a comfortable
-/// 1728x972 design canvas. This is intentionally a little larger than a
-/// desktop-density 1080p layout so navigation, artwork and labels remain easy
-/// to read from a sofa on a 50-inch television.
+/// Returns the paint scale needed to give every 4K television a comfortable
+/// 1280x720 ten-foot design canvas.
+///
+/// Android TV vendors expose wildly different logical surfaces for the same
+/// physical 4K panel (commonly 960, 1280, 1920 or even 3840 pixels wide). A
+/// fixed Flutter dp value therefore looked four times smaller on some sets.
+/// Normalising the *logical* canvas makes typography, focus rings and artwork
+/// occupy the same physical proportion on every 4K television.
 double televisionViewportScale({
   required bool television,
   required Size logicalSize,
@@ -35,18 +39,26 @@ double televisionViewportScale({
     logicalSize.width * devicePixelRatio,
     logicalSize.height * devicePixelRatio,
   );
-  final nativeSize = panelSize ?? surfaceSize;
-  final nativeLongEdge = math.max(nativeSize.width, nativeSize.height);
+  // Some Android TV firmwares expose only a 1080p entry in supportedModes
+  // while the application surface is already 4K; others do the inverse and
+  // render apps at 1080p while reporting their 4K panel mode. Trust whichever
+  // signal proves the screen is larger so neither vendor behaviour can bypass
+  // the ten-foot scale correction.
+  final surfaceLongEdge = math.max(surfaceSize.width, surfaceSize.height);
+  final panelLongEdge = panelSize == null
+      ? 0.0
+      : math.max(panelSize.width, panelSize.height);
+  final nativeLongEdge = math.max(surfaceLongEdge, panelLongEdge);
   if (nativeLongEdge < 3000) return 1;
 
-  const designSize = Size(1728, 972);
+  const designSize = Size(1280, 720);
   final scale = math.min(
     logicalSize.width / designSize.width,
     logicalSize.height / designSize.height,
   );
-  // Never enlarge an already-comfortable logical canvas, and retain a
-  // readable minimum if a vendor exposes an unusually tiny render surface.
-  return scale.clamp(.5, 1.0);
+  // A 960-wide Android TV surface still benefits from undoing the old compact
+  // scale, while a density-1 4K surface needs the complete 3x correction.
+  return scale.clamp(.75, 3.0);
 }
 
 EdgeInsets _divideInsets(EdgeInsets value, double divisor) =>
@@ -57,8 +69,8 @@ EdgeInsets _divideInsets(EdgeInsets value, double divisor) =>
       value.bottom / divisor,
     );
 
-/// Gives 4K Android televisions a denser, consistent app viewport while still
-/// painting edge-to-edge at the panel's native output size.
+/// Gives 4K Android televisions a readable, consistent app viewport while
+/// still painting edge-to-edge at the panel's native output size.
 class TelevisionDensityViewport extends StatelessWidget {
   const TelevisionDensityViewport({super.key, required this.child});
 
@@ -73,7 +85,10 @@ class TelevisionDensityViewport extends StatelessWidget {
       devicePixelRatio: media.devicePixelRatio,
       panelSize: DeviceProfile.televisionPanelSize,
     );
-    if (scale >= .999) return child;
+    // A scale below 1 expands a compact vendor viewport; a scale above 1
+    // enlarges the app on high-resolution logical surfaces. Only bypass the
+    // transform when the television already exposes the 1280x720 canvas.
+    if ((scale - 1).abs() < .001) return child;
     final textScale = media.textScaler.scale(1).clamp(0.8, 1.1);
 
     final virtualSize = Size(

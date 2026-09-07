@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'dart:async';
 import '../catalog_cache.dart';
+import '../device_profile.dart';
 import '../library.dart';
 import '../models.dart';
 import '../playback.dart';
@@ -210,6 +211,7 @@ class _HomeScreenState extends State<HomeScreen>
   Widget _lastPlayedRow() {
     final recent = Library.instance.recent;
     if (recent.isEmpty) return const SizedBox.shrink();
+    final posterWidth = DeviceProfile.isTelevision ? 150.0 : kPosterW;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -218,16 +220,20 @@ class _HomeScreenState extends State<HomeScreen>
           child: SectionHeader(title: 'Last played'),
         ),
         SizedBox(
-          height: kPosterW * 1.5 + 4,
+          height: posterWidth * 1.5 + 4,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+            padding: EdgeInsets.symmetric(
+              horizontal: DeviceProfile.isTelevision ? 28 : 16,
+            ),
             itemCount: recent.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 14),
+            separatorBuilder: (_, _) =>
+                SizedBox(width: DeviceProfile.isTelevision ? 16 : 14),
             // Uniform 2:3 cards for movies, series and channels.
             itemBuilder: (_, i) => _RecentCard(
               item: recent[i],
               index: i,
+              width: posterWidth,
               onTap: () => _openRecent(recent[i]),
             ),
           ),
@@ -714,10 +720,10 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
     }
     final m = _items[_index];
     final t = _meta[m.streamId];
-    // Poster-driven: use the reliable portrait poster for BOTH the sharp hero
-    // card and the blurred background — so a wrong/ugly TMDB backdrop can never
-    // wreck the hero. The blur turns any image into a tasteful colour wash.
+    // Prefer a cinematic 16:9 backdrop when metadata is available. Provider
+    // posters remain a reliable fallback while metadata is still loading.
     final poster = (t?.poster.isNotEmpty == true) ? t!.poster : m.icon;
+    final heroArt = (t?.backdrop.isNotEmpty == true) ? t!.backdrop : poster;
     final rating = (t?.rating ?? 0) > 0 ? t!.rating : m.rating;
     final year = _year(m.name);
     final genre = t?.genres ?? '';
@@ -726,7 +732,9 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
     if (!isWide(context))
       return _narrowHero(m, poster, rating, year, genre, overview);
 
-    final h = (MediaQuery.sizeOf(context).height * 0.63).clamp(500.0, 610.0);
+    final h = DeviceProfile.isTelevision
+        ? (MediaQuery.sizeOf(context).height * 0.64).clamp(455.0, 520.0)
+        : (MediaQuery.sizeOf(context).height * 0.63).clamp(500.0, 610.0);
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 6, 18, 0),
       child: SizedBox(
@@ -737,19 +745,19 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
             fit: StackFit.expand,
             children: [
               ColoredBox(color: surface),
-              if (poster.isNotEmpty)
+              if (heroArt.isNotEmpty)
                 Positioned(
-                  left: MediaQuery.sizeOf(context).width * 0.42,
+                  left: MediaQuery.sizeOf(context).width * 0.36,
                   right: 0,
                   top: 0,
                   bottom: 0,
                   child: AnimatedSwitcher(
                     duration: const Duration(milliseconds: 550),
                     child: MediaImage(
-                      key: ValueKey('focus$poster'),
-                      source: poster,
+                      key: ValueKey('focus$heroArt'),
+                      source: heroArt,
                       fit: BoxFit.cover,
-                      alignment: Alignment.topCenter,
+                      alignment: Alignment.center,
                       memCacheWidth:
                           (760 * MediaQuery.devicePixelRatioOf(context))
                               .round()
@@ -774,9 +782,9 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
                 ),
               ),
               Positioned(
-                left: 46,
-                top: 42,
-                width: 610,
+                left: 42,
+                top: 34,
+                width: 570,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -797,7 +805,7 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 16),
                     Text(
                           _clean(m.name),
                           maxLines: 2,
@@ -807,7 +815,7 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
                         .animate(key: ValueKey('t${m.streamId}'))
                         .fadeIn(duration: 400.ms)
                         .slideY(begin: 0.08, end: 0),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
                     Wrap(
                       spacing: 16,
                       runSpacing: 8,
@@ -846,18 +854,18 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
                       ],
                     ),
                     if (overview.isNotEmpty) ...[
-                      const SizedBox(height: 15),
+                      const SizedBox(height: 12),
                       ConstrainedBox(
                         constraints: const BoxConstraints(maxWidth: 500),
                         child: Text(
                           overview,
-                          maxLines: 3,
+                          maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: kBody(),
                         ),
                       ),
                     ],
-                    const SizedBox(height: 23),
+                    const SizedBox(height: 18),
                     Row(
                       children: [
                         PillButton(
@@ -908,24 +916,28 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
                 ),
               ),
               Positioned(
-                left: 46,
-                right: 30,
-                bottom: 24,
-                height: 70,
+                left: 42,
+                right: 28,
+                bottom: 20,
+                height: DeviceProfile.isTelevision ? 108 : 78,
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   clipBehavior: Clip.none,
                   itemCount: _items.length,
-                  separatorBuilder: (_, _) => const SizedBox(width: 10),
+                  separatorBuilder: (_, _) =>
+                      SizedBox(width: DeviceProfile.isTelevision ? 12 : 10),
                   itemBuilder: (_, i) {
                     final it = _items[i];
                     final p = _meta[it.streamId]?.poster;
                     final img = (p != null && p.isNotEmpty) ? p : it.icon;
                     return _RailThumb(
                       image: img,
+                      label: _clean(it.name),
                       number: i + 1,
                       selected: i == _index,
-                      onTap: () => _select(i),
+                      width: DeviceProfile.isTelevision ? 158 : 122,
+                      onFocus: () => _select(i),
+                      onTap: () => widget.onOpen(it),
                     );
                   },
                 ),
@@ -952,19 +964,28 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
 /// when inactive, accent-ringed + glowing + scaled-up when active or hovered.
 class _RailThumb extends StatelessWidget {
   final String image;
+  final String label;
   final int number;
   final bool selected;
+  final double width;
+  final VoidCallback? onFocus;
   final VoidCallback onTap;
   const _RailThumb({
     required this.image,
+    this.label = '',
     required this.number,
     required this.selected,
+    this.width = 112,
+    this.onFocus,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     return FocusableTap(
+      onFocusChange: (focused) {
+        if (focused) onFocus?.call();
+      },
       onTap: onTap,
       builder: (context, active) {
         return AnimatedScale(
@@ -976,7 +997,7 @@ class _RailThumb extends StatelessWidget {
             opacity: selected ? 1 : (active ? 0.92 : 0.58),
             duration: const Duration(milliseconds: 200),
             child: SizedBox(
-              width: 112,
+              width: width,
               child: Container(
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(10),
@@ -1031,7 +1052,7 @@ class _RailThumb extends StatelessWidget {
                     ),
                     Positioned(
                       left: 8,
-                      bottom: 6,
+                      top: 7,
                       child: Text(
                         number.toString().padLeft(2, '0'),
                         style: const TextStyle(
@@ -1042,6 +1063,22 @@ class _RailThumb extends StatelessWidget {
                         ),
                       ),
                     ),
+                    if (label.isNotEmpty)
+                      Positioned(
+                        left: 9,
+                        right: 9,
+                        bottom: 7,
+                        child: Text(
+                          label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -1059,10 +1096,12 @@ class _RailThumb extends StatelessWidget {
 class _RecentCard extends StatelessWidget {
   final MediaRef item;
   final int index;
+  final double width;
   final VoidCallback onTap;
   const _RecentCard({
     required this.item,
     required this.index,
+    this.width = kPosterW,
     required this.onTap,
   });
 
@@ -1070,7 +1109,7 @@ class _RecentCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final live = item.isLive;
     return SizedBox(
-      width: kPosterW,
+      width: width,
       child:
           FocusableTap(
                 onTap: onTap,

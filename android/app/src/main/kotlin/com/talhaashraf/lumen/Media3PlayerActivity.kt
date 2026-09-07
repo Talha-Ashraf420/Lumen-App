@@ -68,7 +68,7 @@ class Media3PlayerActivity : Activity() {
         private const val FIRST_VIDEO_FRAME_TIMEOUT_MS = 15_000L
         private const val LIVE_STALL_TIMEOUT_MS = 20_000L
         private const val WATCHDOG_INTERVAL_MS = 2_000L
-        private const val CONTROLS_TIMEOUT_MS = 5_000L
+        private const val CONTROLS_TIMEOUT_MS = 4_000L
         private const val PROGRESS_INTERVAL_MS = 500L
         private const val SEEK_INCREMENT_MS = 10_000L
         private const val SUBTITLE_REQUEST_CODE = 6205
@@ -91,7 +91,7 @@ class Media3PlayerActivity : Activity() {
     private lateinit var progressBar: SeekBar
     private lateinit var positionText: TextView
     private lateinit var durationText: TextView
-    private val transportButtons = mutableListOf<Button>()
+    private lateinit var bufferingBadge: TextView
     private lateinit var errorPanel: LinearLayout
     private lateinit var errorText: TextView
     private lateinit var errorPreviousButton: Button
@@ -203,7 +203,9 @@ class Media3PlayerActivity : Activity() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
-            setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
+            // Lumen renders a compact top status pill so buffering feedback
+            // never sits behind the transport controls.
+            setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
             // The native SurfaceView remains in charge of video rendering, but
             // Lumen owns every visible control and every D-pad focus edge.
             setUseController(false)
@@ -216,6 +218,8 @@ class Media3PlayerActivity : Activity() {
         root.addView(titleBar)
         controlsBar = buildControlsBar().apply { visibility = View.GONE }
         root.addView(controlsBar)
+        bufferingBadge = buildBufferingBadge()
+        root.addView(bufferingBadge)
         errorPanel = buildErrorPanel()
         root.addView(errorPanel)
         setContentView(root)
@@ -226,9 +230,13 @@ class Media3PlayerActivity : Activity() {
             override fun onPlaybackStateChanged(state: Int) {
                 updateTransportUi()
                 when (state) {
+                    Player.STATE_BUFFERING -> showBufferingStatus(
+                        if (isLive) "Building live buffer…" else "Buffering…"
+                    )
                     Player.STATE_READY -> {
                         retryScheduled = false
                         errorPanel.visibility = View.GONE
+                        hideBufferingStatus()
                     }
                     Player.STATE_ENDED -> {
                         if (isLive) {
@@ -300,17 +308,17 @@ class Media3PlayerActivity : Activity() {
             .setUserAgent(userAgent)
             .setDefaultRequestProperties(headers)
 
-        // Live keeps a responsive window; VOD builds a substantially deeper
-        // cushion to absorb Wi-Fi/provider jitter. In particular, do not resume
-        // a movie immediately after collecting only a few seconds: that causes
-        // a fill/drain/rebuffer loop on bursty IPTV providers.
+        // Keep a meaningful forward cushion on TV. IPTV servers often deliver
+        // in bursts; resuming live after only a few seconds creates the exact
+        // fill/drain/rebuffer loop viewers notice even on fast connections.
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                if (isLive) 18_000 else 45_000,
-                if (isLive) 40_000 else 90_000,
-                if (isLive) 5_000 else 10_000,
-                if (isLive) 8_000 else 18_000
+                if (isLive) 30_000 else 45_000,
+                if (isLive) 75_000 else 120_000,
+                if (isLive) 7_000 else 10_000,
+                if (isLive) 15_000 else 22_000
             )
+            .setBackBuffer(15_000, true)
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
         // DefaultDataSource delegates network requests to the hardened HTTP
@@ -335,8 +343,8 @@ class Media3PlayerActivity : Activity() {
         val bar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(24), dp(18), dp(24), dp(18))
-            setBackgroundColor(0xCC0B0D0B.toInt())
+            setPadding(dp(36), dp(24), dp(36), dp(24))
+            background = topScrim()
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -344,38 +352,63 @@ class Media3PlayerActivity : Activity() {
             )
         }
         backButton = themedButton("←", "Back to Lumen") { finish() }.apply {
-            textSize = 22f
+            textSize = 28f
         }
         titleText = TextView(this).apply {
             text = playlistTitles.getOrNull(playlistIndex).orEmpty()
-            textSize = 20f
+            textSize = 26f
             setTextColor(Color.WHITE)
             maxLines = 1
-            layoutParams = LinearLayout.LayoutParams(0, dp(52), 1f).apply {
-                marginStart = dp(18)
-                marginEnd = dp(18)
+            layoutParams = LinearLayout.LayoutParams(0, dp(64), 1f).apply {
+                marginStart = dp(22)
+                marginEnd = dp(22)
             }
             gravity = Gravity.CENTER_VERTICAL
         }
         val kind = TextView(this).apply {
             text = if (isLive) "●  LIVE" else "LUMEN"
-            textSize = 13f
+            textSize = 16f
             setTextColor(0xFFC5FF63.toInt())
             gravity = Gravity.CENTER
             setPadding(dp(16), 0, dp(16), 0)
         }
-        bar.addView(backButton, LinearLayout.LayoutParams(dp(64), dp(52)))
+        bar.addView(backButton, LinearLayout.LayoutParams(dp(76), dp(64)))
         bar.addView(titleText)
-        bar.addView(kind, LinearLayout.LayoutParams(dp(112), dp(52)))
+        bar.addView(kind, LinearLayout.LayoutParams(dp(128), dp(64)))
         return bar
+    }
+
+    private fun buildBufferingBadge(): TextView = TextView(this).apply {
+        text = if (isLive) "Building live buffer…" else "Buffering…"
+        textSize = 16f
+        setTextColor(Color.WHITE)
+        gravity = Gravity.CENTER
+        setPadding(dp(22), dp(12), dp(22), dp(12))
+        background = roundedRect(0xDD111511.toInt(), 0xFF596157.toInt(), 1, 24)
+        visibility = View.GONE
+        layoutParams = FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            Gravity.TOP or Gravity.CENTER_HORIZONTAL
+        ).apply { topMargin = dp(104) }
+    }
+
+    private fun showBufferingStatus(message: String) {
+        if (!::bufferingBadge.isInitialized || terminalError) return
+        bufferingBadge.text = message
+        bufferingBadge.visibility = View.VISIBLE
+    }
+
+    private fun hideBufferingStatus() {
+        if (::bufferingBadge.isInitialized) bufferingBadge.visibility = View.GONE
     }
 
     private fun buildControlsBar(): View {
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(dp(36), dp(18), dp(36), dp(24))
-            setBackgroundColor(0xDD0B0D0B.toInt())
+            setPadding(dp(48), dp(42), dp(48), dp(34))
+            background = bottomScrim()
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -440,61 +473,58 @@ class Media3PlayerActivity : Activity() {
             text = if (isLive) "" else "0:00"
             visibility = if (isLive) View.GONE else View.VISIBLE
         }
-        progressRow.addView(positionText, LinearLayout.LayoutParams(dp(74), dp(36)))
+        progressRow.addView(positionText, LinearLayout.LayoutParams(dp(92), dp(46)))
         progressRow.addView(
             progressBar,
-            LinearLayout.LayoutParams(0, dp(36), 1f).apply {
-                marginStart = dp(12)
-                marginEnd = dp(12)
+            LinearLayout.LayoutParams(0, dp(46), 1f).apply {
+                marginStart = dp(16)
+                marginEnd = dp(16)
             }
         )
-        progressRow.addView(durationText, LinearLayout.LayoutParams(dp(74), dp(36)))
+        progressRow.addView(durationText, LinearLayout.LayoutParams(dp(92), dp(46)))
 
         val transport = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            setPadding(0, dp(12), 0, 0)
+            setPadding(0, dp(10), 0, 0)
         }
         previousButton = themedButton(
-            if (isLive) "‹  Channel" else "‹  Episode",
+            if (isLive) "‹  Channel" else "‹  Previous",
             if (isLive) "Previous channel" else "Previous episode"
         ) { openPlaylistItem(playlistIndex - 1) }
-        rewindButton = themedButton("↶ 10s", "Rewind 10 seconds") {
+        rewindButton = themedButton("↶  10", "Rewind 10 seconds") {
             seekBy(-SEEK_INCREMENT_MS)
         }.apply { visibility = if (isLive) View.GONE else View.VISIBLE }
-        playPauseButton = themedButton("Pause", "Pause playback") {
+        playPauseButton = themedButton("Ⅱ", "Pause playback", prominent = true) {
             togglePlayPause()
-        }.apply { textSize = 16f }
-        forwardButton = themedButton("10s ↷", "Fast forward 10 seconds") {
+        }.apply { textSize = 28f }
+        forwardButton = themedButton("10  ↷", "Fast forward 10 seconds") {
             seekBy(SEEK_INCREMENT_MS)
         }.apply { visibility = if (isLive) View.GONE else View.VISIBLE }
         nextButton = themedButton(
-            if (isLive) "Channel  ›" else "Episode  ›",
+            if (isLive) "Channel  ›" else "Next  ›",
             if (isLive) "Next channel" else "Next episode"
         ) { openPlaylistItem(playlistIndex + 1) }
-        subtitleButton = themedButton("CC / Add", "Choose or add subtitles") {
+        subtitleButton = themedButton("CC", "Choose or add subtitles") {
             showSubtitleDialog()
         }.apply { isEnabled = !isLive }
         audioButton = themedButton("Audio", "Choose audio track") {
             showTrackDialog(C.TRACK_TYPE_AUDIO, "Audio", allowOff = false)
         }.apply { isEnabled = false }
 
-        transportButtons += listOf(
-            previousButton,
-            rewindButton,
-            playPauseButton,
-            forwardButton,
-            nextButton,
-            subtitleButton,
-            audioButton
-        )
-        transport.addView(previousButton, transportParams(dp(132)))
-        transport.addView(rewindButton, transportParams(dp(92)))
-        transport.addView(playPauseButton, transportParams(dp(116)))
-        transport.addView(forwardButton, transportParams(dp(92)))
-        transport.addView(nextButton, transportParams(dp(132)))
-        transport.addView(subtitleButton, transportParams(dp(110)))
-        transport.addView(audioButton, transportParams(dp(96)))
+        transport.addView(previousButton, transportParams(dp(150), dp(62)))
+        transport.addView(rewindButton, transportParams(dp(108), dp(62)))
+        transport.addView(playPauseButton, transportParams(dp(76), dp(76)))
+        transport.addView(forwardButton, transportParams(dp(108), dp(62)))
+        transport.addView(nextButton, transportParams(dp(150), dp(62)))
+
+        val tools = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(0, dp(12), 0, 0)
+        }
+        tools.addView(subtitleButton, transportParams(dp(118), dp(54)))
+        tools.addView(audioButton, transportParams(dp(118), dp(54)))
         panel.addView(
             progressRow,
             LinearLayout.LayoutParams(
@@ -509,38 +539,46 @@ class Media3PlayerActivity : Activity() {
                 ViewGroup.LayoutParams.WRAP_CONTENT
             )
         )
+        panel.addView(
+            tools,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
         return panel
     }
 
     private fun playerTimeText(): TextView = TextView(this).apply {
-        textSize = 13f
+        textSize = 17f
         setTextColor(0xFFD8DDD5.toInt())
         gravity = Gravity.CENTER
         maxLines = 1
     }
 
-    private fun transportParams(width: Int): LinearLayout.LayoutParams =
-        LinearLayout.LayoutParams(width, dp(56)).apply {
-            marginStart = dp(6)
-            marginEnd = dp(6)
+    private fun transportParams(width: Int, height: Int): LinearLayout.LayoutParams =
+        LinearLayout.LayoutParams(width, height).apply {
+            marginStart = dp(7)
+            marginEnd = dp(7)
         }
 
     private fun themedButton(
         label: String,
         description: String,
         showPlayerControlsOnFocus: Boolean = true,
+        prominent: Boolean = false,
         onClick: () -> Unit
     ): Button = Button(this).apply {
         id = View.generateViewId()
         text = label
         contentDescription = description
-        textSize = 13f
+        textSize = 16f
         isAllCaps = false
         isFocusable = true
-        setPadding(dp(12), 0, dp(12), 0)
-        background = buttonBackground()
+        setPadding(dp(14), 0, dp(14), 0)
+        background = buttonBackground(prominent)
         setTextColor(
-            ColorStateList(
+            if (prominent) ColorStateList.valueOf(0xFF0B0D0B.toInt()) else ColorStateList(
                 arrayOf(
                     intArrayOf(-android.R.attr.state_enabled),
                     intArrayOf(android.R.attr.state_focused),
@@ -576,29 +614,57 @@ class Media3PlayerActivity : Activity() {
         }
     }
 
-    private fun buttonBackground(): StateListDrawable = StateListDrawable().apply {
+    private fun buttonBackground(prominent: Boolean = false): StateListDrawable = StateListDrawable().apply {
         addState(
             intArrayOf(-android.R.attr.state_enabled),
-            roundedRect(0x55262B24, 0x334F554D, 1)
+            roundedRect(0x55262B24, 0x334F554D, 1, if (prominent) 40 else 14)
         )
         addState(
             intArrayOf(android.R.attr.state_focused),
-            roundedRect(0xFFC5FF63.toInt(), Color.WHITE, 3)
+            roundedRect(
+                if (prominent) 0xFFE0FFAA.toInt() else 0xFFC5FF63.toInt(),
+                Color.WHITE,
+                3,
+                if (prominent) 40 else 14
+            )
         )
         addState(
             intArrayOf(android.R.attr.state_pressed),
-            roundedRect(0xFFE0FFAA.toInt(), Color.WHITE, 2)
+            roundedRect(0xFFE0FFAA.toInt(), Color.WHITE, 2, if (prominent) 40 else 14)
         )
-        addState(intArrayOf(), roundedRect(0xDD1A1E1A.toInt(), 0xFF596157.toInt(), 1))
+        addState(
+            intArrayOf(),
+            roundedRect(
+                if (prominent) 0xFFC5FF63.toInt() else 0xDD1A1E1A.toInt(),
+                if (prominent) 0xFFC5FF63.toInt() else 0xFF596157.toInt(),
+                1,
+                if (prominent) 40 else 14
+            )
+        )
     }
 
-    private fun roundedRect(fill: Int, stroke: Int, strokeWidth: Int): GradientDrawable =
+    private fun roundedRect(
+        fill: Int,
+        stroke: Int,
+        strokeWidth: Int,
+        radius: Int = 14
+    ): GradientDrawable =
         GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
-            cornerRadius = dp(12).toFloat()
+            cornerRadius = dp(radius).toFloat()
             setColor(fill)
             setStroke(dp(strokeWidth), stroke)
         }
+
+    private fun topScrim(): GradientDrawable = GradientDrawable(
+        GradientDrawable.Orientation.TOP_BOTTOM,
+        intArrayOf(0xE6000000.toInt(), 0xB3000000.toInt(), Color.TRANSPARENT)
+    )
+
+    private fun bottomScrim(): GradientDrawable = GradientDrawable(
+        GradientDrawable.Orientation.TOP_BOTTOM,
+        intArrayOf(Color.TRANSPARENT, 0xD9000000.toInt(), Color.BLACK)
+    )
 
     private fun updateNavigationUi() {
         if (!::previousButton.isInitialized) return
@@ -613,17 +679,32 @@ class Media3PlayerActivity : Activity() {
 
     private fun updateFocusGraph() {
         if (!::backButton.isInitialized || !::playPauseButton.isInitialized) return
-        val active = transportButtons.filter {
+        val primary = listOf(
+            previousButton,
+            rewindButton,
+            playPauseButton,
+            forwardButton,
+            nextButton
+        ).filter {
             it.visibility == View.VISIBLE && it.isEnabled
         }
-        active.forEachIndexed { index, button ->
-            button.nextFocusLeftId = active.getOrNull(index - 1)?.id ?: button.id
-            button.nextFocusRightId = active.getOrNull(index + 1)?.id ?: button.id
+        val tools = listOf(subtitleButton, audioButton).filter {
+            it.visibility == View.VISIBLE && it.isEnabled
+        }
+        primary.forEachIndexed { index, button ->
+            button.nextFocusLeftId = primary.getOrNull(index - 1)?.id ?: button.id
+            button.nextFocusRightId = primary.getOrNull(index + 1)?.id ?: button.id
             button.nextFocusUpId = if (progressBar.visibility == View.VISIBLE) {
                 progressBar.id
             } else {
                 backButton.id
             }
+            button.nextFocusDownId = tools.firstOrNull()?.id ?: button.id
+        }
+        tools.forEachIndexed { index, button ->
+            button.nextFocusLeftId = tools.getOrNull(index - 1)?.id ?: button.id
+            button.nextFocusRightId = tools.getOrNull(index + 1)?.id ?: button.id
+            button.nextFocusUpId = playPauseButton.id
             button.nextFocusDownId = button.id
         }
         backButton.nextFocusLeftId = backButton.id
@@ -695,7 +776,7 @@ class Media3PlayerActivity : Activity() {
     private fun updateTransportUi() {
         if (!::playPauseButton.isInitialized || !::player.isInitialized) return
         val playing = player.isPlaying
-        playPauseButton.text = if (playing) "Pause" else "Play"
+        playPauseButton.text = if (playing) "Ⅱ" else "▶"
         playPauseButton.contentDescription = if (playing) {
             "Pause playback"
         } else {
@@ -718,7 +799,7 @@ class Media3PlayerActivity : Activity() {
         ) {
             "CC Off"
         } else {
-            "CC / Add"
+            "CC"
         }
         updateFocusGraph()
     }
@@ -1060,8 +1141,7 @@ class Media3PlayerActivity : Activity() {
         if (
             ::player.isInitialized &&
             player.isPlaying &&
-            !terminalError &&
-            !playerControlsHaveFocus()
+            !terminalError
         ) {
             handler.postDelayed(hideControls, CONTROLS_TIMEOUT_MS)
         }
@@ -1070,10 +1150,6 @@ class Media3PlayerActivity : Activity() {
     private fun hideControls(force: Boolean = false) {
         if (!::controlsBar.isInitialized || terminalError) return
         if (!force && (!::player.isInitialized || !player.isPlaying)) return
-        if (!force && playerControlsHaveFocus()) {
-            scheduleControlsHide()
-            return
-        }
         handler.removeCallbacks(hideControls)
         controlsVisible = false
         titleBar.visibility = View.GONE
@@ -1096,14 +1172,14 @@ class Media3PlayerActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             visibility = View.GONE
-            setPadding(dp(28), dp(24), dp(28), dp(24))
-            setBackgroundColor(0xEE111315.toInt())
+            setPadding(dp(30), dp(22), dp(30), dp(22))
+            background = roundedRect(0xEE111315.toInt(), 0xFF596157.toInt(), 1, 20)
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.CENTER
+                Gravity.BOTTOM
             ).apply {
-                setMargins(dp(24), dp(24), dp(24), dp(24))
+                setMargins(dp(72), dp(24), dp(72), dp(42))
             }
         }
         errorText = TextView(this).apply {
@@ -1214,6 +1290,7 @@ class Media3PlayerActivity : Activity() {
         player.setMediaItem(buildMediaItem())
         player.playWhenReady = true
         player.prepare()
+        showBufferingStatus(if (isLive) "Building live buffer…" else "Opening video…")
     }
 
     private fun markHealthy(now: Long, position: Long) {
@@ -1222,6 +1299,7 @@ class Media3PlayerActivity : Activity() {
         retryScheduled = false
         terminalError = false
         errorPanel.visibility = View.GONE
+        hideBufferingStatus()
     }
 
     private fun markProgress(now: Long, position: Long) {
@@ -1239,13 +1317,16 @@ class Media3PlayerActivity : Activity() {
         retryScheduled = true
         hideControls(force = true)
         val delay = RETRY_DELAYS_MS[retryAttempt++]
-        errorText.text = "$message\nRetrying ${retryAttempt}/${RETRY_DELAYS_MS.size}…"
-        errorPanel.visibility = View.VISIBLE
-        updateErrorNavigationUi()
-        retryButton.requestFocus()
+        errorPanel.visibility = View.GONE
+        showBufferingStatus(
+            if (isLive) {
+                "Reconnecting live channel · ${retryAttempt}/${RETRY_DELAYS_MS.size}"
+            } else {
+                "Recovering video · ${retryAttempt}/${RETRY_DELAYS_MS.size}"
+            }
+        )
         handler.postDelayed({
             retryScheduled = false
-            errorPanel.visibility = View.GONE
             open()
         }, delay)
     }
@@ -1253,6 +1334,7 @@ class Media3PlayerActivity : Activity() {
     private fun showError(message: String) {
         hideControls(force = true)
         terminalError = true
+        hideBufferingStatus()
         errorText.text = message
         errorPanel.visibility = View.VISIBLE
         updateErrorNavigationUi()
