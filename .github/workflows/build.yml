@@ -197,8 +197,11 @@ jobs:
             exit 0
           fi
           jq -n \
-            --arg content "📺 **Lumen build ${BUILD_NUMBER} is ready**\n\nDownload the Android / Android TV APK:\n${APK_URL}\n\nRelease details: ${RELEASE_PAGE}\n\nLumen includes no channels or media. Use only sources you are authorized to access." \
-            '{content: $content}' > discord-payload.json
+            --arg build "$BUILD_NUMBER" \
+            --arg apk "$APK_URL" \
+            --arg release "$RELEASE_PAGE" \
+            '{content: ("📺 **Lumen build " + $build + " is ready**\n\nDownload the Android / Android TV APK:\n" + $apk + "\n\nRelease details: " + $release + "\n\nLumen includes no channels or media. Use only sources you are authorized to access.")}' \
+            > discord-payload.json
           curl --fail --silent --show-error \
             -H "Content-Type: application/json" \
             --data @discord-payload.json \
