@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../device_profile.dart';
 import '../downloads.dart';
-import '../home_config.dart';
 import '../library.dart';
 import '../legal.dart';
 import '../models.dart';
@@ -13,7 +12,6 @@ import '../theme.dart';
 import '../updater.dart';
 import '../widgets.dart';
 import '../xtream.dart';
-import 'customize_home_screen.dart';
 import 'downloads_screen.dart';
 import 'diagnostics_screen.dart';
 import 'login_screen.dart';
@@ -45,7 +43,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _entryFocus = FocusNode(debugLabel: 'Profile add account');
   final _themeEntryFocus = FocusNode(debugLabel: 'Dark appearance');
   final _accentEntryFocus = FocusNode(debugLabel: 'Signal lime accent');
-  final _customizeFocus = FocusNode(debugLabel: 'Customize Home');
   final _insightsFocus = FocusNode(debugLabel: 'Watch insights');
   final _downloadsFocus = FocusNode(debugLabel: 'Downloads');
   final _refreshFocus = FocusNode(debugLabel: 'Refresh library');
@@ -362,7 +359,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _entryFocus.dispose();
     _themeEntryFocus.dispose();
     _accentEntryFocus.dispose();
-    _customizeFocus.dispose();
     _insightsFocus.dispose();
     _downloadsFocus.dispose();
     _refreshFocus.dispose();
@@ -686,7 +682,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _personalizationCard() => _sectionCard(
     icon: Icons.tune_rounded,
     title: 'Make Lumen yours',
-    subtitle: 'Choose how the app looks and what appears on Home.',
+    subtitle: 'Choose how the app looks on every screen.',
     body: [
       Text('APPEARANCE', style: kSection()),
       const SizedBox(height: 10),
@@ -702,33 +698,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _AccentPicker(
         entryFocusNode: _accentEntryFocus,
         upFocusNode: _themeEntryFocus,
-        downFocusNode: _customizeFocus,
+        downFocusNode: _insightsFocus,
         leftExitFocusNode: widget.shellRailFocusNode,
       ),
-      const SizedBox(height: 18),
-      Divider(height: 1, color: line),
       const SizedBox(height: 6),
-      AnimatedBuilder(
-        animation: HomeConfig.instance,
-        builder: (_, child) => _actionRow(
-          focusNode: _customizeFocus,
-          onKeyEvent: (_, event) => _moveVertically(
-            event,
-            up: _accentEntryFocus,
-            down: _insightsFocus,
-          ),
-          icon: Icons.dashboard_customize_rounded,
-          title: 'Customize Home',
-          subtitle: HomeConfig.instance.isCustom
-              ? '${HomeConfig.instance.shelves.length} shelves selected'
-              : 'Choose shelves and their order',
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => CustomizeHomeScreen(client: widget.client),
-            ),
-          ),
-        ),
-      ),
     ],
   );
 
@@ -739,8 +712,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     body: [
       _actionRow(
         focusNode: _insightsFocus,
-        onKeyEvent: (_, event) =>
-            _moveVertically(event, up: _customizeFocus, down: _downloadsFocus),
+        onKeyEvent: (_, event) => _moveVertically(
+          event,
+          up: _accentEntryFocus,
+          down: _downloadsFocus,
+        ),
         icon: Icons.insights_rounded,
         title: 'Watch insights',
         subtitle: 'See your viewing activity',

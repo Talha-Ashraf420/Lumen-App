@@ -20,10 +20,10 @@ int gridColumns(double width, {double tile = 170, int min = 3, int max = 8}) {
   return n.clamp(min, max);
 }
 
-/// Returns the paint scale needed to give a 4K television a stable 1080p
-/// design canvas. Some Android TV firmwares report only 960x540 logical pixels
-/// for a 3840x2160 panel, making every fixed-size control occupy twice the
-/// intended fraction of the screen.
+/// Returns the paint scale needed to give a 4K television a comfortable
+/// 1728x972 design canvas. This is intentionally a little larger than a
+/// desktop-density 1080p layout so navigation, artwork and labels remain easy
+/// to read from a sofa on a 50-inch television.
 double televisionViewportScale({
   required bool television,
   required Size logicalSize,
@@ -39,12 +39,12 @@ double televisionViewportScale({
   final nativeLongEdge = math.max(nativeSize.width, nativeSize.height);
   if (nativeLongEdge < 3000) return 1;
 
-  const designSize = Size(1920, 1080);
+  const designSize = Size(1728, 972);
   final scale = math.min(
     logicalSize.width / designSize.width,
     logicalSize.height / designSize.height,
   );
-  // Never enlarge an already-correct 1080p logical canvas, and retain a
+  // Never enlarge an already-comfortable logical canvas, and retain a
   // readable minimum if a vendor exposes an unusually tiny render surface.
   return scale.clamp(.5, 1.0);
 }

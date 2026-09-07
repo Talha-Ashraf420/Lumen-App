@@ -12,7 +12,7 @@ void main() {
         devicePixelRatio: 4,
         panelSize: const Size(3840, 2160),
       ),
-      .5,
+      closeTo(5 / 9, .001),
     );
     expect(
       televisionViewportScale(
@@ -21,7 +21,7 @@ void main() {
         devicePixelRatio: 3,
         panelSize: const Size(3840, 2160),
       ),
-      closeTo(2 / 3, .001),
+      closeTo(20 / 27, .001),
     );
     expect(
       televisionViewportScale(
@@ -52,7 +52,7 @@ void main() {
     );
   });
 
-  testWidgets('4K television receives a 1920x1080 virtual layout', (
+  testWidgets('4K television receives a comfortable 1728x972 virtual layout', (
     tester,
   ) async {
     DeviceProfile.isTelevision = true;
@@ -79,6 +79,6 @@ void main() {
       ),
     );
 
-    expect(observedSize, const Size(1920, 1080));
+    expect(observedSize, const Size(1728, 972));
   });
 }

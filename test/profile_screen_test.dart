@@ -299,7 +299,6 @@ void main() {
       await move(LogicalKeyboardKey.arrowRight, '${scheme.name} accent');
     }
     await move(LogicalKeyboardKey.arrowRight, 'Custom accent');
-    await move(LogicalKeyboardKey.arrowDown, 'Customize Home');
     for (final label in <String>[
       'Watch insights',
       'Downloads',
@@ -320,7 +319,6 @@ void main() {
       'System appearance',
       for (final scheme in accentSchemes) '${scheme.name} accent',
       'Custom accent',
-      'Customize Home',
       'Watch insights',
       'Downloads',
       'Refresh library',

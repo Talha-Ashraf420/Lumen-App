@@ -520,7 +520,9 @@ void main() {
     },
   );
 
-  testWidgets('Home warms catalogs once and skips whole VOD', (tester) async {
+  testWidgets('Home loads only spotlight data and skips extra shelves', (
+    tester,
+  ) async {
     final client = _HomeClient();
     await pumpAt(
       tester,
@@ -530,18 +532,16 @@ void main() {
     await waitFor(tester, () => client.vodCategoryCalls == 1);
 
     expect(client.vodCategoryCalls, 1);
-    await waitFor(tester, () => find.text('START HERE').evaluate().isNotEmpty);
+    await waitFor(tester, () => client.vodStreamCategories.isNotEmpty);
     expect(client.vodStreamCategories, isNot(contains(null)));
-    expect(client.vodStreamCategories.toSet().length, lessThanOrEqualTo(2));
-    expect(find.text('START HERE'), findsOneWidget);
+    expect(client.vodStreamCategories.toSet(), {'1'});
+    expect(find.byType(HomeScreen), findsOneWidget);
+    expect(find.text('Recently added'), findsNothing);
+    expect(find.text('Latest arrivals'), findsNothing);
     expect(tester.takeException(), isNull);
 
-    await waitFor(
-      tester,
-      () => client.seriesCategoryCalls == 1 && client.liveCategoryCalls == 1,
-    );
-    expect(client.seriesCategoryCalls, 1);
-    expect(client.liveCategoryCalls, 1);
+    expect(client.seriesCategoryCalls, 0);
+    expect(client.liveCategoryCalls, 0);
     await disposeUi(tester);
   });
 
