@@ -499,6 +499,7 @@ class SearchScreenState extends State<SearchScreen>
         WidgetsBinding.instance.addPostFrameCallback(
           (_) => attempt(remainingFrames - 1),
         );
+        WidgetsBinding.instance.ensureVisualUpdate();
       }
     }
 
@@ -693,6 +694,7 @@ class SearchScreenState extends State<SearchScreen>
         WidgetsBinding.instance.addPostFrameCallback(
           (_) => attempt(remainingFrames - 1),
         );
+        WidgetsBinding.instance.ensureVisualUpdate();
       }
     }
 
@@ -721,7 +723,11 @@ class SearchScreenState extends State<SearchScreen>
       target = index + 1;
     } else if (key == LogicalKeyboardKey.arrowLeft) {
       if (column == 0) {
-        _requestVisibleCategoryFocus();
+        if (_browse) {
+          _requestVisibleCategoryFocus();
+        } else {
+          _categoryButtonFocus.requestFocus();
+        }
         return KeyEventResult.handled;
       }
       target = index - 1;

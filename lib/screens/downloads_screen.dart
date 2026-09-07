@@ -39,6 +39,21 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
   int _gridColumns = 1;
   static const double _rowExtent = 116;
 
+  KeyEventResult _openFolderKey(FocusNode _, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+      widget.shellRailFocusNode?.requestFocus();
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+      widget.shellTopFocusNode?.requestFocus();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
   FocusNode _filterNode(int index) =>
       index == 0 && widget.entryFocusNode != null
       ? widget.entryFocusNode!
@@ -94,6 +109,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
         WidgetsBinding.instance.addPostFrameCallback(
           (_) => attempt(frames - 1),
         );
+        WidgetsBinding.instance.ensureVisualUpdate();
       }
     }
 
@@ -279,6 +295,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                   trailing: Downloads.instance.folderPath == null
                       ? null
                       : RemoteTap(
+                          onKeyEvent: _openFolderKey,
                           onTap: () {
                             final path = Downloads.instance.folderPath;
                             if (path != null) launchUrl(Uri.file(path));

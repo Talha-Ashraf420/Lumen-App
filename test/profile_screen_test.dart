@@ -280,6 +280,39 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    Future<void> move(LogicalKeyboardKey key, String expectedLabel) async {
+      await tester.sendKeyEvent(key);
+      await tester.pumpAndSettle();
+      expect(FocusManager.instance.primaryFocus?.debugLabel, expectedLabel);
+    }
+
+    entry.requestFocus();
+    await tester.pump();
+    await move(LogicalKeyboardKey.arrowDown, 'Dark appearance');
+    await move(LogicalKeyboardKey.arrowRight, 'Light appearance');
+    await move(LogicalKeyboardKey.arrowRight, 'System appearance');
+    await move(
+      LogicalKeyboardKey.arrowDown,
+      '${accentSchemes.first.name} accent',
+    );
+    for (final scheme in accentSchemes.skip(1)) {
+      await move(LogicalKeyboardKey.arrowRight, '${scheme.name} accent');
+    }
+    await move(LogicalKeyboardKey.arrowRight, 'Custom accent');
+    await move(LogicalKeyboardKey.arrowDown, 'Customize Home');
+    for (final label in <String>[
+      'Watch insights',
+      'Downloads',
+      'Refresh library',
+      'Clear watch history',
+      'Diagnostics & feedback',
+      'Legal & privacy',
+      if (Updater.instance.isEnabled) 'Check for updates',
+      'Sign out of Lumen',
+    ]) {
+      await move(LogicalKeyboardKey.arrowDown, label);
+    }
+
     final expected = <String>{
       'Profile add account',
       'Dark appearance',

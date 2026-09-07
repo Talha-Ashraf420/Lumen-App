@@ -43,6 +43,8 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   final _entryFocus = FocusNode(debugLabel: 'Profile add account');
+  final _themeEntryFocus = FocusNode(debugLabel: 'Dark appearance');
+  final _accentEntryFocus = FocusNode(debugLabel: 'Signal lime accent');
   final _customizeFocus = FocusNode(debugLabel: 'Customize Home');
   final _insightsFocus = FocusNode(debugLabel: 'Watch insights');
   final _downloadsFocus = FocusNode(debugLabel: 'Downloads');
@@ -135,6 +137,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void initState() {
     super.initState();
+    _entryFocusNode.onKeyEvent = (_, event) =>
+        _moveVertically(event, down: _themeEntryFocus);
     widget.client
         .authenticate()
         .then((i) {
@@ -354,7 +358,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   void dispose() {
+    _entryFocusNode.onKeyEvent = null;
     _entryFocus.dispose();
+    _themeEntryFocus.dispose();
+    _accentEntryFocus.dispose();
     _customizeFocus.dispose();
     _insightsFocus.dispose();
     _downloadsFocus.dispose();
@@ -683,11 +690,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
     body: [
       Text('APPEARANCE', style: kSection()),
       const SizedBox(height: 10),
-      const _ThemeSelector(),
+      _ThemeSelector(
+        entryFocusNode: _themeEntryFocus,
+        upFocusNode: _entryFocusNode,
+        downFocusNode: _accentEntryFocus,
+        leftExitFocusNode: widget.shellRailFocusNode,
+      ),
       const SizedBox(height: 20),
       Text('ACCENT', style: kSection()),
       const SizedBox(height: 12),
-      const _AccentPicker(),
+      _AccentPicker(
+        entryFocusNode: _accentEntryFocus,
+        upFocusNode: _themeEntryFocus,
+        downFocusNode: _customizeFocus,
+        leftExitFocusNode: widget.shellRailFocusNode,
+      ),
       const SizedBox(height: 18),
       Divider(height: 1, color: line),
       const SizedBox(height: 6),
@@ -695,8 +712,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
         animation: HomeConfig.instance,
         builder: (_, child) => _actionRow(
           focusNode: _customizeFocus,
-          onKeyEvent: (_, event) =>
-              _moveVertically(event, down: _insightsFocus),
+          onKeyEvent: (_, event) => _moveVertically(
+            event,
+            up: _accentEntryFocus,
+            down: _insightsFocus,
+          ),
           icon: Icons.dashboard_customize_rounded,
           title: 'Customize Home',
           subtitle: HomeConfig.instance.isCustom
@@ -1114,7 +1134,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
 /// Dark / Light / System segmented selector wired to ThemeController.
 class _ThemeSelector extends StatefulWidget {
-  const _ThemeSelector();
+  const _ThemeSelector({
+    required this.entryFocusNode,
+    required this.upFocusNode,
+    required this.downFocusNode,
+    this.leftExitFocusNode,
+  });
+
+  final FocusNode entryFocusNode;
+  final FocusNode upFocusNode;
+  final FocusNode downFocusNode;
+  final FocusNode? leftExitFocusNode;
 
   @override
   State<_ThemeSelector> createState() => _ThemeSelectorState();
@@ -1131,14 +1161,17 @@ class _ThemeSelectorState extends State<_ThemeSelector> {
     ),
   ];
 
-  late final List<FocusNode> _focusNodes = List.generate(
-    _opts.length,
-    (index) => FocusNode(debugLabel: '${_opts[index].label} appearance'),
-  );
+  late final List<FocusNode> _focusNodes = [
+    widget.entryFocusNode,
+    for (var index = 1; index < _opts.length; index++)
+      FocusNode(debugLabel: '${_opts[index].label} appearance'),
+  ];
 
   @override
   void dispose() {
-    for (final node in _focusNodes) {
+    // The first node belongs to ProfileScreen so it can be part of the
+    // page-wide route. This selector owns only the remaining nodes.
+    for (final node in _focusNodes.skip(1)) {
       node.dispose();
     }
     super.dispose();
@@ -1147,6 +1180,14 @@ class _ThemeSelectorState extends State<_ThemeSelector> {
   KeyEventResult _route(int index, KeyEvent event) {
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+      widget.upFocusNode.requestFocus();
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+      widget.downFocusNode.requestFocus();
+      return KeyEventResult.handled;
     }
     final delta = event.logicalKey == LogicalKeyboardKey.arrowLeft
         ? -1
@@ -1157,6 +1198,9 @@ class _ThemeSelectorState extends State<_ThemeSelector> {
     final target = index + delta;
     if (target >= 0 && target < _focusNodes.length) {
       _focusNodes[target].requestFocus();
+    } else if (target < 0 &&
+        widget.leftExitFocusNode?.canRequestFocus == true) {
+      widget.leftExitFocusNode!.requestFocus();
     }
     return KeyEventResult.handled;
   }
@@ -1233,25 +1277,36 @@ class _ThemeSelectorState extends State<_ThemeSelector> {
 
 /// Accent picker: five named Lumen directions plus D-pad-friendly sliders.
 class _AccentPicker extends StatefulWidget {
-  const _AccentPicker();
+  const _AccentPicker({
+    required this.entryFocusNode,
+    required this.upFocusNode,
+    required this.downFocusNode,
+    this.leftExitFocusNode,
+  });
+
+  final FocusNode entryFocusNode;
+  final FocusNode upFocusNode;
+  final FocusNode downFocusNode;
+  final FocusNode? leftExitFocusNode;
 
   @override
   State<_AccentPicker> createState() => _AccentPickerState();
 }
 
 class _AccentPickerState extends State<_AccentPicker> {
-  late final List<FocusNode> _focusNodes = List.generate(
-    accentSchemes.length + 1,
-    (index) => FocusNode(
-      debugLabel: index < accentSchemes.length
-          ? '${accentSchemes[index].name} accent'
-          : 'Custom accent',
-    ),
-  );
+  late final List<FocusNode> _focusNodes = [
+    widget.entryFocusNode,
+    for (var index = 1; index < accentSchemes.length + 1; index++)
+      FocusNode(
+        debugLabel: index < accentSchemes.length
+            ? '${accentSchemes[index].name} accent'
+            : 'Custom accent',
+      ),
+  ];
 
   @override
   void dispose() {
-    for (final node in _focusNodes) {
+    for (final node in _focusNodes.skip(1)) {
       node.dispose();
     }
     super.dispose();
@@ -1260,6 +1315,14 @@ class _AccentPickerState extends State<_AccentPicker> {
   KeyEventResult _route(int index, KeyEvent event) {
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+      widget.upFocusNode.requestFocus();
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+      widget.downFocusNode.requestFocus();
+      return KeyEventResult.handled;
     }
     final delta = event.logicalKey == LogicalKeyboardKey.arrowLeft
         ? -1
@@ -1270,6 +1333,9 @@ class _AccentPickerState extends State<_AccentPicker> {
     final target = index + delta;
     if (target >= 0 && target < _focusNodes.length) {
       _focusNodes[target].requestFocus();
+    } else if (target < 0 &&
+        widget.leftExitFocusNode?.canRequestFocus == true) {
+      widget.leftExitFocusNode!.requestFocus();
     }
     return KeyEventResult.handled;
   }

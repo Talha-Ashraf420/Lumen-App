@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -46,6 +47,8 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
   late Future<SeriesInfo> _future;
   int? _season;
   TmdbInfo? _tmdb;
+  final Map<String, FocusNode> _episodePlayFocus = {};
+  final Map<String, FocusNode> _episodeDownloadFocus = {};
 
   @override
   void initState() {
@@ -56,6 +59,27 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
         if (mounted && value != null) setState(() => _tmdb = value);
       });
     }
+  }
+
+  @override
+  void dispose() {
+    for (final node in _episodePlayFocus.values) {
+      node.dispose();
+    }
+    for (final node in _episodeDownloadFocus.values) {
+      node.dispose();
+    }
+    super.dispose();
+  }
+
+  FocusNode _episodeNode(Episode episode, int index, {required bool download}) {
+    final nodes = download ? _episodeDownloadFocus : _episodePlayFocus;
+    return nodes.putIfAbsent(
+      episode.id,
+      () => FocusNode(
+        debugLabel: 'Episode ${index + 1} ${download ? 'download' : 'play'}',
+      ),
+    );
   }
 
   String get _title => cleanMediaTitle(widget.title);
@@ -308,6 +332,8 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
         builder: (context, constraints) {
           final wide = constraints.crossAxisExtent >= 850;
           if (wide) {
+            final columns = ((constraints.crossAxisExtent + 14) / (520 + 14))
+                .ceil();
             return SliverGrid(
               gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                 maxCrossAxisExtent: 520,
@@ -316,13 +342,8 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
                 mainAxisSpacing: 14,
               ),
               delegate: SliverChildBuilderDelegate(
-                (context, index) => _EpisodeChapter(
-                  episode: episodes[index],
-                  fallback: info.cover,
-                  index: index,
-                  onPlay: () => _playEpisodes(episodes, index, info),
-                  onDownload: () => _downloadEpisode(episodes[index], info),
-                ),
+                (context, index) =>
+                    _episodeChapter(episodes, index, info, columns: columns),
                 childCount: episodes.length,
               ),
             );
@@ -330,16 +351,42 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
           return SliverList.separated(
             itemCount: episodes.length,
             separatorBuilder: (_, _) => const SizedBox(height: 12),
-            itemBuilder: (context, index) => _EpisodeChapter(
-              episode: episodes[index],
-              fallback: info.cover,
-              index: index,
-              onPlay: () => _playEpisodes(episodes, index, info),
-              onDownload: () => _downloadEpisode(episodes[index], info),
-            ),
+            itemBuilder: (context, index) =>
+                _episodeChapter(episodes, index, info, columns: 1),
           );
         },
       ),
+    );
+  }
+
+  Widget _episodeChapter(
+    List<Episode> episodes,
+    int index,
+    SeriesInfo info, {
+    required int columns,
+  }) {
+    final episode = episodes[index];
+    FocusNode? playAt(int target) => target >= 0 && target < episodes.length
+        ? _episodeNode(episodes[target], target, download: false)
+        : null;
+    FocusNode? downloadAt(int target) => target >= 0 && target < episodes.length
+        ? _episodeNode(episodes[target], target, download: true)
+        : null;
+    final column = index % columns;
+    return _EpisodeChapter(
+      episode: episode,
+      fallback: info.cover,
+      index: index,
+      playFocus: playAt(index)!,
+      downloadFocus: downloadAt(index)!,
+      playLeft: column > 0 ? downloadAt(index - 1) : null,
+      playUp: playAt(index - columns),
+      playDown: playAt(index + columns),
+      downloadRight: column < columns - 1 ? playAt(index + 1) : null,
+      downloadUp: downloadAt(index - columns),
+      downloadDown: downloadAt(index + columns),
+      onPlay: () => _playEpisodes(episodes, index, info),
+      onDownload: () => _downloadEpisode(episode, info),
     );
   }
 }
@@ -762,6 +809,14 @@ class _EpisodeChapter extends StatelessWidget {
     required this.episode,
     required this.fallback,
     required this.index,
+    required this.playFocus,
+    required this.downloadFocus,
+    required this.playLeft,
+    required this.playUp,
+    required this.playDown,
+    required this.downloadRight,
+    required this.downloadUp,
+    required this.downloadDown,
     required this.onPlay,
     required this.onDownload,
   });
@@ -769,8 +824,33 @@ class _EpisodeChapter extends StatelessWidget {
   final Episode episode;
   final String fallback;
   final int index;
+  final FocusNode playFocus;
+  final FocusNode downloadFocus;
+  final FocusNode? playLeft;
+  final FocusNode? playUp;
+  final FocusNode? playDown;
+  final FocusNode? downloadRight;
+  final FocusNode? downloadUp;
+  final FocusNode? downloadDown;
   final VoidCallback onPlay;
   final VoidCallback onDownload;
+
+  KeyEventResult _move(
+    KeyEvent event,
+    Map<LogicalKeyboardKey, FocusNode?> routes,
+  ) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    final target = routes[event.logicalKey];
+    // A lazily built episode outside the current Sliver viewport is not yet
+    // attached. Let Flutter's directional traversal scroll/build it first.
+    if (target == null || target.context == null) {
+      return KeyEventResult.ignored;
+    }
+    target.requestFocus();
+    return KeyEventResult.handled;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -786,6 +866,14 @@ class _EpisodeChapter extends StatelessWidget {
     final chapter = SizedBox(
       height: 142,
       child: RemoteTap(
+        semanticLabel: 'Play episode ${episode.episodeNum}: $title',
+        focusNode: playFocus,
+        onKeyEvent: (_, event) => _move(event, {
+          LogicalKeyboardKey.arrowLeft: playLeft,
+          LogicalKeyboardKey.arrowRight: downloadFocus,
+          LogicalKeyboardKey.arrowUp: playUp,
+          LogicalKeyboardKey.arrowDown: playDown,
+        }),
         onTap: onPlay,
         child: Container(
           clipBehavior: Clip.antiAlias,
@@ -879,7 +967,17 @@ class _EpisodeChapter extends StatelessWidget {
                   ),
                 ),
               ),
-              _EpisodeDownload(id: 'ep:${episode.id}', onDownload: onDownload),
+              _EpisodeDownload(
+                id: 'ep:${episode.id}',
+                focusNode: downloadFocus,
+                onKeyEvent: (_, event) => _move(event, {
+                  LogicalKeyboardKey.arrowLeft: playFocus,
+                  LogicalKeyboardKey.arrowRight: downloadRight,
+                  LogicalKeyboardKey.arrowUp: downloadUp,
+                  LogicalKeyboardKey.arrowDown: downloadDown,
+                }),
+                onDownload: onDownload,
+              ),
               const SizedBox(width: 8),
             ],
           ),
@@ -894,9 +992,16 @@ class _EpisodeChapter extends StatelessWidget {
 }
 
 class _EpisodeDownload extends StatelessWidget {
-  const _EpisodeDownload({required this.id, required this.onDownload});
+  const _EpisodeDownload({
+    required this.id,
+    required this.focusNode,
+    required this.onKeyEvent,
+    required this.onDownload,
+  });
 
   final String id;
+  final FocusNode focusNode;
+  final FocusOnKeyEventCallback onKeyEvent;
   final VoidCallback onDownload;
 
   @override
@@ -933,6 +1038,8 @@ class _EpisodeDownload extends StatelessWidget {
 
       return RemoteTap(
         semanticLabel: label,
+        focusNode: focusNode,
+        onKeyEvent: onKeyEvent,
         onTap: action,
         child: Container(
           padding: const EdgeInsets.all(10),

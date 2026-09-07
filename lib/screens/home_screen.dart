@@ -96,6 +96,7 @@ class HItem {
 class HomeScreen extends StatefulWidget {
   final XtreamClient client;
   final VoidCallback onBrowse;
+  final FocusNode? entryFocusNode;
 
   /// Test seam for exercising refresh transitions without opening the
   /// persistent catalog database. Production callers always use the shared
@@ -106,6 +107,7 @@ class HomeScreen extends StatefulWidget {
     super.key,
     required this.client,
     required this.onBrowse,
+    this.entryFocusNode,
     this.categoryLoader,
   });
   @override
@@ -851,6 +853,7 @@ class _HomeScreenState extends State<HomeScreen>
               future: heroFuture,
               revision: _loadGeneration,
               onOpen: (m) => _push(MovieDetailScreen(client: c, movie: m)),
+              entryFocusNode: widget.entryFocusNode,
             );
 
             if (isWide(context)) {
@@ -1489,12 +1492,14 @@ class _SpotlightHero extends StatefulWidget {
   final Future<List<VodStream>> future;
   final int revision;
   final void Function(VodStream) onOpen;
+  final FocusNode? entryFocusNode;
   const _SpotlightHero({
     super.key,
     required this.client,
     required this.future,
     required this.revision,
     required this.onOpen,
+    this.entryFocusNode,
   });
   @override
   State<_SpotlightHero> createState() => _SpotlightHeroState();
@@ -1754,6 +1759,7 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
                 icon: Icons.play_arrow_rounded,
                 label: 'Play',
                 onTap: () => _play(m),
+                focusNode: widget.entryFocusNode,
               ),
               const SizedBox(width: 10),
               HoverScale(
@@ -1995,6 +2001,7 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
                           icon: Icons.play_arrow_rounded,
                           label: 'Watch now',
                           onTap: () => _play(m),
+                          focusNode: widget.entryFocusNode,
                         ),
                         const SizedBox(width: 10),
                         PillButton(

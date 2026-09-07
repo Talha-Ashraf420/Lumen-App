@@ -104,6 +104,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   final FocusNode _profileEntryFocus = FocusNode(
     debugLabel: 'Profile add account',
   );
+  final FocusNode _homeEntryFocus = FocusNode(debugLabel: 'Home watch now');
   final FocusNode _downloadsEntryFocus = FocusNode(
     debugLabel: 'Downloads filter 0',
   );
@@ -204,6 +205,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     _commandProfileFocus.dispose();
     _myListEntryFocus.dispose();
     _profileEntryFocus.dispose();
+    _homeEntryFocus.dispose();
     _downloadsEntryFocus.dispose();
     super.dispose();
   }
@@ -234,7 +236,11 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   }
 
   Widget _pageFor(int i) => switch (i) {
-    0 => HomeScreen(client: widget.client, onBrowse: () => _select(1)),
+    0 => HomeScreen(
+      client: widget.client,
+      onBrowse: () => _select(1),
+      entryFocusNode: _homeEntryFocus,
+    ),
     1 => SearchScreen(
       key: _searchKey,
       client: widget.client,
@@ -366,6 +372,12 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       }
       final scope = _pageFocusScopes[page];
       if (scope == null) return;
+      if (page == 0 &&
+          _homeEntryFocus.context != null &&
+          _homeEntryFocus.canRequestFocus) {
+        scope.requestFocus(_homeEntryFocus);
+        return;
+      }
       // My List can change from an empty, non-focusable page to a populated
       // one while its cached page stays mounted. Use its stable first filter
       // node instead of relying on a traversal snapshot from the empty state.
@@ -1278,6 +1290,10 @@ class _CommandBar extends StatelessWidget {
             railFocusNode.requestFocus();
           }
         });
+        // A hardware key does not necessarily schedule another Flutter frame.
+        // Without this, the queued cross-scope handoff can remain pending and
+        // make Left appear dead on televisions until an unrelated repaint.
+        WidgetsBinding.instance.ensureVisualUpdate();
       }
       return KeyEventResult.handled;
     }

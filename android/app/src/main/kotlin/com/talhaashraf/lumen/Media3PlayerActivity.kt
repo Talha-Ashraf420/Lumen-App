@@ -3,6 +3,7 @@ package com.talhaashraf.lumen
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
@@ -13,6 +14,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.provider.OpenableColumns
+import android.util.Log
 import android.view.Gravity
 import android.view.InputDevice
 import android.view.KeyEvent
@@ -269,9 +271,10 @@ class Media3PlayerActivity : Activity() {
                     SystemClock.elapsedRealtime(),
                     player.currentPosition.coerceAtLeast(0L)
                 )
-                // Start movies and channels in a clean cinema view. The first
-                // remote press reveals the complete transport and title bar.
-                hideControls(force = true)
+                // Start movies and channels in a clean cinema view. When a
+                // reconnect or channel switch completes while the viewer is
+                // already navigating the controller, keep that focus visible.
+                if (!playerControlsHaveFocus()) hideControls(force = true)
             }
         })
         updateNavigationUi()
@@ -400,6 +403,12 @@ class Media3PlayerActivity : Activity() {
             thumbTintList = ColorStateList.valueOf(0xFFC5FF63.toInt())
             contentDescription = "Playback position"
             setOnFocusChangeListener { view, focused ->
+                if (focused) {
+                    logFocus("Playback position")
+                    handler.removeCallbacks(hideControls)
+                } else {
+                    scheduleControlsHide()
+                }
                 view.animate()
                     .scaleY(if (focused) 1.35f else 1f)
                     .setDuration(100L)
@@ -547,7 +556,13 @@ class Media3PlayerActivity : Activity() {
             )
         )
         setOnFocusChangeListener { view, focused ->
-            if (focused && showPlayerControlsOnFocus) showControls()
+            if (focused) {
+                logFocus(view.contentDescription?.toString() ?: label)
+                handler.removeCallbacks(hideControls)
+                if (showPlayerControlsOnFocus) showControls()
+            } else if (showPlayerControlsOnFocus) {
+                scheduleControlsHide()
+            }
             view.animate()
                 .scaleX(if (focused) 1.045f else 1f)
                 .scaleY(if (focused) 1.045f else 1f)
@@ -1042,7 +1057,12 @@ class Media3PlayerActivity : Activity() {
 
     private fun scheduleControlsHide() {
         handler.removeCallbacks(hideControls)
-        if (::player.isInitialized && player.isPlaying && !terminalError) {
+        if (
+            ::player.isInitialized &&
+            player.isPlaying &&
+            !terminalError &&
+            !playerControlsHaveFocus()
+        ) {
             handler.postDelayed(hideControls, CONTROLS_TIMEOUT_MS)
         }
     }
@@ -1050,11 +1070,25 @@ class Media3PlayerActivity : Activity() {
     private fun hideControls(force: Boolean = false) {
         if (!::controlsBar.isInitialized || terminalError) return
         if (!force && (!::player.isInitialized || !player.isPlaying)) return
+        if (!force && playerControlsHaveFocus()) {
+            scheduleControlsHide()
+            return
+        }
         handler.removeCallbacks(hideControls)
         controlsVisible = false
         titleBar.visibility = View.GONE
         controlsBar.visibility = View.GONE
         playerView.requestFocus()
+    }
+
+    private fun playerControlsHaveFocus(): Boolean =
+        (::titleBar.isInitialized && titleBar.hasFocus()) ||
+            (::controlsBar.isInitialized && controlsBar.hasFocus())
+
+    private fun logFocus(label: String) {
+        if ((applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0) {
+            Log.i("LUMEN_TV_FOCUS", label)
+        }
     }
 
     private fun buildErrorPanel(): LinearLayout {
@@ -1155,6 +1189,19 @@ class Media3PlayerActivity : Activity() {
         }
     }
 
+    private fun moveErrorFocus(forward: Boolean): Boolean {
+        val active = listOf(errorPreviousButton, retryButton, errorNextButton)
+            .filter { it.visibility == View.VISIBLE && it.isEnabled }
+        if (active.isEmpty()) return false
+        val current = active.indexOfFirst { it.hasFocus() }.let {
+            if (it < 0) active.indexOf(retryButton).coerceAtLeast(0) else it
+        }
+        val target = (current + if (forward) 1 else -1)
+            .coerceIn(0, active.lastIndex)
+        active[target].requestFocus()
+        return true
+    }
+
     private fun open() {
         terminalError = false
         openedAtMs = SystemClock.elapsedRealtime()
@@ -1246,6 +1293,12 @@ class Media3PlayerActivity : Activity() {
             return true
         }
         if (::errorPanel.isInitialized && errorPanel.visibility == View.VISIBLE) {
+            if (event.action == KeyEvent.ACTION_DOWN) {
+                when (event.keyCode) {
+                    KeyEvent.KEYCODE_DPAD_LEFT -> return moveErrorFocus(false)
+                    KeyEvent.KEYCODE_DPAD_RIGHT -> return moveErrorFocus(true)
+                }
+            }
             return super.dispatchKeyEvent(event)
         }
         if (event.action == KeyEvent.ACTION_DOWN) {
@@ -1297,13 +1350,17 @@ class Media3PlayerActivity : Activity() {
                     if (event.repeatCount == 0) toggleKeyboardMute()
                     return true
                 }
-                KeyEvent.KEYCODE_DPAD_LEFT -> if (alphabeticKeyboard) {
+                KeyEvent.KEYCODE_DPAD_LEFT -> if (
+                    alphabeticKeyboard && (!controlsVisible || playerView.hasFocus())
+                ) {
                     seekBy(-SEEK_INCREMENT_MS)
                     showControls(requestTransportFocus = false)
                     scheduleControlsHide()
                     return true
                 }
-                KeyEvent.KEYCODE_DPAD_RIGHT -> if (alphabeticKeyboard) {
+                KeyEvent.KEYCODE_DPAD_RIGHT -> if (
+                    alphabeticKeyboard && (!controlsVisible || playerView.hasFocus())
+                ) {
                     seekBy(SEEK_INCREMENT_MS)
                     showControls(requestTransportFocus = false)
                     scheduleControlsHide()

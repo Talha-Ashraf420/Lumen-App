@@ -90,6 +90,7 @@ class _MyListScreenState extends State<MyListScreen> {
         WidgetsBinding.instance.addPostFrameCallback(
           (_) => attempt(frames - 1),
         );
+        WidgetsBinding.instance.ensureVisualUpdate();
       }
     }
 

@@ -1973,17 +1973,23 @@ class PillButton extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
   final bool filled;
+  final FocusNode? focusNode;
+  final FocusOnKeyEventCallback? onKeyEvent;
   const PillButton({
     super.key,
     required this.label,
     required this.onTap,
     this.icon,
     this.filled = true,
+    this.focusNode,
+    this.onKeyEvent,
   });
   @override
   Widget build(BuildContext context) {
     final fg = filled ? onAccent : textHi;
     return FocusableTap(
+      focusNode: focusNode,
+      onKeyEvent: onKeyEvent,
       onTap: onTap,
       builder: (context, active) => AnimatedScale(
         scale: active ? 1.025 : 1.0,

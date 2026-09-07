@@ -405,6 +405,43 @@ void main() {
     await disposeUi(tester);
   });
 
+  testWidgets('TV episode actions form a complete horizontal focus route', (
+    tester,
+  ) async {
+    final client = _DetailClient();
+    await pumpAt(
+      tester,
+      SeriesDetailScreen(client: client, seriesId: 91, title: 'Signal House'),
+      const Size(1280, 900),
+    );
+    await tester.pump(const Duration(milliseconds: 400));
+
+    FocusNode node(String label) => FocusManager.instance.rootScope.descendants
+        .firstWhere((candidate) => candidate.debugLabel == label);
+
+    node('Episode 1 play').requestFocus();
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    expect(
+      FocusManager.instance.primaryFocus?.debugLabel,
+      'Episode 1 download',
+    );
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'Episode 2 play');
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pump();
+    expect(
+      FocusManager.instance.primaryFocus?.debugLabel,
+      'Episode 1 download',
+    );
+    expect(tester.takeException(), isNull);
+    await disposeUi(tester);
+  });
+
   testWidgets('series episodes render on a phone without layout failures', (
     tester,
   ) async {
@@ -809,6 +846,21 @@ void main() {
       tester,
       () => FocusManager.instance.primaryFocus?.debugLabel == 'Catalog tile 0',
     );
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pump();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'Search category');
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pump();
+    expect(
+      FocusManager.instance.primaryFocus?.debugLabel,
+      'Search section movie',
+    );
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pump();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'Search shell rail');
     expect(tester.takeException(), isNull);
     await disposeUi(tester);
   });
