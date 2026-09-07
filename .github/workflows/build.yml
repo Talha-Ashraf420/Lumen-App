@@ -153,6 +153,8 @@ jobs:
     # Publish whatever built successfully, even if some platform job failed.
     if: ${{ always() }}
     runs-on: ubuntu-latest
+    env:
+      DISCORD_RELEASE_WEBHOOK: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
     steps:
       - name: Download all build artifacts
         uses: actions/download-artifact@v4
@@ -183,3 +185,21 @@ jobs:
           prerelease: false
           make_latest: true
           files: out/*
+      - name: Announce the Android build on Discord
+        if: ${{ env.DISCORD_RELEASE_WEBHOOK != '' }}
+        env:
+          BUILD_NUMBER: ${{ github.run_number }}
+          RELEASE_PAGE: https://github.com/Talha-Ashraf420/Lumen-App/releases/latest
+          APK_URL: https://github.com/Talha-Ashraf420/Lumen-App/releases/latest/download/Lumen-Android.apk
+        run: |
+          if [ ! -f out/Lumen-Android.apk ]; then
+            echo "Android artifact is unavailable; skipping Discord announcement."
+            exit 0
+          fi
+          jq -n \
+            --arg content "📺 **Lumen build ${BUILD_NUMBER} is ready**\n\nDownload the Android / Android TV APK:\n${APK_URL}\n\nRelease details: ${RELEASE_PAGE}\n\nLumen includes no channels or media. Use only sources you are authorized to access." \
+            '{content: $content}' > discord-payload.json
+          curl --fail --silent --show-error \
+            -H "Content-Type: application/json" \
+            --data @discord-payload.json \
+            "$DISCORD_RELEASE_WEBHOOK"

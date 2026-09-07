@@ -9,7 +9,7 @@ A native, premium **IPTV player** for your own Xtream / X3U subscription — Liv
 ![Platforms](https://img.shields.io/badge/platforms-Android%20·%20TV%20·%20iOS%20·%20macOS%20·%20Windows%20·%20Linux-3DDC84)
 [![Stars](https://img.shields.io/github/stars/Talha-Ashraf420/Lumen-App?style=social)](https://github.com/Talha-Ashraf420/Lumen-App/stargazers)
 
-[**Visit the Lumen website**](https://lumen-launch.vercel.app/) · [**View on Google Play**](https://play.google.com/store/apps/details?id=com.talhaashraf.lumen)
+[**Visit the Lumen website**](https://lumen-launch.vercel.app/) · [**Join the Discord community**](https://discord.gg/n8dfzrDNQg) · [**View on Google Play**](https://play.google.com/store/apps/details?id=com.talhaashraf.lumen)
 
 ---
 
@@ -19,6 +19,7 @@ Android and Android TV releases are distributed through Google Play. Lumen is
 currently in closed testing; visit the website to request tester access.
 
 [![Lumen website](https://img.shields.io/badge/Official%20website-Lumen-BCFF3C?style=for-the-badge)](https://lumen-launch.vercel.app/)
+[![Discord](https://img.shields.io/badge/Join%20the%20community-Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/n8dfzrDNQg)
 [![Get it on Google Play](https://img.shields.io/badge/Get%20it%20on-Google%20Play-414141?style=for-the-badge&logo=googleplay&logoColor=white)](https://play.google.com/store/apps/details?id=com.talhaashraf.lumen)
 
 Desktop builds remain available from GitHub Releases:
@@ -123,6 +124,7 @@ Contributions are very welcome! Lumen is friendly to newcomers.
 - Read **[CONTRIBUTING.md](CONTRIBUTING.md)** for setup, project layout and conventions.
 - Pick up a [`good first issue`](https://github.com/Talha-Ashraf420/Lumen-App/labels/good%20first%20issue) or [`help wanted`](https://github.com/Talha-Ashraf420/Lumen-App/labels/help%20wanted).
 - Have questions or ideas? Start a [Discussion](https://github.com/Talha-Ashraf420/Lumen-App/discussions).
+- Testers can also join the **[Lumen Discord community](https://discord.gg/n8dfzrDNQg)** for release announcements, bug reports, feature requests, and device-specific feedback.
 - New here? The [architecture write-up](docs/blog/building-lumen.md) is a good primer.
 
 ### 🗺️ Roadmap / help wanted

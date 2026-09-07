@@ -2,6 +2,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 const privacyPolicyUrl = 'https://lumen-launch.vercel.app/privacy';
 const supportEmail = 'talhaashraf81@gmail.com';
+const communityUrl = 'https://discord.gg/n8dfzrDNQg';
 
 class LegalAcceptance {
   static const _key = 'lumen_legal_acceptance_v1';

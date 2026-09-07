@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../device_profile.dart';
 import '../downloads.dart';
 import '../library.dart';
@@ -48,6 +49,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _refreshFocus = FocusNode(debugLabel: 'Refresh library');
   final _historyFocus = FocusNode(debugLabel: 'Clear watch history');
   final _diagnosticsFocus = FocusNode(debugLabel: 'Diagnostics & feedback');
+  final _communityFocus = FocusNode(debugLabel: 'Lumen community');
   final _legalFocus = FocusNode(debugLabel: 'Legal & privacy');
   final _updateFocus = FocusNode(debugLabel: 'Check for updates');
   final _signOutFocus = FocusNode(debugLabel: 'Sign out of Lumen');
@@ -260,6 +262,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  Future<void> _openCommunity() async {
+    final opened = await launchUrl(
+      Uri.parse(communityUrl),
+      mode: LaunchMode.externalApplication,
+    );
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text('Could not open the Lumen community link.'),
+            duration: Duration(seconds: 3),
+          ),
+        );
+    }
+  }
+
   Future<void> _requestLogout() async {
     if (_signingOut) return;
     final confirmed = await showDialog<bool>(
@@ -364,6 +383,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _refreshFocus.dispose();
     _historyFocus.dispose();
     _diagnosticsFocus.dispose();
+    _communityFocus.dispose();
     _legalFocus.dispose();
     _updateFocus.dispose();
     _signOutFocus.dispose();
@@ -787,7 +807,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _actionRow(
         focusNode: _diagnosticsFocus,
         onKeyEvent: (_, event) =>
-            _moveVertically(event, up: _historyFocus, down: _legalFocus),
+            _moveVertically(event, up: _historyFocus, down: _communityFocus),
         icon: Icons.bug_report_outlined,
         title: 'Diagnostics & feedback',
         subtitle: 'Review a private, redacted support report',
@@ -799,10 +819,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
       _divider(),
       _actionRow(
+        focusNode: _communityFocus,
+        onKeyEvent: (_, event) =>
+            _moveVertically(event, up: _diagnosticsFocus, down: _legalFocus),
+        icon: Icons.forum_outlined,
+        title: 'Join the Lumen community',
+        subtitle: 'Chat with other users and share feedback on Discord',
+        onTap: _openCommunity,
+      ),
+      _divider(),
+      _actionRow(
         focusNode: _legalFocus,
         onKeyEvent: (_, event) => _moveVertically(
           event,
-          up: _diagnosticsFocus,
+          up: _communityFocus,
           down: Updater.instance.isEnabled ? _updateFocus : _signOutFocus,
         ),
         icon: Icons.privacy_tip_outlined,
