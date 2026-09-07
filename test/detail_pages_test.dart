@@ -873,6 +873,16 @@ void main() {
     DeviceProfile.isTelevision = true;
     addTearDown(() => DeviceProfile.isTelevision = false);
     addTearDown(client.close);
+    const nativeChannel = MethodChannel('lumen/tv_text_input');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          nativeChannel,
+          (_) async => throw MissingPluginException(),
+        );
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(nativeChannel, null),
+    );
 
     await pumpAt(
       tester,

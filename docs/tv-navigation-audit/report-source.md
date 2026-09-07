@@ -20,6 +20,8 @@
 5. Flutter supports grouping traversal regions and programmatically keeping newly focused controls visible.
    - https://api.flutter.dev/flutter/widgets/FocusTraversalGroup-class.html
    - https://api.flutter.dev/flutter/widgets/Scrollable/ensureVisible.html
+6. Android only connects the IME reliably when a real editor and its window own focus before the keyboard is shown.
+   - https://developer.android.com/develop/ui/views/touch-and-input/keyboard-input/visibility
 
 ## Evidence log
 
@@ -30,12 +32,12 @@
 - The initial route lands on the Home dock and Right enters `Home watch now`; Up reaches the shared command bar and Left returns to the current rail destination.
 - Movies, Series, and Live categories traverse vertically beyond one viewport, scroll automatically, enter their grids with Right, move across rows in all four directions, and return to categories/rail with Left.
 - A real five-season series traverses Back, Play next, My list, season tabs, every episode Play action, and every episode Download action in both directions.
-- Search opens and reopens the TV keyboard with Select; section filters, category selection, results, and rail-return routes are reachable.
+- Search and provider login open a native Android editor before showing the TV IME, so the keyboard—not Flutter's focus wrapper—owns remote D-pad events. Lumen's fully navigable keyboard remains available as a platform-channel fallback.
 - Profile traverses Add account, all appearance and accent controls, Home customization, insights, downloads, refresh, history, diagnostics, legal, update (when present), and sign-out. Diagnostics, Legal, clear-history, sign-out, and exit dialogs were opened and dismissed with the remote.
 - Empty Downloads traverses Rail → Open downloads folder → Command bar → Rail. Populated Downloads and My List are covered by widget route tests.
 - The native player was exercised with a real live channel and VOD item. The remote traverses previous/play-pause/next, Back, captions, playback position, and other chrome without controls disappearing while focused. Channel switching preserves the active control focus.
 - External keyboard Space toggles play/pause, J/L seek backward/forward, and S stops playback; D-pad arrows continue to navigate visible TV controls.
-- The complete Flutter suite passes: 128 tests. Static analysis reports only 30 pre-existing informational style lints and no warnings or errors.
+- The complete Flutter suite passes: 129 tests. Static analysis reports only 30 pre-existing informational style lints and no warnings or errors.
 
 ## Gap matrix
 
@@ -47,7 +49,7 @@
 | Catalog grid | Four-way traversal and lazy scrolling | Passed across multiple rows and catalog pages | Deterministic post-frame retries keep lazy children reachable |
 | Details | Buttons, seasons, episodes fully reachable | Passed on a real five-season series and route tests | Parent-owned episode action nodes and explicit row/column routes |
 | Profile/settings | Every card, selector, action, dialog reachable | Passed through the complete settings graph | Explicit vertical chain and safe left-edge rail exit |
-| Text input | Remote Select opens usable keyboard | Passed on provider login and Search | Persistent field nodes plus the custom D-pad keyboard |
+| Text input | Remote Select opens a keyboard that owns D-pad focus | Native Android editor bridge covered on provider login; custom D-pad fallback covered on login and Search | The native editor establishes the IME input connection before display; Lumen keyboard remains the fallback |
 | Player | All controls reachable; arrows/Select/Back work | Passed with real live and VOD playback | Arrow interception is limited to the video surface; focused controls remain visible |
 | Lifecycle | Focus remains valid after loading/navigation | Passed across catalog loads, channel changes, dialogs, and route returns | Preserve active nodes and restore semantic entry focus after updates |
 
@@ -61,7 +63,8 @@
 | Focused key events bubble through ancestors | Flutter focus guide | Diagnose competing handlers |
 | Focus groups establish traversal regions | Flutter FocusTraversalGroup API | Architecture |
 | ensureVisible can reveal newly focused descendants | Flutter Scrollable API | Off-screen focus correction |
+| A focused editor and focused window must precede showing the IME | Android keyboard visibility guide | Native TV text-entry bridge |
 
 ## Conclusions
 
-The audited build satisfies the Android TV remote-navigation acceptance criteria across the shell, content catalogs, detail pages, settings, dialogs, text input, and native player. Two root causes were corrected during live testing: the player consumed Left/Right before visible controls could traverse, and a deferred command-bar-to-rail handoff waited for an unscheduled frame. Explicit routes, persistent parent-owned nodes, scheduled focus handoffs, scroll-to-focus, and focus-preserving player chrome now remove those dead ends. The build is ready for signed-bundle verification and a closed-testing rollout.
+The audited build satisfies the Android TV remote-navigation acceptance criteria across the shell, content catalogs, detail pages, settings, dialogs, text input, and native player. Three root causes were corrected: the player consumed Left/Right before visible controls could traverse, a deferred command-bar-to-rail handoff waited for an unscheduled frame, and Flutter-owned text focus could leave the vendor keyboard visible without ownership of D-pad events. Explicit routes, persistent parent-owned nodes, scheduled focus handoffs, scroll-to-focus, focus-preserving player chrome, and a native Android editor bridge remove those dead ends. The build is ready for signed-bundle verification and a closed-testing rollout.

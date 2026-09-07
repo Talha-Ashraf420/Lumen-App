@@ -291,7 +291,7 @@ void main() {
     await tester.pump();
     textInputCalls.clear();
 
-    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pump(const Duration(seconds: 1));
 
     expect(
@@ -308,6 +308,16 @@ void main() {
   ) async {
     DeviceProfile.isTelevision = true;
     addTearDown(() => DeviceProfile.isTelevision = false);
+    const nativeChannel = MethodChannel('lumen/tv_text_input');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          nativeChannel,
+          (_) async => throw MissingPluginException(),
+        );
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(nativeChannel, null),
+    );
 
     await pumpLogin(tester, clientFactory: _SuccessfulLoginClient.new);
     final urlFinder = find.byType(TextField).first;
@@ -316,19 +326,51 @@ void main() {
     await tester.pump();
     expect(urlField.focusNode!.hasFocus, isTrue);
 
-    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pumpAndSettle();
 
     expect(find.text('TYPE WITH YOUR REMOTE'), findsOneWidget);
 
     // The first keyboard key is focused automatically, so remote OK must
     // write directly to the controller even on TVs with a broken vendor IME.
-    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pump();
     expect(urlField.controller!.text, 'provider.example1');
 
     await tester.tap(find.text('DONE'));
     await tester.pumpAndSettle();
+    expect(find.text('TYPE WITH YOUR REMOTE'), findsNothing);
+    expect(urlField.focusNode!.hasFocus, isTrue);
+  });
+
+  testWidgets('TV native editor returns text to the focused login field', (
+    tester,
+  ) async {
+    DeviceProfile.isTelevision = true;
+    addTearDown(() => DeviceProfile.isTelevision = false);
+    const channel = MethodChannel('lumen/tv_text_input');
+    MethodCall? request;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+          request = call;
+          return 'native.example';
+        });
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null),
+    );
+
+    await pumpLogin(tester, clientFactory: _SuccessfulLoginClient.new);
+    final urlField = tester.widget<TextField>(find.byType(TextField).first);
+    urlField.focusNode!.requestFocus();
+    await tester.pump();
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await tester.pumpAndSettle();
+
+    expect(request?.method, 'show');
+    expect(request?.arguments, containsPair('initial', 'provider.example'));
+    expect(urlField.controller!.text, 'native.example');
     expect(find.text('TYPE WITH YOUR REMOTE'), findsNothing);
     expect(urlField.focusNode!.hasFocus, isTrue);
   });

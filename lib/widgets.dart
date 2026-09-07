@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -188,6 +189,7 @@ class RemoteTextInput extends StatefulWidget {
 }
 
 class _RemoteTextInputState extends State<RemoteTextInput> {
+  static const _tvTextInput = MethodChannel('lumen/tv_text_input');
   final GlobalKey _editableSubtreeKey = GlobalKey();
   bool _tvKeyboardOpen = false;
 
@@ -213,7 +215,11 @@ class _RemoteTextInputState extends State<RemoteTextInput> {
     final editable = _editableTextState();
     if (editable != null) {
       if (DeviceProfile.isTelevision) {
-        _showTvKeyboard(editable);
+        if (defaultTargetPlatform == TargetPlatform.android) {
+          unawaited(_showNativeTvKeyboard(editable));
+        } else {
+          _showTvKeyboard(editable);
+        }
         return;
       }
       // requestKeyboard establishes (or repairs) the TextInputClient before
@@ -224,6 +230,39 @@ class _RemoteTextInputState extends State<RemoteTextInput> {
       return;
     }
     unawaited(SystemChannels.textInput.invokeMethod<void>('TextInput.show'));
+  }
+
+  Future<void> _showNativeTvKeyboard(EditableTextState editable) async {
+    if (_tvKeyboardOpen || !mounted) return;
+    _tvKeyboardOpen = true;
+    String? next;
+    try {
+      next = await _tvTextInput.invokeMethod<String>('show', {
+        'initial': editable.widget.controller.text,
+        'obscure': editable.widget.obscureText,
+        'title': editable.widget.obscureText ? 'Enter password' : 'Enter text',
+      });
+    } on MissingPluginException {
+      // Widget tests, desktop targets, and unusual Android builds without the
+      // native bridge retain the fully D-pad-operable Lumen keyboard.
+      _tvKeyboardOpen = false;
+      _showTvKeyboard(editable);
+      return;
+    } on PlatformException {
+      _tvKeyboardOpen = false;
+      _showTvKeyboard(editable);
+      return;
+    }
+    _tvKeyboardOpen = false;
+    if (!mounted || next == null) return;
+    editable.widget.controller.value = TextEditingValue(
+      text: next,
+      selection: TextSelection.collapsed(offset: next.length),
+    );
+    editable.widget.onChanged?.call(next);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _editableTextState()?.widget.focusNode.requestFocus();
+    });
   }
 
   void _showTvKeyboard(EditableTextState editable) {

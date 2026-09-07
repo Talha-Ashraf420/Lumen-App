@@ -2,6 +2,7 @@ package com.talhaashraf.lumen
 
 import android.content.Intent
 import android.app.Activity
+import android.app.AlertDialog
 import android.app.PictureInPictureParams
 import android.app.UiModeManager
 import android.content.Context
@@ -9,7 +10,15 @@ import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.os.Build
 import android.provider.OpenableColumns
+import android.text.InputType
 import android.util.Rational
+import android.view.KeyEvent
+import android.view.ViewGroup
+import android.view.WindowManager
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
+import android.widget.EditText
+import android.widget.FrameLayout
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -19,6 +28,7 @@ class MainActivity : FlutterActivity() {
     private val media3ChannelName = "lumen/media3"
     private val deviceChannelName = "lumen/device"
     private val subtitleChannelName = "lumen/subtitles"
+    private val tvTextInputChannelName = "lumen/tv_text_input"
     private val subtitleRequestCode = 6204
     private var pipAllowed = false
     private var methodChannel: MethodChannel? = null
@@ -138,6 +148,99 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            tvTextInputChannelName
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "show" -> showTelevisionTextInput(
+                    call.arguments as? Map<*, *> ?: emptyMap<String, Any>(),
+                    result
+                )
+                else -> result.notImplemented()
+            }
+        }
+    }
+
+    /**
+     * Uses a real Android editor on televisions so the active TV IME owns its
+     * input connection and receives remote D-pad events directly. A Flutter
+     * read-only field can display an IME while still consuming those arrows,
+     * which leaves some Google TV keyboards visibly stuck on their first key.
+     */
+    private fun showTelevisionTextInput(
+        arguments: Map<*, *>,
+        result: MethodChannel.Result
+    ) {
+        val initial = arguments["initial"] as? String ?: ""
+        val obscure = arguments["obscure"] as? Boolean ?: false
+        val title = arguments["title"] as? String ?: "Enter text"
+        val density = resources.displayMetrics.density
+        val horizontalPadding = (24 * density).toInt()
+        val verticalPadding = (8 * density).toInt()
+
+        val editor = EditText(this).apply {
+            setText(initial)
+            setSelection(text.length)
+            isSingleLine = true
+            textSize = 20f
+            imeOptions = EditorInfo.IME_ACTION_DONE
+            inputType = InputType.TYPE_CLASS_TEXT or if (obscure) {
+                InputType.TYPE_TEXT_VARIATION_PASSWORD
+            } else {
+                InputType.TYPE_TEXT_VARIATION_URI
+            }
+        }
+        val editorHost = FrameLayout(this).apply {
+            setPadding(horizontalPadding, verticalPadding, horizontalPadding, 0)
+            addView(
+                editor,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+        }
+
+        var completed = false
+        fun complete(value: String?) {
+            if (completed) return
+            completed = true
+            result.success(value)
+        }
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(title)
+            .setView(editorHost)
+            .setNegativeButton("Cancel") { _, _ -> complete(null) }
+            .setPositiveButton("Done") { _, _ -> complete(editor.text.toString()) }
+            .create()
+
+        editor.setOnEditorActionListener { _, actionId, event ->
+            val done = actionId == EditorInfo.IME_ACTION_DONE ||
+                (event?.keyCode == KeyEvent.KEYCODE_ENTER &&
+                    event.action == KeyEvent.ACTION_DOWN)
+            if (done) {
+                complete(editor.text.toString())
+                dialog.dismiss()
+            }
+            done
+        }
+        dialog.setOnCancelListener { complete(null) }
+        dialog.setOnDismissListener { complete(null) }
+        dialog.setOnShowListener {
+            dialog.window?.setSoftInputMode(
+                WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE or
+                    WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+            )
+            editor.requestFocus()
+            editor.post {
+                val inputMethod =
+                    getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                inputMethod.showSoftInput(editor, InputMethodManager.SHOW_IMPLICIT)
+            }
+        }
+        dialog.show()
     }
 
     private fun pickSubtitleFile(result: MethodChannel.Result) {
