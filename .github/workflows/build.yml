@@ -200,7 +200,35 @@ jobs:
             --arg build "$BUILD_NUMBER" \
             --arg apk "$APK_URL" \
             --arg release "$RELEASE_PAGE" \
-            '{content: ("📺 **Lumen build " + $build + " is ready**\n\nDownload the Android / Android TV APK:\n" + $apk + "\n\nRelease details: " + $release + "\n\nLumen includes no channels or media. Use only sources you are authorized to access.")}' \
+            '{
+              username: "Lumen Releases",
+              embeds: [{
+                title: ("Lumen build " + $build + " is ready"),
+                url: $release,
+                description: "A fresh Lumen build is available for Android phones and Android TV.",
+                color: 13172557,
+                fields: [
+                  {
+                    name: "Download",
+                    value: ("[Get Lumen-Android.apk](" + $apk + ")"),
+                    inline: false
+                  },
+                  {
+                    name: "Release details",
+                    value: ("[View on GitHub](" + $release + ")"),
+                    inline: true
+                  },
+                  {
+                    name: "Platforms",
+                    value: "Android · Android TV",
+                    inline: true
+                  }
+                ],
+                footer: {
+                  text: "Lumen includes no channels or media. Use authorized sources only."
+                }
+              }]
+            }' \
             > discord-payload.json
           curl --fail --silent --show-error \
             -H "Content-Type: application/json" \
