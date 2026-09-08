@@ -6,6 +6,7 @@ import '../downloads.dart';
 import '../library.dart';
 import '../legal.dart';
 import '../models.dart';
+import '../playback_mode.dart';
 import '../refresh.dart';
 import '../responsive.dart';
 import '../store.dart';
@@ -44,6 +45,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _entryFocus = FocusNode(debugLabel: 'Profile add account');
   final _themeEntryFocus = FocusNode(debugLabel: 'Dark appearance');
   final _accentEntryFocus = FocusNode(debugLabel: 'Signal lime accent');
+  final _playbackModeFocus = FocusNode(debugLabel: 'Live playback mode');
   final _insightsFocus = FocusNode(debugLabel: 'Watch insights');
   final _downloadsFocus = FocusNode(debugLabel: 'Downloads');
   final _refreshFocus = FocusNode(debugLabel: 'Refresh library');
@@ -378,6 +380,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _entryFocus.dispose();
     _themeEntryFocus.dispose();
     _accentEntryFocus.dispose();
+    _playbackModeFocus.dispose();
     _insightsFocus.dispose();
     _downloadsFocus.dispose();
     _refreshFocus.dispose();
@@ -718,23 +721,82 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _AccentPicker(
         entryFocusNode: _accentEntryFocus,
         upFocusNode: _themeEntryFocus,
-        downFocusNode: _insightsFocus,
+        downFocusNode: _playbackModeFocus,
         leftExitFocusNode: widget.shellRailFocusNode,
       ),
       const SizedBox(height: 6),
     ],
   );
 
+  Future<void> _choosePlaybackMode() async {
+    final current = PlaybackModeController.instance.mode.value;
+    final selected = await showDialog<PlaybackMode>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: surface,
+        title: const Text('Live playback mode'),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 480),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final mode in PlaybackMode.values)
+                ListTile(
+                  autofocus: mode == current,
+                  leading: Icon(
+                    mode == current
+                        ? Icons.radio_button_checked_rounded
+                        : Icons.radio_button_off_rounded,
+                    color: mode == current ? accentInk : muted,
+                  ),
+                  title: Text(
+                    mode.label,
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  subtitle: Text(mode.description),
+                  onTap: () => Navigator.pop(dialogContext, mode),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+    if (selected == null) return;
+    await PlaybackModeController.instance.set(selected);
+  }
+
   Widget _libraryCard() => _sectionCard(
     icon: Icons.video_library_outlined,
     title: 'Library & playback',
     subtitle: 'Manage viewing activity, offline items and catalog data.',
     body: [
+      ValueListenableBuilder<PlaybackMode>(
+        valueListenable: PlaybackModeController.instance.mode,
+        builder: (context, mode, _) => _actionRow(
+          focusNode: _playbackModeFocus,
+          onKeyEvent: (_, event) => _moveVertically(
+            event,
+            up: _accentEntryFocus,
+            down: _insightsFocus,
+          ),
+          icon: Icons.network_check_rounded,
+          title: 'Live playback · ${mode.label}',
+          subtitle: mode.description,
+          onTap: _choosePlaybackMode,
+        ),
+      ),
+      _divider(),
       _actionRow(
         focusNode: _insightsFocus,
         onKeyEvent: (_, event) => _moveVertically(
           event,
-          up: _accentEntryFocus,
+          up: _playbackModeFocus,
           down: _downloadsFocus,
         ),
         icon: Icons.insights_rounded,

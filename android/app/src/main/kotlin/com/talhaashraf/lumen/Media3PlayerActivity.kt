@@ -7,7 +7,9 @@ import android.content.pm.ApplicationInfo
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.drawable.ClipDrawable
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.LayerDrawable
 import android.graphics.drawable.StateListDrawable
 import android.net.Uri
 import android.os.Bundle
@@ -42,6 +44,7 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 
 /**
@@ -57,11 +60,13 @@ class Media3PlayerActivity : Activity() {
         const val EXTRA_URL = "url"
         const val EXTRA_TITLE = "title"
         const val EXTRA_IS_LIVE = "isLive"
+        const val EXTRA_PLAYBACK_MODE = "playbackMode"
         const val EXTRA_HEADERS = "headers"
         const val EXTRA_PLAYLIST_URLS = "playlistUrls"
         const val EXTRA_PLAYLIST_ALTERNATE_URLS = "playlistAlternateUrls"
         const val EXTRA_PLAYLIST_TITLES = "playlistTitles"
         const val EXTRA_INITIAL_INDEX = "initialIndex"
+        const val RESULT_USE_EMBEDDED_ENGINE = Activity.RESULT_FIRST_USER + 20
 
         private const val CONNECT_TIMEOUT_MS = 15_000
         private const val READ_TIMEOUT_MS = 60_000
@@ -69,7 +74,8 @@ class Media3PlayerActivity : Activity() {
         private const val FIRST_VIDEO_FRAME_TIMEOUT_MS = 15_000L
         private const val LIVE_STALL_TIMEOUT_MS = 20_000L
         private const val WATCHDOG_INTERVAL_MS = 2_000L
-        private const val CONTROLS_TIMEOUT_MS = 4_000L
+        private const val CONTROLS_TIMEOUT_MS = 3_000L
+        private const val BUFFERING_BADGE_DELAY_MS = 1_200L
         private const val PROGRESS_INTERVAL_MS = 500L
         private const val SEEK_INCREMENT_MS = 10_000L
         private const val SUBTITLE_REQUEST_CODE = 6205
@@ -82,13 +88,17 @@ class Media3PlayerActivity : Activity() {
     private lateinit var controlsBar: View
     private lateinit var backButton: TextView
     private lateinit var titleText: TextView
+    private lateinit var titleSubtitleText: TextView
     private lateinit var previousButton: TextView
     private lateinit var nextButton: TextView
     private lateinit var rewindButton: TextView
     private lateinit var playPauseButton: TextView
     private lateinit var forwardButton: TextView
+    private lateinit var playlistButton: TextView
     private lateinit var subtitleButton: TextView
     private lateinit var audioButton: TextView
+    private lateinit var qualityButton: TextView
+    private lateinit var moreButton: TextView
     private lateinit var progressBar: SeekBar
     private lateinit var positionText: TextView
     private lateinit var durationText: TextView
@@ -106,6 +116,7 @@ class Media3PlayerActivity : Activity() {
     private var terminalError = false
     private var url = ""
     private var isLive = false
+    private var playbackMode = Media3PlaybackMode.BALANCED
     private var playlistUrls = listOf<String>()
     private var playlistAlternateUrls = listOf<String>()
     private var playlistTitles = listOf<String>()
@@ -123,6 +134,8 @@ class Media3PlayerActivity : Activity() {
     private var volumeBeforeMute = 1f
     private var externalSubtitleUri: Uri? = null
     private var externalSubtitleName = ""
+    private var pendingBufferMessage = ""
+    private var selectedResizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
 
     private data class TrackChoice(
         val group: Tracks.Group,
@@ -138,6 +151,18 @@ class Media3PlayerActivity : Activity() {
                 .setDuration(140L)
                 .withEndAction { seekFeedback.visibility = View.GONE }
                 .start()
+        }
+    }
+    private val revealBufferingBadge = Runnable {
+        if (
+            ::bufferingBadge.isInitialized &&
+            !terminalError &&
+            ::player.isInitialized &&
+            player.playbackState == Player.STATE_BUFFERING
+        ) {
+            bufferingBadge.text = pendingBufferMessage
+            bufferingBadge.alpha = 1f
+            bufferingBadge.visibility = View.VISIBLE
         }
     }
     private val progressUpdater = object : Runnable {
@@ -192,6 +217,9 @@ class Media3PlayerActivity : Activity() {
         window.navigationBarColor = Color.BLACK
         url = intent.getStringExtra(EXTRA_URL).orEmpty()
         isLive = intent.getBooleanExtra(EXTRA_IS_LIVE, false)
+        playbackMode = Media3PlaybackMode.from(
+            intent.getStringExtra(EXTRA_PLAYBACK_MODE)
+        )
         playlistUrls = intent.getStringArrayListExtra(EXTRA_PLAYLIST_URLS)
             ?.filter { it.isNotBlank() }
             .orEmpty()
@@ -240,6 +268,8 @@ class Media3PlayerActivity : Activity() {
         root.addView(titleBar)
         controlsBar = buildControlsBar().apply { visibility = View.GONE }
         root.addView(controlsBar)
+        playPauseButton = buildCenterPlayButton().apply { visibility = View.GONE }
+        root.addView(playPauseButton)
         bufferingBadge = buildBufferingBadge()
         root.addView(bufferingBadge)
         seekFeedback = buildSeekFeedback()
@@ -334,7 +364,7 @@ class Media3PlayerActivity : Activity() {
 
         // Keep a meaningful forward cushion while using short start/resume
         // gates. Loading continues in the background after playback begins.
-        val buffers = Media3PlaybackPolicy.buffers(isLive)
+        val buffers = Media3PlaybackPolicy.buffers(isLive, playbackMode)
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
                 buffers.minBufferMs,
@@ -350,8 +380,19 @@ class Media3PlayerActivity : Activity() {
             .build()
         // DefaultDataSource delegates network requests to the hardened HTTP
         // factory and content:// subtitle files to Android's content resolver.
+        val networkFactory = if (isLive) {
+            LiveReconnectDataSource.Factory(
+                upstreamFactory = http,
+                reconnectDelayMs = Media3PlaybackPolicy.eofReconnectDelayMs(
+                    playbackMode
+                ),
+                shouldReconnectAtEof = ::currentSourceIsRawTransportStream
+            )
+        } else {
+            http
+        }
         val mediaSourceFactory = DefaultMediaSourceFactory(this)
-            .setDataSourceFactory(DefaultDataSource.Factory(this, http))
+            .setDataSourceFactory(DefaultDataSource.Factory(this, networkFactory))
             .setLoadErrorHandlingPolicy(DefaultLoadErrorHandlingPolicy(3))
         val renderers = DefaultRenderersFactory(this)
             // If a TV advertises a broken preferred decoder, allow Media3 to
@@ -366,11 +407,16 @@ class Media3PlayerActivity : Activity() {
             .build()
     }
 
+    private fun currentSourceIsRawTransportStream(): Boolean {
+        val path = Uri.parse(url).path.orEmpty()
+        return isLive && path.endsWith(".ts", ignoreCase = true)
+    }
+
     private fun buildTitleBar(): View {
         val bar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(48), dp(22), dp(48), dp(28))
+            setPadding(dp(48), dp(22), dp(48), dp(38))
             background = topScrim()
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -379,50 +425,93 @@ class Media3PlayerActivity : Activity() {
             )
         }
         backButton = themedButton("‹", "Back to Lumen", round = true) { finish() }.apply {
-            textSize = 34f
+            textSize = 30f
+            setPadding(0, 0, 0, dp(3))
+        }
+        val titleGroup = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(18), 0, dp(18), 0)
         }
         titleText = TextView(this).apply {
-            text = playlistTitles.getOrNull(playlistIndex).orEmpty()
-            textSize = 24f
+            textSize = 22f
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
             setTextColor(Color.WHITE)
             maxLines = 1
-            layoutParams = LinearLayout.LayoutParams(0, dp(52), 1f).apply {
-                marginStart = dp(18)
-                marginEnd = dp(18)
-            }
-            gravity = Gravity.CENTER_VERTICAL
         }
+        titleSubtitleText = TextView(this).apply {
+            textSize = 13f
+            typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+            setTextColor(0xFFBCC3B9.toInt())
+            maxLines = 1
+            setPadding(0, dp(2), 0, 0)
+        }
+        titleGroup.addView(titleText)
+        titleGroup.addView(titleSubtitleText)
         val kind = TextView(this).apply {
             text = if (isLive) "●  LIVE" else "LUMEN"
-            textSize = 13f
-            letterSpacing = 0.12f
+            textSize = 12f
+            letterSpacing = 0.14f
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
             setTextColor(0xFFC5FF63.toInt())
             gravity = Gravity.CENTER
-            setPadding(dp(14), 0, dp(14), 0)
-            background = roundedRect(0xB3111511.toInt(), 0x66596157, 1, 18)
+            setPadding(dp(13), 0, dp(13), 0)
+            background = roundedRect(0x73111511, 0x667F877D, 1, 18)
         }
-        bar.addView(backButton, LinearLayout.LayoutParams(dp(52), dp(52)))
-        bar.addView(titleText)
-        bar.addView(kind, LinearLayout.LayoutParams(dp(112), dp(38)))
+        updateTitleUi()
+        bar.addView(backButton, LinearLayout.LayoutParams(dp(46), dp(46)))
+        bar.addView(titleGroup, LinearLayout.LayoutParams(0, dp(58), 1f))
+        bar.addView(kind, LinearLayout.LayoutParams(dp(102), dp(34)))
         return bar
     }
 
+    private fun updateTitleUi() {
+        if (!::titleText.isInitialized || !::titleSubtitleText.isInitialized) return
+        val rawTitle = playlistTitles.getOrNull(playlistIndex)
+            ?.trim()
+            .orEmpty()
+            .ifBlank { if (isLive) "Live channel" else "Now playing" }
+        val parts = rawTitle.split(" - ")
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+        val headline = parts.firstOrNull().orEmpty().ifBlank { rawTitle }
+        val details = parts.drop(1)
+            .filterNot { it.equals(headline, ignoreCase = true) }
+            .joinToString("  •  ")
+        titleText.text = headline
+        titleSubtitleText.text = details
+        titleSubtitleText.visibility = if (details.isBlank()) View.GONE else View.VISIBLE
+    }
+
+    private fun buildCenterPlayButton(): TextView = themedButton(
+        "Ⅱ",
+        "Pause playback",
+        prominent = true,
+        round = true
+    ) {
+        togglePlayPause()
+    }.apply {
+        textSize = 27f
+        setPadding(0, 0, 0, 0)
+        background = centerButtonBackground()
+        setTextColor(Color.WHITE)
+        layoutParams = FrameLayout.LayoutParams(dp(68), dp(68), Gravity.CENTER)
+    }
+
     private fun buildBufferingBadge(): TextView = TextView(this).apply {
-        text = if (isLive) "●  Building live buffer" else "●  Buffering"
-        textSize = 14f
+        text = if (isLive) "Reconnecting live stream…" else "Buffering…"
+        textSize = 13f
         typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
         setTextColor(0xFFE6EAE3.toInt())
         gravity = Gravity.CENTER
-        setPadding(dp(18), dp(9), dp(18), dp(9))
-        background = roundedRect(0xE6111511.toInt(), 0x66596157, 1, 20)
+        setPadding(dp(16), dp(8), dp(16), dp(8))
+        background = roundedRect(0xD9111511.toInt(), 0x4DC5FF63, 1, 18)
         visibility = View.GONE
         layoutParams = FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
             Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-        ).apply { bottomMargin = dp(174) }
+        ).apply { bottomMargin = dp(142) }
     }
 
     private fun buildSeekFeedback(): TextView = TextView(this).apply {
@@ -443,12 +532,22 @@ class Media3PlayerActivity : Activity() {
 
     private fun showBufferingStatus(message: String) {
         if (!::bufferingBadge.isInitialized || terminalError) return
-        bufferingBadge.text = "●  ${message.removeSuffix("…")}"
-        bufferingBadge.alpha = 1f
-        bufferingBadge.visibility = View.VISIBLE
+        pendingBufferMessage = when {
+            message.contains("reconnect", ignoreCase = true) -> "Reconnecting…"
+            isLive -> "Reconnecting live stream…"
+            else -> "Buffering…"
+        }
+        handler.removeCallbacks(revealBufferingBadge)
+        if (bufferingBadge.visibility == View.VISIBLE) {
+            bufferingBadge.text = pendingBufferMessage
+        } else {
+            handler.postDelayed(revealBufferingBadge, BUFFERING_BADGE_DELAY_MS)
+        }
     }
 
     private fun hideBufferingStatus() {
+        handler.removeCallbacks(revealBufferingBadge)
+        pendingBufferMessage = ""
         if (::bufferingBadge.isInitialized) bufferingBadge.visibility = View.GONE
     }
 
@@ -468,7 +567,7 @@ class Media3PlayerActivity : Activity() {
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(dp(48), dp(26), dp(48), dp(24))
+            setPadding(dp(52), dp(54), dp(52), dp(22))
             background = bottomScrim()
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -492,22 +591,21 @@ class Media3PlayerActivity : Activity() {
             keyProgressIncrement = SEEK_INCREMENT_MS.toInt()
             isFocusable = !isLive
             visibility = if (isLive) View.GONE else View.VISIBLE
-            progressTintList = ColorStateList.valueOf(0xFFC5FF63.toInt())
-            secondaryProgressTintList = ColorStateList.valueOf(0x997F877D.toInt())
-            progressBackgroundTintList = ColorStateList.valueOf(0x667F877D)
-            thumbTintList = ColorStateList.valueOf(0xFFC5FF63.toInt())
+            splitTrack = false
+            progressDrawable = seekProgressDrawable()
+            thumb = seekThumb(focused = false)
+            thumbOffset = 0
             contentDescription = "Playback position"
-            setOnFocusChangeListener { view, focused ->
+            setOnFocusChangeListener { _, focused ->
                 if (focused) {
                     logFocus("Playback position")
                     handler.removeCallbacks(hideControls)
                 } else {
                     scheduleControlsHide()
                 }
-                view.animate()
-                    .scaleY(if (focused) 1.35f else 1f)
-                    .setDuration(100L)
-                    .start()
+                // Keep the track dimensions fixed. Focus is communicated by
+                // the thumb and glow so the bar never appears to shrink.
+                thumb = seekThumb(focused)
             }
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(
@@ -537,108 +635,69 @@ class Media3PlayerActivity : Activity() {
         }
         bufferedText = playerTimeText().apply {
             text = if (isLive) "Preparing signal" else "0s ready"
-            textSize = 13f
-            setTextColor(0xFFAEB5AA.toInt())
-            gravity = Gravity.END or Gravity.CENTER_VERTICAL
+            visibility = View.GONE
         }
-        progressRow.addView(positionText, LinearLayout.LayoutParams(dp(86), dp(38)))
+        progressRow.addView(positionText, LinearLayout.LayoutParams(dp(76), dp(40)))
         progressRow.addView(
             progressBar,
-            LinearLayout.LayoutParams(0, dp(38), 1f).apply {
-                marginStart = dp(12)
-                marginEnd = dp(12)
+            LinearLayout.LayoutParams(0, dp(40), 1f).apply {
+                marginStart = dp(10)
+                marginEnd = dp(10)
             }
         )
-        progressRow.addView(durationText, LinearLayout.LayoutParams(dp(86), dp(38)))
-        progressRow.addView(
-            bufferedText,
-            LinearLayout.LayoutParams(dp(112), dp(38)).apply { marginStart = dp(12) }
-        )
+        progressRow.addView(durationText, LinearLayout.LayoutParams(dp(76), dp(40)))
 
-        val transport = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-        }
+        // Remote left/right already performs seeking. Keep the corresponding
+        // views as non-rendered action targets for playlist/error logic instead
+        // of presenting a second oversized transport row.
         previousButton = themedButton(
             "│◀",
             if (isLive) "Previous channel" else "Previous episode",
             round = true
-        ) { openPlaylistItem(playlistIndex - 1) }
+        ) { openPlaylistItem(playlistIndex - 1) }.apply { visibility = View.GONE }
         rewindButton = themedButton("−10", "Rewind 10 seconds", round = true) {
             seekBy(-SEEK_INCREMENT_MS)
             showSeekFeedback(-SEEK_INCREMENT_MS)
-        }.apply { visibility = if (isLive) View.GONE else View.VISIBLE }
-        playPauseButton = themedButton(
-            "Ⅱ",
-            "Pause playback",
-            prominent = true,
-            round = true
-        ) {
-            togglePlayPause()
-        }.apply { textSize = 24f }
+        }.apply { visibility = View.GONE }
         forwardButton = themedButton("+10", "Fast forward 10 seconds", round = true) {
             seekBy(SEEK_INCREMENT_MS)
             showSeekFeedback(SEEK_INCREMENT_MS)
-        }.apply { visibility = if (isLive) View.GONE else View.VISIBLE }
+        }.apply { visibility = View.GONE }
         nextButton = themedButton(
             "▶│",
             if (isLive) "Next channel" else "Next episode",
             round = true
-        ) { openPlaylistItem(playlistIndex + 1) }
-        subtitleButton = themedButton("CC", "Choose or add subtitles") {
+        ) { openPlaylistItem(playlistIndex + 1) }.apply { visibility = View.GONE }
+
+        playlistButton = toolButton(
+            "▦",
+            if (isLive) "Channels" else "Episodes",
+            if (isLive) "Choose a channel" else "Choose an episode"
+        ) {
+            showPlaylistDialog()
+        }
+        subtitleButton = toolButton("CC", "Subtitles", "Choose or add subtitles") {
             showSubtitleDialog()
         }.apply { isEnabled = !isLive }
-        audioButton = themedButton("Audio", "Choose audio track") {
+        audioButton = toolButton("♪", "Audio", "Choose audio track") {
             showTrackDialog(C.TRACK_TYPE_AUDIO, "Audio", allowOff = false)
         }.apply { isEnabled = false }
-
-        transport.addView(previousButton, transportParams(dp(44), dp(44)))
-        transport.addView(rewindButton, transportParams(dp(48), dp(48)))
-        transport.addView(playPauseButton, transportParams(dp(60), dp(60)))
-        transport.addView(forwardButton, transportParams(dp(48), dp(48)))
-        transport.addView(nextButton, transportParams(dp(44), dp(44)))
+        qualityButton = toolButton("HD", "Quality", "Choose video quality") {
+            showTrackDialog(C.TRACK_TYPE_VIDEO, "Quality", allowOff = false)
+        }.apply { isEnabled = false }
+        moreButton = toolButton("⋮", "More", "More playback options") {
+            showMoreDialog()
+        }
 
         val tools = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
         }
-        tools.addView(subtitleButton, transportParams(dp(72), dp(40)))
-        tools.addView(audioButton, transportParams(dp(86), dp(40)))
-
-        val remoteHint = TextView(this).apply {
-            text = if (isLive) "OK  PLAY / PAUSE" else "←  10s     OK  PLAY / PAUSE     10s  →"
-            textSize = 11f
-            letterSpacing = 0.08f
-            setTextColor(0xFF949B91.toInt())
-            gravity = Gravity.CENTER_VERTICAL or Gravity.END
-            maxLines = 1
-        }
-        val actionRow = FrameLayout(this).apply {
-            addView(
-                tools,
-                FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    dp(64),
-                    Gravity.START or Gravity.CENTER_VERTICAL
-                )
-            )
-            addView(
-                transport,
-                FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    dp(64),
-                    Gravity.CENTER
-                )
-            )
-            addView(
-                remoteHint,
-                FrameLayout.LayoutParams(
-                    dp(250),
-                    dp(64),
-                    Gravity.END or Gravity.CENTER_VERTICAL
-                )
-            )
-        }
+        tools.addView(playlistButton, transportParams(dp(104), dp(62)))
+        tools.addView(subtitleButton, transportParams(dp(104), dp(62)))
+        tools.addView(audioButton, transportParams(dp(104), dp(62)))
+        tools.addView(qualityButton, transportParams(dp(104), dp(62)))
+        tools.addView(moreButton, transportParams(dp(104), dp(62)))
         panel.addView(
             progressRow,
             LinearLayout.LayoutParams(
@@ -647,13 +706,30 @@ class Media3PlayerActivity : Activity() {
             )
         )
         panel.addView(
-            actionRow,
+            tools,
             LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(68)
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                dp(66)
             )
         )
         return panel
+    }
+
+    private fun toolButton(
+        glyph: String,
+        label: String,
+        description: String,
+        onClick: () -> Unit
+    ): TextView = themedButton(
+        "$glyph\n$label",
+        description,
+        onClick = onClick
+    ).apply {
+        textSize = 11f
+        setLineSpacing(dp(2).toFloat(), 1f)
+        setPadding(dp(10), dp(6), dp(10), dp(5))
+        background = toolButtonBackground()
+        setTextColor(toolButtonTextColors())
     }
 
     private fun playerTimeText(): TextView = TextView(this).apply {
@@ -726,6 +802,89 @@ class Media3PlayerActivity : Activity() {
         }
     }
 
+    private fun toolButtonTextColors(): ColorStateList = ColorStateList(
+        arrayOf(
+            intArrayOf(-android.R.attr.state_enabled),
+            intArrayOf(android.R.attr.state_focused),
+            intArrayOf(android.R.attr.state_pressed),
+            intArrayOf()
+        ),
+        intArrayOf(
+            0x667F877D,
+            0xFFC5FF63.toInt(),
+            0xFFC5FF63.toInt(),
+            Color.WHITE
+        )
+    )
+
+    private fun toolButtonBackground(): StateListDrawable = StateListDrawable().apply {
+        addState(
+            intArrayOf(-android.R.attr.state_enabled),
+            roundedRect(0x26111511, 0x26596157, 1, 12)
+        )
+        addState(
+            intArrayOf(android.R.attr.state_focused),
+            roundedRect(0xC2111511.toInt(), 0xFFC5FF63.toInt(), 2, 12)
+        )
+        addState(
+            intArrayOf(android.R.attr.state_pressed),
+            roundedRect(0xE6111511.toInt(), 0xFFE0FFAA.toInt(), 2, 12)
+        )
+        addState(
+            intArrayOf(),
+            roundedRect(0x4D111511, 0x40596157, 1, 12)
+        )
+    }
+
+    private fun centerButtonBackground(): StateListDrawable = StateListDrawable().apply {
+        addState(
+            intArrayOf(android.R.attr.state_focused),
+            roundedRect(0xB30B0D0B.toInt(), 0xFFC5FF63.toInt(), 2, 40)
+        )
+        addState(
+            intArrayOf(android.R.attr.state_pressed),
+            roundedRect(0xE6111511.toInt(), 0xFFE0FFAA.toInt(), 2, 40)
+        )
+        addState(
+            intArrayOf(),
+            roundedRect(0x99111511.toInt(), 0xB3C5FF63.toInt(), 1, 40)
+        )
+    }
+
+    private fun seekProgressDrawable(): LayerDrawable {
+        val backgroundTrack = roundedRect(0x667F877D, Color.TRANSPARENT, 0, 2)
+        val bufferedTrack = ClipDrawable(
+            roundedRect(0xB3AEB5AA.toInt(), Color.TRANSPARENT, 0, 2),
+            Gravity.START,
+            ClipDrawable.HORIZONTAL
+        )
+        val playedTrack = ClipDrawable(
+            roundedRect(0xFFC5FF63.toInt(), Color.TRANSPARENT, 0, 2),
+            Gravity.START,
+            ClipDrawable.HORIZONTAL
+        )
+        return LayerDrawable(arrayOf(backgroundTrack, bufferedTrack, playedTrack)).apply {
+            setId(0, android.R.id.background)
+            setId(1, android.R.id.secondaryProgress)
+            setId(2, android.R.id.progress)
+            for (index in 0..2) {
+                setLayerHeight(index, dp(4))
+                setLayerGravity(index, Gravity.CENTER_VERTICAL)
+            }
+        }
+    }
+
+    private fun seekThumb(focused: Boolean): GradientDrawable = GradientDrawable().apply {
+        shape = GradientDrawable.OVAL
+        setColor(0xFFC5FF63.toInt())
+        setStroke(
+            dp(if (focused) 2 else 1),
+            if (focused) Color.WHITE else 0xCC0B0D0B.toInt()
+        )
+        val size = dp(if (focused) 14 else 11)
+        setSize(size, size)
+    }
+
     private fun buttonBackground(
         prominent: Boolean = false,
         round: Boolean = false
@@ -774,47 +933,44 @@ class Media3PlayerActivity : Activity() {
 
     private fun topScrim(): GradientDrawable = GradientDrawable(
         GradientDrawable.Orientation.TOP_BOTTOM,
-        intArrayOf(0xE6000000.toInt(), 0xB3000000.toInt(), Color.TRANSPARENT)
+        intArrayOf(0xC7000000.toInt(), 0x66000000, Color.TRANSPARENT)
     )
 
     private fun bottomScrim(): GradientDrawable = GradientDrawable(
         GradientDrawable.Orientation.TOP_BOTTOM,
-        intArrayOf(Color.TRANSPARENT, 0xD9000000.toInt(), Color.BLACK)
+        intArrayOf(Color.TRANSPARENT, 0xA6000000.toInt(), 0xEB000000.toInt())
     )
 
     private fun updateNavigationUi() {
         if (!::previousButton.isInitialized) return
         previousButton.isEnabled = playlistIndex > 0
         nextButton.isEnabled = playlistIndex < playlistUrls.lastIndex
-        titleText.text = playlistTitles.getOrNull(playlistIndex)
-            ?.takeIf { it.isNotBlank() }
-            ?: if (isLive) "Live channel" else "Episode"
+        playlistButton.isEnabled = playlistUrls.size > 1
+        playlistButton.visibility = if (playlistUrls.size > 1) View.VISIBLE else View.GONE
+        playlistButton.text = if (isLive) "▦\nChannels" else "▦\nEpisodes"
+        updateTitleUi()
         updateFocusGraph()
         updateErrorNavigationUi()
     }
 
     private fun updateFocusGraph() {
         if (!::backButton.isInitialized || !::playPauseButton.isInitialized) return
-        val transport = listOf(
-            previousButton,
-            rewindButton,
-            playPauseButton,
-            forwardButton,
-            nextButton
+        val tools = listOf(
+            playlistButton,
+            subtitleButton,
+            audioButton,
+            qualityButton,
+            moreButton
         ).filter {
             it.visibility == View.VISIBLE && it.isEnabled
         }
-        val tools = listOf(subtitleButton, audioButton).filter {
-            it.visibility == View.VISIBLE && it.isEnabled
-        }
-        val row = tools + transport
-        row.forEachIndexed { index, button ->
-            button.nextFocusLeftId = row.getOrNull(index - 1)?.id ?: button.id
-            button.nextFocusRightId = row.getOrNull(index + 1)?.id ?: button.id
+        tools.forEachIndexed { index, button ->
+            button.nextFocusLeftId = tools.getOrNull(index - 1)?.id ?: button.id
+            button.nextFocusRightId = tools.getOrNull(index + 1)?.id ?: button.id
             button.nextFocusUpId = if (progressBar.visibility == View.VISIBLE) {
                 progressBar.id
             } else {
-                backButton.id
+                playPauseButton.id
             }
             button.nextFocusDownId = button.id
         }
@@ -822,9 +978,17 @@ class Media3PlayerActivity : Activity() {
         backButton.nextFocusRightId = backButton.id
         backButton.nextFocusUpId = backButton.id
         backButton.nextFocusDownId = playPauseButton.id
+        playPauseButton.nextFocusLeftId = playPauseButton.id
+        playPauseButton.nextFocusRightId = playPauseButton.id
+        playPauseButton.nextFocusUpId = backButton.id
+        playPauseButton.nextFocusDownId = if (progressBar.visibility == View.VISIBLE) {
+            progressBar.id
+        } else {
+            tools.firstOrNull()?.id ?: playPauseButton.id
+        }
         if (progressBar.visibility == View.VISIBLE) {
-            progressBar.nextFocusUpId = backButton.id
-            progressBar.nextFocusDownId = playPauseButton.id
+            progressBar.nextFocusUpId = playPauseButton.id
+            progressBar.nextFocusDownId = tools.firstOrNull()?.id ?: progressBar.id
         }
         playerView.nextFocusUpId = backButton.id
         playerView.nextFocusDownId = playPauseButton.id
@@ -832,7 +996,6 @@ class Media3PlayerActivity : Activity() {
 
     private fun openPlaylistItem(index: Int) {
         if (index !in playlistUrls.indices || index == playlistIndex) return
-        val movingForward = index > playlistIndex
         retryAttempt = 0
         retryScheduled = false
         terminalError = false
@@ -843,12 +1006,10 @@ class Media3PlayerActivity : Activity() {
         updateNavigationUi()
         open()
         showControls()
-        when {
-            movingForward && nextButton.isEnabled -> nextButton.requestFocus()
-            !movingForward && previousButton.isEnabled -> previousButton.requestFocus()
-            nextButton.isEnabled -> nextButton.requestFocus()
-            previousButton.isEnabled -> previousButton.requestFocus()
-            else -> playPauseButton.requestFocus()
+        if (playlistButton.visibility == View.VISIBLE && playlistButton.isEnabled) {
+            playlistButton.requestFocus()
+        } else {
+            playPauseButton.requestFocus()
         }
     }
 
@@ -898,22 +1059,30 @@ class Media3PlayerActivity : Activity() {
     }
 
     private fun updateTrackButtons(tracks: Tracks = player.currentTracks) {
-        if (!::subtitleButton.isInitialized || !::audioButton.isInitialized) return
+        if (
+            !::subtitleButton.isInitialized ||
+            !::audioButton.isInitialized ||
+            !::qualityButton.isInitialized
+        ) return
         val subtitleCount = trackChoices(tracks, C.TRACK_TYPE_TEXT).size
         val audioCount = trackChoices(tracks, C.TRACK_TYPE_AUDIO).size
+        val videoCount = trackChoices(tracks, C.TRACK_TYPE_VIDEO).size
         // Movies can always import a local subtitle, even when the stream has
         // no embedded text tracks. Live keeps the button only for embedded CC.
         subtitleButton.isEnabled = !isLive || subtitleCount > 0
         audioButton.isEnabled = audioCount > 1
+        qualityButton.isEnabled = videoCount > 1
         subtitleButton.text = if (externalSubtitleUri != null) {
-            "CC Added"
+            "CC\nAdded"
         } else if (
             player.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)
         ) {
-            "CC Off"
+            "CC\nOff"
         } else {
-            "CC"
+            "CC\nSubtitles"
         }
+        audioButton.text = "♪\nAudio"
+        qualityButton.text = "HD\nQuality"
         updateFocusGraph()
     }
 
@@ -941,20 +1110,85 @@ class Media3PlayerActivity : Activity() {
                         else -> "${format.channelCount} channels"
                     }
                 }
+                if (type == C.TRACK_TYPE_VIDEO) {
+                    if (format.height > 0) details += "${format.height}p"
+                    if (format.bitrate > 0) {
+                        details += String.format("%.1f Mbps", format.bitrate / 1_000_000f)
+                    }
+                }
                 choices += TrackChoice(
                     group = group,
                     trackIndex = index,
                     label = details.joinToString(" · ").ifBlank {
-                        if (type == C.TRACK_TYPE_AUDIO) {
-                            "Audio ${choices.size + 1}"
-                        } else {
-                            "Subtitle ${choices.size + 1}"
+                        when (type) {
+                            C.TRACK_TYPE_AUDIO -> "Audio ${choices.size + 1}"
+                            C.TRACK_TYPE_VIDEO -> "Quality ${choices.size + 1}"
+                            else -> "Subtitle ${choices.size + 1}"
                         }
                     }
                 )
             }
         }
         return choices
+    }
+
+    private fun showPlaylistDialog() {
+        if (playlistUrls.size <= 1) return
+        handler.removeCallbacks(hideControls)
+        val fallbackName = if (isLive) "Channel" else "Episode"
+        val labels = playlistUrls.indices.map { index ->
+            playlistTitles.getOrNull(index)
+                ?.trim()
+                ?.takeIf { it.isNotBlank() }
+                ?: "$fallbackName ${index + 1}"
+        }.toTypedArray()
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(if (isLive) "Channels" else "Episodes")
+            .setSingleChoiceItems(labels, playlistIndex) { activeDialog, index ->
+                activeDialog.dismiss()
+                if (index != playlistIndex) openPlaylistItem(index)
+            }
+            .setNegativeButton("Cancel", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.window?.setBackgroundDrawable(
+                roundedRect(0xFF111511.toInt(), 0xFF596157.toInt(), 1, 18)
+            )
+        }
+        dialog.setOnDismissListener {
+            showControls()
+            playlistButton.post { playlistButton.requestFocus() }
+        }
+        dialog.show()
+    }
+
+    private fun showMoreDialog() {
+        handler.removeCallbacks(hideControls)
+        val modes = intArrayOf(
+            AspectRatioFrameLayout.RESIZE_MODE_FIT,
+            AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+        )
+        val labels = arrayOf("Fit to screen", "Fill screen")
+        val selected = modes.indexOf(selectedResizeMode).coerceAtLeast(0)
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Picture size")
+            .setSingleChoiceItems(labels, selected) { activeDialog, index ->
+                selectedResizeMode = modes[index]
+                playerView.resizeMode = selectedResizeMode
+                activeDialog.dismiss()
+            }
+            .setNegativeButton("Cancel", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.window?.setBackgroundDrawable(
+                roundedRect(0xFF111511.toInt(), 0xFF596157.toInt(), 1, 18)
+            )
+        }
+        dialog.setOnDismissListener {
+            showControls()
+            moreButton.post { moreButton.requestFocus() }
+        }
+        dialog.show()
     }
 
     private fun showSubtitleDialog() {
@@ -1166,7 +1400,11 @@ class Media3PlayerActivity : Activity() {
         } else {
             (selectedChoice.coerceAtLeast(0) + offset)
         }
-        val returnFocus = if (type == C.TRACK_TYPE_TEXT) subtitleButton else audioButton
+        val returnFocus = when (type) {
+            C.TRACK_TYPE_TEXT -> subtitleButton
+            C.TRACK_TYPE_VIDEO -> qualityButton
+            else -> audioButton
+        }
         val dialog = AlertDialog.Builder(this)
             .setTitle(title)
             .setSingleChoiceItems(labels, selected) { activeDialog, itemIndex ->
@@ -1255,16 +1493,23 @@ class Media3PlayerActivity : Activity() {
     }
 
     private fun showControls(requestTransportFocus: Boolean = false) {
-        if (terminalError || !::controlsBar.isInitialized) return
+        if (
+            terminalError ||
+            !::controlsBar.isInitialized ||
+            !::playPauseButton.isInitialized
+        ) return
         controlsVisible = true
         titleBar.animate().cancel()
         controlsBar.animate().cancel()
+        playPauseButton.animate().cancel()
         // Show immediately. Entry fades can visibly lag on budget 4K TVs
         // because a large video surface is being composed at the same time.
         titleBar.alpha = 1f
         controlsBar.alpha = 1f
+        playPauseButton.alpha = 1f
         titleBar.visibility = View.VISIBLE
         controlsBar.visibility = View.VISIBLE
+        playPauseButton.visibility = View.VISIBLE
         updateTransportUi()
         updateProgressUi()
         scheduleControlsHide()
@@ -1292,6 +1537,7 @@ class Media3PlayerActivity : Activity() {
         playerView.requestFocus()
         titleBar.animate().cancel()
         controlsBar.animate().cancel()
+        playPauseButton.animate().cancel()
         titleBar.animate()
             .alpha(0f)
             .setDuration(170L)
@@ -1306,11 +1552,19 @@ class Media3PlayerActivity : Activity() {
                 if (!controlsVisible) controlsBar.visibility = View.GONE
             }
             .start()
+        playPauseButton.animate()
+            .alpha(0f)
+            .setDuration(150L)
+            .withEndAction {
+                if (!controlsVisible) playPauseButton.visibility = View.GONE
+            }
+            .start()
     }
 
     private fun playerControlsHaveFocus(): Boolean =
         (::titleBar.isInitialized && titleBar.hasFocus()) ||
-            (::controlsBar.isInitialized && controlsBar.hasFocus())
+            (::controlsBar.isInitialized && controlsBar.hasFocus()) ||
+            (::playPauseButton.isInitialized && playPauseButton.hasFocus())
 
     private fun logFocus(label: String) {
         if ((applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0) {
@@ -1323,15 +1577,13 @@ class Media3PlayerActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             visibility = View.GONE
-            setPadding(dp(30), dp(22), dp(30), dp(22))
-            background = roundedRect(0xEE111315.toInt(), 0xFF596157.toInt(), 1, 20)
+            setPadding(dp(24), dp(18), dp(24), dp(18))
+            background = roundedRect(0xEB111315.toInt(), 0x66C5FF63, 1, 18)
             layoutParams = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(520),
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.BOTTOM
-            ).apply {
-                setMargins(dp(72), dp(24), dp(72), dp(42))
-            }
+                Gravity.CENTER
+            )
         }
         errorText = TextView(this).apply {
             textSize = 15f
@@ -1349,7 +1601,8 @@ class Media3PlayerActivity : Activity() {
         retryButton = themedButton(
             "Try again",
             "Try this stream again",
-            showPlayerControlsOnFocus = false
+            showPlayerControlsOnFocus = false,
+            prominent = true
         ) {
             retryAttempt = 0
             retryScheduled = false
@@ -1378,18 +1631,18 @@ class Media3PlayerActivity : Activity() {
         }
         actions.addView(
             errorPreviousButton,
-            LinearLayout.LayoutParams(dp(156), dp(52)).apply { marginEnd = dp(8) }
+            LinearLayout.LayoutParams(dp(112), dp(44)).apply { marginEnd = dp(6) }
         )
         actions.addView(
             retryButton,
-            LinearLayout.LayoutParams(dp(180), dp(52)).apply {
-                marginStart = dp(8)
-                marginEnd = dp(8)
+            LinearLayout.LayoutParams(dp(140), dp(44)).apply {
+                marginStart = dp(6)
+                marginEnd = dp(6)
             }
         )
         actions.addView(
             errorNextButton,
-            LinearLayout.LayoutParams(dp(156), dp(52)).apply { marginStart = dp(8) }
+            LinearLayout.LayoutParams(dp(112), dp(44)).apply { marginStart = dp(6) }
         )
         panel.addView(
             actions,
@@ -1509,6 +1762,23 @@ class Media3PlayerActivity : Activity() {
     }
 
     private fun showError(message: String) {
+        // Media3 is the preferred Android TV engine because it owns a native
+        // SurfaceView. If its bounded source and decoder recovery is exhausted,
+        // return control to Flutter so the already bundled mpv engine can try
+        // the same item automatically instead of stranding the viewer.
+        if (intent.getBooleanExtra(EXTRA_IS_LIVE, false) || hasStarted) {
+            hideControls(force = true)
+            terminalError = true
+            errorPanel.visibility = View.GONE
+            handler.removeCallbacks(revealBufferingBadge)
+            bufferingBadge.text = "Switching playback engine…"
+            bufferingBadge.visibility = View.VISIBLE
+            handler.postDelayed({
+                setResult(RESULT_USE_EMBEDDED_ENGINE)
+                finish()
+            }, 650L)
+            return
+        }
         hideControls(force = true)
         terminalError = true
         hideBufferingStatus()
@@ -1558,6 +1828,10 @@ class Media3PlayerActivity : Activity() {
             )
         }
         if (event.action == KeyEvent.ACTION_DOWN && event.keyCode == KeyEvent.KEYCODE_BACK) {
+            if (controlsVisible && !terminalError) {
+                hideControls(force = true)
+                return true
+            }
             finish()
             return true
         }
@@ -1630,7 +1904,8 @@ class Media3PlayerActivity : Activity() {
                     return true
                 }
                 KeyEvent.KEYCODE_DPAD_LEFT -> if (
-                    !isLive && (!controlsVisible || playerView.hasFocus())
+                    !isLive &&
+                    (!controlsVisible || playerView.hasFocus() || playPauseButton.hasFocus())
                 ) {
                     seekBy(-SEEK_INCREMENT_MS)
                     showSeekFeedback(-SEEK_INCREMENT_MS)
@@ -1639,7 +1914,8 @@ class Media3PlayerActivity : Activity() {
                     return true
                 }
                 KeyEvent.KEYCODE_DPAD_RIGHT -> if (
-                    !isLive && (!controlsVisible || playerView.hasFocus())
+                    !isLive &&
+                    (!controlsVisible || playerView.hasFocus() || playPauseButton.hasFocus())
                 ) {
                     seekBy(SEEK_INCREMENT_MS)
                     showSeekFeedback(SEEK_INCREMENT_MS)

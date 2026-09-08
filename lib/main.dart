@@ -13,6 +13,7 @@ import 'diagnostics.dart';
 import 'home_config.dart';
 import 'models.dart';
 import 'playback.dart';
+import 'playback_mode.dart';
 import 'responsive.dart';
 import 'session.dart';
 import 'split.dart';
@@ -291,6 +292,7 @@ class _SessionGateState extends State<SessionGate> {
       Store.active(),
       LegalAcceptance.isAccepted(),
       ThemeController.instance.load(),
+      PlaybackModeController.instance.load(),
     ]);
     final credentials = values[0] as XtreamCredentials?;
     final profileState = _activateProfileState(credentials);

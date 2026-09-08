@@ -30,9 +30,11 @@ class MainActivity : FlutterActivity() {
     private val subtitleChannelName = "lumen/subtitles"
     private val tvTextInputChannelName = "lumen/tv_text_input"
     private val subtitleRequestCode = 6204
+    private val media3RequestCode = 6206
     private var pipAllowed = false
     private var methodChannel: MethodChannel? = null
     private var pendingSubtitleResult: MethodChannel.Result? = null
+    private var pendingMedia3Result: MethodChannel.Result? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -60,6 +62,14 @@ class MainActivity : FlutterActivity() {
             when (call.method) {
                 "isSupported" -> result.success(true)
                 "open" -> {
+                    if (pendingMedia3Result != null) {
+                        result.error(
+                            "player_busy",
+                            "The television player is already open.",
+                            null
+                        )
+                        return@setMethodCallHandler
+                    }
                     val args = call.arguments as? Map<*, *>
                     val url = args?.get("url") as? String
                     if (url.isNullOrBlank()) {
@@ -94,6 +104,10 @@ class MainActivity : FlutterActivity() {
                             Media3PlayerActivity.EXTRA_IS_LIVE,
                             args["isLive"] as? Boolean ?: false
                         )
+                        putExtra(
+                            Media3PlayerActivity.EXTRA_PLAYBACK_MODE,
+                            args["playbackMode"] as? String ?: "balanced"
+                        )
                         putExtra(Media3PlayerActivity.EXTRA_HEADERS, headers)
                         putStringArrayListExtra(
                             Media3PlayerActivity.EXTRA_PLAYLIST_URLS,
@@ -112,8 +126,13 @@ class MainActivity : FlutterActivity() {
                             (args["initialIndex"] as? Number)?.toInt() ?: 0
                         )
                     }
-                    startActivity(intent)
-                    result.success(true)
+                    pendingMedia3Result = result
+                    try {
+                        startActivityForResult(intent, media3RequestCode)
+                    } catch (error: Exception) {
+                        pendingMedia3Result = null
+                        result.success(false)
+                    }
                 }
                 else -> result.notImplemented()
             }
@@ -290,6 +309,14 @@ class MainActivity : FlutterActivity() {
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == media3RequestCode) {
+            val result = pendingMedia3Result ?: return
+            pendingMedia3Result = null
+            result.success(
+                resultCode != Media3PlayerActivity.RESULT_USE_EMBEDDED_ENGINE
+            )
+            return
+        }
         if (requestCode != subtitleRequestCode) return
         val result = pendingSubtitleResult ?: return
         pendingSubtitleResult = null

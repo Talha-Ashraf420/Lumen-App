@@ -7,15 +7,45 @@ import org.junit.Test
 
 class Media3PlaybackPolicyTest {
     @Test
-    fun liveBuildsALargeCushionButStartsAndResumesQuickly() {
-        val buffers = Media3PlaybackPolicy.buffers(isLive = true)
+    fun balancedLiveBuildsACushionBeforeStarting() {
+        val buffers = Media3PlaybackPolicy.buffers(
+            isLive = true,
+            mode = Media3PlaybackMode.BALANCED
+        )
 
-        assertEquals(40_000, buffers.minBufferMs)
-        assertEquals(90_000, buffers.maxBufferMs)
-        assertEquals(1_000, buffers.bufferForPlaybackMs)
-        assertEquals(2_000, buffers.bufferForPlaybackAfterRebufferMs)
+        assertEquals(30_000, buffers.minBufferMs)
+        assertEquals(60_000, buffers.maxBufferMs)
+        assertEquals(2_000, buffers.bufferForPlaybackMs)
+        assertEquals(4_000, buffers.bufferForPlaybackAfterRebufferMs)
         assertEquals(0, buffers.backBufferMs)
         assertFalse(buffers.retainBackBufferFromKeyframe)
+    }
+
+    @Test
+    fun liveModesExposeIntentionalLatencyStabilityTradeoffs() {
+        val stable = Media3PlaybackPolicy.buffers(
+            isLive = true,
+            mode = Media3PlaybackMode.STABLE
+        )
+        val lowLatency = Media3PlaybackPolicy.buffers(
+            isLive = true,
+            mode = Media3PlaybackMode.LOW_LATENCY
+        )
+
+        assertEquals(6_000, stable.bufferForPlaybackMs)
+        assertEquals(8_000, stable.bufferForPlaybackAfterRebufferMs)
+        assertEquals(90_000, stable.maxBufferMs)
+        assertEquals(500, lowLatency.bufferForPlaybackMs)
+        assertEquals(1_000, lowLatency.bufferForPlaybackAfterRebufferMs)
+        assertEquals(20_000, lowLatency.maxBufferMs)
+        assertEquals(
+            Media3PlaybackMode.LOW_LATENCY,
+            Media3PlaybackMode.from("lowLatency")
+        )
+        assertEquals(
+            Media3PlaybackMode.BALANCED,
+            Media3PlaybackMode.from("unknown")
+        )
     }
 
     @Test

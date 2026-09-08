@@ -6,6 +6,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'android_compatibility_player.dart';
 import 'device_profile.dart';
 import 'library.dart';
+import 'playback_mode.dart';
 import 'stats.dart';
 
 /// Reconnect configuration — tweak via [PlaybackController.reconnectConfig].
@@ -86,13 +87,26 @@ class PlaybackBufferPolicy {
   // small back buffer is still useful for quick backwards seeks.
   static const maxBackBufferBytes = 16 * 1024 * 1024;
 
-  static const liveAhead = Duration(seconds: 30);
   static const vodAhead = Duration(seconds: 90);
-  static const liveResume = Duration(seconds: 2);
   static const vodResume = Duration(seconds: 15);
 
-  static Duration aheadFor(bool live) => live ? liveAhead : vodAhead;
-  static Duration resumeFor(bool live) => live ? liveResume : vodResume;
+  static Duration aheadFor(bool live, {PlaybackMode? mode}) {
+    if (!live) return vodAhead;
+    return switch (mode ?? PlaybackModeController.instance.mode.value) {
+      PlaybackMode.balanced => const Duration(seconds: 30),
+      PlaybackMode.stable => const Duration(seconds: 60),
+      PlaybackMode.lowLatency => const Duration(seconds: 12),
+    };
+  }
+
+  static Duration resumeFor(bool live, {PlaybackMode? mode}) {
+    if (!live) return vodResume;
+    return switch (mode ?? PlaybackModeController.instance.mode.value) {
+      PlaybackMode.balanced => const Duration(seconds: 3),
+      PlaybackMode.stable => const Duration(seconds: 6),
+      PlaybackMode.lowLatency => const Duration(seconds: 1),
+    };
+  }
 }
 
 const streamingPlayerConfiguration = PlayerConfiguration(
@@ -160,15 +174,32 @@ Map<String, String> streamingPropertiesFor(TargetPlatform platform) => {
 
 Map<String, String> streamingPropertiesForItem(
   TargetPlatform platform,
-  PlayerItem item,
-) {
-  final ahead = PlaybackBufferPolicy.aheadFor(item.isLive).inSeconds;
-  final resume = PlaybackBufferPolicy.resumeFor(item.isLive).inSeconds;
+  PlayerItem item, {
+  PlaybackMode? mode,
+}) {
+  final selectedMode = mode ?? PlaybackModeController.instance.mode.value;
+  final ahead = PlaybackBufferPolicy.aheadFor(
+    item.isLive,
+    mode: selectedMode,
+  ).inSeconds;
+  final resume = PlaybackBufferPolicy.resumeFor(
+    item.isLive,
+    mode: selectedMode,
+  ).inSeconds;
   return {
     'cache-pause-initial': 'yes',
     'cache-secs': '$ahead',
     'demuxer-readahead-secs': '$ahead',
     'cache-pause-wait': '$resume',
+    // Xtream MPEG-TS endpoints sometimes close a successful HTTP response
+    // every few seconds. These are stream-layer FFmpeg options (not demuxer
+    // options): reconnecting at EOF lets mpv join those responses into one
+    // continuous live session while the existing buffer keeps playing.
+    'stream-lavf-o': item.isLive
+        ? 'reconnect=1,reconnect_streamed=1,reconnect_at_eof=1,'
+              'reconnect_on_network_error=1,reconnect_delay_max=2'
+        : 'reconnect=1,reconnect_streamed=1,reconnect_at_eof=0,'
+              'reconnect_on_network_error=1,reconnect_delay_max=2',
     if (platform == TargetPlatform.android) 'audio-delay': '0',
   };
 }
@@ -401,12 +432,11 @@ PlaybackFailure classifyPlaybackFailure(
   );
 }
 
-/// Safe source URLs for Xtream-style paths. Live channels prefer HLS because
-/// its segment window lets the player build a real forward cushion and, when
-/// supplied as a master playlist, adapt quality to changing bandwidth. The
-/// provider's MPEG-TS endpoint remains an automatic compatibility fallback.
-/// Arbitrary M3U addresses are intentionally left untouched; only a recognized
-/// /kind/user/pass/id.ext shape is eligible.
+/// Safe source URLs for Xtream-style paths. The provider-supplied extension is
+/// tried first, then Lumen can fall back between HLS and MPEG-TS. Preserving the
+/// supplied format avoids an unnecessary failed HLS request on accounts whose
+/// API explicitly issues TS URLs only. Arbitrary M3U addresses are left
+/// untouched; only a recognized /kind/user/pass/id.ext shape is eligible.
 List<String> playbackSourceCandidates(PlayerItem item) {
   final original = item.url.trim();
   if (!isPlayableMediaUrl(original)) return [original];
@@ -428,14 +458,11 @@ List<String> playbackSourceCandidates(PlayerItem item) {
   final alternatives = kind == 'live'
       ? const ['m3u8', 'ts']
       : const ['mp4', 'mkv'];
-  final sources = kind == 'live' ? <String>[] : <String>[original];
+  final sources = <String>[original];
   for (final extension in alternatives) {
-    if (kind != 'live' && extension == currentExtension) continue;
+    if (extension == currentExtension) continue;
     segments[segments.length - 1] = '$id.$extension';
     sources.add(uri.replace(pathSegments: segments).toString());
-  }
-  if (kind == 'live' && !alternatives.contains(currentExtension)) {
-    sources.insert(0, original);
   }
   return sources;
 }

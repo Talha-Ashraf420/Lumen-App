@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import 'playback_mode.dart';
+
 class AndroidCompatibilityPlaylistItem {
   const AndroidCompatibilityPlaylistItem({
     required this.url,
@@ -55,6 +57,7 @@ class AndroidCompatibilityPlayer {
             'url': url,
             'title': title,
             'isLive': isLive,
+            'playbackMode': PlaybackModeController.instance.mode.value.name,
             'headers': headers,
             'playlist': [
               for (final item in window)

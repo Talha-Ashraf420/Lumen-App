@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen_tv/models.dart';
 import 'package:lumen_tv/playback.dart';
+import 'package:lumen_tv/playback_mode.dart';
 import 'package:lumen_tv/xtream.dart';
 
 void main() {
@@ -124,8 +125,8 @@ void main() {
       );
       final liveSources = playbackSourceCandidates(live);
       expect(liveSources, hasLength(2));
-      expect(liveSources.first, endsWith('/19.m3u8'));
-      expect(liveSources.last, endsWith('/19.ts'));
+      expect(liveSources.first, endsWith('/19.ts'));
+      expect(liveSources.last, endsWith('/19.m3u8'));
 
       const hlsLive = PlayerItem(
         'https://provider.example/live/viewer/secret/20.m3u8',
@@ -162,8 +163,30 @@ void main() {
       streamingPlayerConfiguration.bufferSize,
       PlaybackBufferPolicy.maxMemoryBytes,
     );
-    expect(PlaybackBufferPolicy.aheadFor(true), const Duration(seconds: 30));
-    expect(PlaybackBufferPolicy.resumeFor(true), const Duration(seconds: 2));
+    expect(
+      PlaybackBufferPolicy.aheadFor(true, mode: PlaybackMode.balanced),
+      const Duration(seconds: 30),
+    );
+    expect(
+      PlaybackBufferPolicy.resumeFor(true, mode: PlaybackMode.balanced),
+      const Duration(seconds: 3),
+    );
+    expect(
+      PlaybackBufferPolicy.aheadFor(true, mode: PlaybackMode.stable),
+      const Duration(seconds: 60),
+    );
+    expect(
+      PlaybackBufferPolicy.resumeFor(true, mode: PlaybackMode.stable),
+      const Duration(seconds: 6),
+    );
+    expect(
+      PlaybackBufferPolicy.aheadFor(true, mode: PlaybackMode.lowLatency),
+      const Duration(seconds: 12),
+    );
+    expect(
+      PlaybackBufferPolicy.resumeFor(true, mode: PlaybackMode.lowLatency),
+      const Duration(seconds: 1),
+    );
     expect(PlaybackBufferPolicy.aheadFor(false), const Duration(seconds: 90));
     expect(PlaybackBufferPolicy.resumeFor(false), const Duration(seconds: 15));
 
@@ -212,6 +235,7 @@ void main() {
     final liveProperties = streamingPropertiesForItem(
       TargetPlatform.android,
       live,
+      mode: PlaybackMode.balanced,
     );
     final vodProperties = streamingPropertiesForItem(
       TargetPlatform.android,
@@ -219,9 +243,11 @@ void main() {
     );
     expect(liveProperties['audio-delay'], '0');
     expect(liveProperties['cache-secs'], '30');
-    expect(liveProperties['cache-pause-wait'], '2');
+    expect(liveProperties['cache-pause-wait'], '3');
+    expect(liveProperties['stream-lavf-o'], contains('reconnect_at_eof=1'));
     expect(vodProperties['cache-secs'], '90');
     expect(vodProperties['cache-pause-wait'], '15');
+    expect(vodProperties['stream-lavf-o'], contains('reconnect_at_eof=0'));
   });
 
   test('Xtream URLs never end with an empty extension', () {
