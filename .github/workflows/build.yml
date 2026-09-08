@@ -90,6 +90,61 @@ jobs:
           path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
 
+  # Google Play receives an Android App Bundle signed with the dedicated upload
+  # key. The bundle remains a private workflow artifact until it is submitted to
+  # the closed-testing track; it is never attached to the public GitHub release.
+  android-play:
+    needs: quality
+    runs-on: ubuntu-latest
+    env:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_PLAY_KEYSTORE_BASE64 }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_PLAY_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_PLAY_KEY_PASSWORD }}
+      ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_PLAY_STORE_PASSWORD }}
+      ORG_GRADLE_PROJECT_lumenCommunityBuild: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - run: flutter pub get
+      - name: Configure Google Play upload signing
+        shell: bash
+        run: |
+          for value in ANDROID_KEYSTORE_BASE64 ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD ANDROID_STORE_PASSWORD; do
+            if [ -z "${!value:-}" ]; then
+              echo "Missing required GitHub Actions secret: $value"
+              exit 1
+            fi
+          done
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/play-upload.p12
+          {
+            printf 'storeFile=play-upload.p12\n'
+            printf 'storeType=PKCS12\n'
+            printf 'keyAlias=%s\n' "$ANDROID_KEY_ALIAS"
+            printf 'keyPassword=%s\n' "$ANDROID_KEY_PASSWORD"
+            printf 'storePassword=%s\n' "$ANDROID_STORE_PASSWORD"
+          } > android/key.properties
+          chmod 600 android/app/play-upload.p12 android/key.properties
+      - run: flutter build appbundle --release --build-number=${{ github.run_number }} --dart-define=APP_BUILD=${{ github.run_number }}
+      - name: Verify signed Google Play bundle
+        shell: bash
+        run: |
+          bundle="build/app/outputs/bundle/release/app-release.aab"
+          jarsigner -verify "$bundle"
+          test "$(unzip -p "$bundle" base/manifest/AndroidManifest.xml | strings | grep -o 'com.talhaashraf.lumen' | head -n 1)" = "com.talhaashraf.lumen"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Lumen-Google-Play-aab
+          path: build/app/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+
   windows:
     needs: quality
     runs-on: windows-latest
@@ -185,21 +240,42 @@ jobs:
   # Collect every platform build and publish them to a rolling "latest" GitHub
   # Release, so the README can offer stable one-click download links.
   release:
-    needs: [android, windows, macos, linux, ios]
+    needs: [android, android-play, windows, macos, linux, ios]
     # Publish whatever built successfully, even if some platform job failed.
     if: ${{ always() }}
     runs-on: ubuntu-latest
     env:
       DISCORD_RELEASE_WEBHOOK: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
     steps:
-      - name: Download all build artifacts
+      - name: Download Android Community artifact
         uses: actions/download-artifact@v4
         with:
+          name: Lumen-Android-apk
           path: dist
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Lumen-Windows
+          path: dist/Lumen-Windows
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Lumen-macOS
+          path: dist/Lumen-macOS
+      - name: Download Linux artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Lumen-Linux
+          path: dist/Lumen-Linux
+      - name: Download iOS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Lumen-iOS-unsigned
+          path: dist/Lumen-iOS-unsigned
       - name: Stage release assets (stable names)
         run: |
           mkdir -p out
-          cp dist/Lumen-Android-apk/app-release.apk out/Lumen-Android.apk || echo "skip android"
+          cp dist/app-release.apk out/Lumen-Android.apk || echo "skip android"
           cp dist/Lumen-Windows/Lumen-Windows.zip out/Lumen-Windows.zip || echo "skip windows"
           cp dist/Lumen-macOS/Lumen-macOS.zip out/Lumen-macOS.zip || echo "skip macos"
           cp dist/Lumen-Linux/Lumen-Linux-x64.tar.gz out/Lumen-Linux-x64.tar.gz || echo "skip linux"
@@ -226,8 +302,6 @@ jobs:
         if: ${{ env.DISCORD_RELEASE_WEBHOOK != '' }}
         env:
           BUILD_NUMBER: ${{ github.run_number }}
-          RELEASE_PAGE: https://github.com/Talha-Ashraf420/Lumen-App/releases/latest
-          APK_URL: https://github.com/Talha-Ashraf420/Lumen-App/releases/latest/download/Lumen-Android.apk
           DOWNLOADER_URL: https://aftv.news/4560142
           DOWNLOADER_CODE: "4560142"
         run: |
@@ -237,48 +311,11 @@ jobs:
           fi
           jq -n \
             --arg build "$BUILD_NUMBER" \
-            --arg apk "$APK_URL" \
-            --arg release "$RELEASE_PAGE" \
             --arg downloader "$DOWNLOADER_URL" \
             --arg downloaderCode "$DOWNLOADER_CODE" \
             '{
               username: "Lumen Releases",
-              embeds: [{
-                title: ("Lumen build " + $build + " is ready"),
-                url: $release,
-                description: "A fresh Lumen build is available for Android phones and Android TV.",
-                color: 13172557,
-                fields: [
-                  {
-                    name: "Download",
-                    value: ("[Get Lumen-Android.apk](" + $apk + ")"),
-                    inline: false
-                  },
-                  {
-                    name: "Downloader",
-                    value: ("Enter code `" + $downloaderCode + "` or open [aftv.news/" + $downloaderCode + "](" + $downloader + ")"),
-                    inline: false
-                  },
-                  {
-                    name: "Release details",
-                    value: ("[View on GitHub](" + $release + ")"),
-                    inline: true
-                  },
-                  {
-                    name: "Platforms",
-                    value: "Android · Android TV",
-                    inline: true
-                  },
-                  {
-                    name: "Install note",
-                    value: "Signed Community edition. It can be installed beside the Google Play edition.",
-                    inline: false
-                  }
-                ],
-                footer: {
-                  text: "Lumen includes no channels or media. Use authorized sources only."
-                }
-              }]
+              content: ("**New Lumen build " + $build + " is available**\n\nAndroid and Android TV\nDownloader code: `" + $downloaderCode + "`\nDownload: " + $downloader)
             }' \
             > discord-payload.json
           curl --fail --silent --show-error \

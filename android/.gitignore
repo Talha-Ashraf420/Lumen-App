@@ -12,3 +12,9 @@ GeneratedPluginRegistrant.java
 key.properties
 **/*.keystore
 **/*.jks
+**/*.p12
+
+# Dedicated Google Play upload material. The certificate is public, but it is
+# kept beside the private key and excluded to avoid confusing it with app code.
+app/lumen-play-upload.p12
+app/lumen-play-upload-certificate.pem
