@@ -94,6 +94,18 @@ internal object Media3PlaybackPolicy {
             SeekFeedbackSide.RIGHT
         }
 
+    fun showPlaylistNavigation(isTelevision: Boolean, playlistSize: Int): Boolean =
+        isTelevision && playlistSize > 1
+
+    fun showSeekNavigation(isTelevision: Boolean, isLive: Boolean): Boolean =
+        isTelevision && !isLive
+
+    fun focusTransportOnRemoteInput(
+        isLive: Boolean,
+        controlsVisible: Boolean,
+        playerSurfaceFocused: Boolean
+    ): Boolean = !isLive && (!controlsVisible || playerSurfaceFocused)
+
     /**
      * A tap keeps the familiar ten-second seek. Once Android reports a held
      * key, seek from the original key-down position in whole-minute stages.

@@ -134,6 +134,41 @@ class _HomeClient extends XtreamClient {
   Future<List<LiveStream>> liveStreams(String? categoryId) async => const [];
 }
 
+class _StaggeredSearchClient extends XtreamClient {
+  _StaggeredSearchClient()
+    : super(
+        const XtreamCredentials(
+          baseUrl: 'https://staggered-search.example',
+          username: 'viewer',
+          password: 'test-only',
+        ),
+      );
+
+  final seriesResults = Completer<List<Series>>();
+  final liveResults = Completer<List<LiveStream>>();
+
+  @override
+  Future<List<Category>> vodCategories() async => [Category('movie', 'Movies')];
+
+  @override
+  Future<List<Category>> seriesCategories() async => const [];
+
+  @override
+  Future<List<Category>> liveCategories() async => const [];
+
+  @override
+  Future<List<VodStream>> vodStreams(String? categoryId) async => [
+    VodStream(91, 'Signal Movie', '', '', 'mp4', 8.2, ''),
+  ];
+
+  @override
+  Future<List<Series>> series(String? categoryId) => seriesResults.future;
+
+  @override
+  Future<List<LiveStream>> liveStreams(String? categoryId) =>
+      liveResults.future;
+}
+
 class _PagedClient extends XtreamClient {
   _PagedClient()
     : super(
@@ -1117,6 +1152,36 @@ void main() {
           FocusManager.instance.primaryFocus?.debugLabel ==
           'Search movie result 0',
     );
+    expect(tester.takeException(), isNull);
+    await disposeUi(tester);
+  });
+
+  testWidgets('global Search marks unfinished media groups as loading', (
+    tester,
+  ) async {
+    final client = _StaggeredSearchClient();
+    addTearDown(client.close);
+
+    await pumpAt(tester, SearchScreen(client: client), const Size(1280, 800));
+    final field = tester.widget<TextField>(find.byType(TextField));
+    field.controller!.text = 'Signal';
+    field.onChanged?.call('Signal');
+    await tester.pump(const Duration(milliseconds: 330));
+    await waitFor(
+      tester,
+      () => find.text('Signal Movie').evaluate().isNotEmpty,
+    );
+
+    expect(find.text('Series'), findsAtLeastNWidgets(1));
+    expect(find.text('Channels'), findsAtLeastNWidgets(1));
+    expect(find.text('Loading'), findsNWidgets(2));
+
+    client.seriesResults.complete(const []);
+    client.liveResults.complete(const []);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Loading'), findsNothing);
+    expect(find.text('Signal Movie'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await disposeUi(tester);
   });

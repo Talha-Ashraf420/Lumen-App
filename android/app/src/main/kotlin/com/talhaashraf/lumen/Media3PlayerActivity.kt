@@ -95,9 +95,9 @@ class Media3PlayerActivity : Activity() {
     private lateinit var centerTransport: LinearLayout
     private lateinit var previousButton: ImageButton
     private lateinit var nextButton: ImageButton
-    private lateinit var rewindButton: TextView
+    private lateinit var rewindButton: ImageButton
     private lateinit var playPauseButton: ImageButton
-    private lateinit var forwardButton: TextView
+    private lateinit var forwardButton: ImageButton
     private lateinit var playlistButton: TextView
     private lateinit var subtitleButton: TextView
     private lateinit var audioButton: TextView
@@ -495,16 +495,30 @@ class Media3PlayerActivity : Activity() {
     private fun buildCenterTransport(): LinearLayout {
         previousButton = iconButton(
             R.drawable.ic_player_previous,
-            "Previous channel"
+            if (isLive) "Previous channel" else "Previous episode"
         ) { openPlaylistItem(playlistIndex - 1, navigationDirection = -1) }
+        rewindButton = iconButton(
+            R.drawable.ic_player_rewind,
+            "Rewind 10 seconds"
+        ) {
+            seekBy(-SEEK_INCREMENT_MS)
+            showSeekFeedback(-SEEK_INCREMENT_MS)
+        }
         playPauseButton = iconButton(
             R.drawable.ic_player_pause,
             "Pause playback",
             prominent = true
         ) { togglePlayPause() }
+        forwardButton = iconButton(
+            R.drawable.ic_player_forward,
+            "Fast forward 10 seconds"
+        ) {
+            seekBy(SEEK_INCREMENT_MS)
+            showSeekFeedback(SEEK_INCREMENT_MS)
+        }
         nextButton = iconButton(
             R.drawable.ic_player_next,
-            "Next channel"
+            if (isLive) "Next channel" else "Next episode"
         ) { openPlaylistItem(playlistIndex + 1, navigationDirection = 1) }
 
         return LinearLayout(this).apply {
@@ -518,7 +532,9 @@ class Media3PlayerActivity : Activity() {
                 Gravity.CENTER
             )
             addView(previousButton, transportParams(dp(52), dp(52)))
+            addView(rewindButton, transportParams(dp(52), dp(52)))
             addView(playPauseButton, transportParams(dp(68), dp(68)))
+            addView(forwardButton, transportParams(dp(52), dp(52)))
             addView(nextButton, transportParams(dp(52), dp(52)))
         }
     }
@@ -693,16 +709,6 @@ class Media3PlayerActivity : Activity() {
         )
         progressRow.addView(durationText, LinearLayout.LayoutParams(dp(76), dp(40)))
 
-        // Remote left/right performs seeking for on-demand playback. These
-        // hidden actions remain available to keyboard/media-key handling.
-        rewindButton = themedButton("−10", "Rewind 10 seconds", round = true) {
-            seekBy(-SEEK_INCREMENT_MS)
-            showSeekFeedback(-SEEK_INCREMENT_MS)
-        }.apply { visibility = View.GONE }
-        forwardButton = themedButton("+10", "Fast forward 10 seconds", round = true) {
-            seekBy(SEEK_INCREMENT_MS)
-            showSeekFeedback(SEEK_INCREMENT_MS)
-        }.apply { visibility = View.GONE }
         playlistButton = toolButton(
             "▦",
             if (isLive) "Channels" else "Episodes",
@@ -927,7 +933,7 @@ class Media3PlayerActivity : Activity() {
     private fun centerButtonBackground(): StateListDrawable = StateListDrawable().apply {
         addState(
             intArrayOf(android.R.attr.state_focused),
-            roundedRect(0xB30B0D0B.toInt(), 0xFFC5FF63.toInt(), 2, 40)
+            roundedRect(0xFFC5FF63.toInt(), Color.WHITE, 2, 40)
         )
         addState(
             intArrayOf(android.R.attr.state_pressed),
@@ -1033,9 +1039,18 @@ class Media3PlayerActivity : Activity() {
         if (!::previousButton.isInitialized) return
         previousButton.isEnabled = playlistIndex > 0
         nextButton.isEnabled = playlistIndex < playlistUrls.lastIndex
-        val showChannelNavigation = isTelevisionDevice && isLive
-        previousButton.visibility = if (showChannelNavigation) View.VISIBLE else View.GONE
-        nextButton.visibility = if (showChannelNavigation) View.VISIBLE else View.GONE
+        val showPlaylistNavigation = Media3PlaybackPolicy.showPlaylistNavigation(
+            isTelevisionDevice,
+            playlistUrls.size
+        )
+        previousButton.visibility = if (showPlaylistNavigation) View.VISIBLE else View.GONE
+        nextButton.visibility = if (showPlaylistNavigation) View.VISIBLE else View.GONE
+        val showSeekNavigation = Media3PlaybackPolicy.showSeekNavigation(
+            isTelevisionDevice,
+            isLive
+        )
+        rewindButton.visibility = if (showSeekNavigation) View.VISIBLE else View.GONE
+        forwardButton.visibility = if (showSeekNavigation) View.VISIBLE else View.GONE
         playlistButton.isEnabled = playlistUrls.size > 1
         playlistButton.visibility = if (playlistUrls.size > 1) View.VISIBLE else View.GONE
         playlistButton.text = if (isLive) "▦\nChannels" else "▦\nEpisodes"
@@ -1065,34 +1080,32 @@ class Media3PlayerActivity : Activity() {
             }
             button.nextFocusDownId = button.id
         }
-        backButton.nextFocusLeftId = backButton.id
-        backButton.nextFocusRightId = backButton.id
-        backButton.nextFocusUpId = backButton.id
-        backButton.nextFocusDownId = playPauseButton.id
-        playPauseButton.nextFocusLeftId = if (
-            previousButton.visibility == View.VISIBLE && previousButton.isEnabled
-        ) previousButton.id else playPauseButton.id
-        playPauseButton.nextFocusRightId = if (
-            nextButton.visibility == View.VISIBLE && nextButton.isEnabled
-        ) nextButton.id else playPauseButton.id
-        playPauseButton.nextFocusUpId = backButton.id
-        playPauseButton.nextFocusDownId = if (progressBar.visibility == View.VISIBLE) {
+        val transportControls = listOf(
+            previousButton,
+            rewindButton,
+            playPauseButton,
+            forwardButton,
+            nextButton
+        ).filter {
+            it.visibility == View.VISIBLE && it.isEnabled
+        }
+        val transportDownId = if (progressBar.visibility == View.VISIBLE) {
             progressBar.id
         } else {
             tools.firstOrNull()?.id ?: playPauseButton.id
         }
-        if (previousButton.visibility == View.VISIBLE) {
-            previousButton.nextFocusLeftId = previousButton.id
-            previousButton.nextFocusRightId = playPauseButton.id
-            previousButton.nextFocusUpId = backButton.id
-            previousButton.nextFocusDownId = playPauseButton.nextFocusDownId
+        transportControls.forEachIndexed { index, button ->
+            button.nextFocusLeftId = transportControls.getOrNull(index - 1)?.id
+                ?: button.id
+            button.nextFocusRightId = transportControls.getOrNull(index + 1)?.id
+                ?: button.id
+            button.nextFocusUpId = backButton.id
+            button.nextFocusDownId = transportDownId
         }
-        if (nextButton.visibility == View.VISIBLE) {
-            nextButton.nextFocusLeftId = playPauseButton.id
-            nextButton.nextFocusRightId = nextButton.id
-            nextButton.nextFocusUpId = backButton.id
-            nextButton.nextFocusDownId = playPauseButton.nextFocusDownId
-        }
+        backButton.nextFocusLeftId = backButton.id
+        backButton.nextFocusRightId = backButton.id
+        backButton.nextFocusUpId = backButton.id
+        backButton.nextFocusDownId = playPauseButton.id
         if (progressBar.visibility == View.VISIBLE) {
             progressBar.nextFocusUpId = playPauseButton.id
             progressBar.nextFocusDownId = tools.firstOrNull()?.id ?: progressBar.id
@@ -1113,7 +1126,9 @@ class Media3PlayerActivity : Activity() {
         updateNavigationUi()
         open()
         showControls()
-        if (navigationDirection < 0 && previousButton.isEnabled) {
+        if (!isLive && navigationDirection != 0) {
+            playPauseButton.requestFocus()
+        } else if (navigationDirection < 0 && previousButton.isEnabled) {
             previousButton.requestFocus()
         } else if (navigationDirection > 0 && nextButton.isEnabled) {
             nextButton.requestFocus()
@@ -1649,6 +1664,16 @@ class Media3PlayerActivity : Activity() {
         }
     }
 
+    private fun showControlsFromRemote() {
+        showControls(
+            requestTransportFocus = Media3PlaybackPolicy.focusTransportOnRemoteInput(
+                isLive = isLive,
+                controlsVisible = controlsVisible,
+                playerSurfaceFocused = playerView.hasFocus()
+            )
+        )
+    }
+
     private fun scheduleControlsHide() {
         handler.removeCallbacks(hideControls)
         if (
@@ -1989,32 +2014,32 @@ class Media3PlayerActivity : Activity() {
                 KeyEvent.KEYCODE_K,
                 KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
                     if (event.repeatCount == 0) togglePlayPause()
-                    showControls(requestTransportFocus = false)
+                    showControlsFromRemote()
                     scheduleControlsHide()
                     return true
                 }
                 KeyEvent.KEYCODE_MEDIA_PLAY -> {
                     player.play()
-                    showControls(requestTransportFocus = false)
+                    showControlsFromRemote()
                     scheduleControlsHide()
                     return true
                 }
                 KeyEvent.KEYCODE_MEDIA_PAUSE -> {
                     player.pause()
-                    showControls(requestTransportFocus = false)
+                    showControlsFromRemote()
                     return true
                 }
                 KeyEvent.KEYCODE_J,
                 KeyEvent.KEYCODE_MEDIA_REWIND -> {
                     seekFromHeldKey(event, -1)
-                    showControls(requestTransportFocus = false)
+                    showControlsFromRemote()
                     scheduleControlsHide()
                     return true
                 }
                 KeyEvent.KEYCODE_L,
                 KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
                     seekFromHeldKey(event, 1)
-                    showControls(requestTransportFocus = false)
+                    showControlsFromRemote()
                     scheduleControlsHide()
                     return true
                 }
@@ -2036,34 +2061,34 @@ class Media3PlayerActivity : Activity() {
                     !controlsVisible || playerView.hasFocus()
                 ) {
                     if (event.repeatCount == 0) togglePlayPause()
-                    showControls(requestTransportFocus = false)
+                    showControlsFromRemote()
                     scheduleControlsHide()
                     return true
                 }
                 KeyEvent.KEYCODE_DPAD_LEFT -> if (
                     !isLive &&
-                    (!controlsVisible || playerView.hasFocus() || playPauseButton.hasFocus())
+                    (!controlsVisible || playerView.hasFocus())
                 ) {
                     seekFromHeldKey(event, -1)
-                    showControls(requestTransportFocus = false)
+                    showControls(requestTransportFocus = true)
                     scheduleControlsHide()
                     return true
                 }
                 KeyEvent.KEYCODE_DPAD_RIGHT -> if (
                     !isLive &&
-                    (!controlsVisible || playerView.hasFocus() || playPauseButton.hasFocus())
+                    (!controlsVisible || playerView.hasFocus())
                 ) {
                     seekFromHeldKey(event, 1)
-                    showControls(requestTransportFocus = false)
+                    showControls(requestTransportFocus = true)
                     scheduleControlsHide()
                     return true
                 }
                 KeyEvent.KEYCODE_DPAD_UP,
                 KeyEvent.KEYCODE_DPAD_DOWN -> if (!controlsVisible) {
-                    // The first vertical press peeks the controller without
-                    // unexpectedly moving focus. A second press follows the
-                    // explicit focus graph into the title or transport row.
-                    showControls(requestTransportFocus = false)
+                    // Any first remote press wakes the controller at its
+                    // stable central action instead of leaving an invisible
+                    // focus owner on the video surface.
+                    showControlsFromRemote()
                     return true
                 }
             }
@@ -2075,7 +2100,7 @@ class Media3PlayerActivity : Activity() {
             event.keyCode != KeyEvent.KEYCODE_VOLUME_MUTE &&
             !controlsVisible
         ) {
-            showControls(requestTransportFocus = false)
+            showControlsFromRemote()
             return true
         }
         if (event.action == KeyEvent.ACTION_DOWN && controlsVisible) {

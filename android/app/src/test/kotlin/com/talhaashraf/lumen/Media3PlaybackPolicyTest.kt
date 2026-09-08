@@ -112,4 +112,58 @@ class Media3PlaybackPolicyTest {
         assertEquals(120_000L, Media3PlaybackPolicy.heldSeekDistanceMs(repeatCount = 9))
         assertEquals(180_000L, Media3PlaybackPolicy.heldSeekDistanceMs(repeatCount = 17))
     }
+
+    @Test
+    fun televisionShowsPlaylistAndSeekNavigationForSeries() {
+        assertTrue(
+            Media3PlaybackPolicy.showPlaylistNavigation(
+                isTelevision = true,
+                playlistSize = 8
+            )
+        )
+        assertTrue(
+            Media3PlaybackPolicy.showSeekNavigation(
+                isTelevision = true,
+                isLive = false
+            )
+        )
+        assertFalse(
+            Media3PlaybackPolicy.showPlaylistNavigation(
+                isTelevision = true,
+                playlistSize = 1
+            )
+        )
+    }
+
+    @Test
+    fun onDemandRemoteWakeReturnsFocusToCentralTransport() {
+        assertTrue(
+            Media3PlaybackPolicy.focusTransportOnRemoteInput(
+                isLive = false,
+                controlsVisible = false,
+                playerSurfaceFocused = true
+            )
+        )
+        assertTrue(
+            Media3PlaybackPolicy.focusTransportOnRemoteInput(
+                isLive = false,
+                controlsVisible = true,
+                playerSurfaceFocused = true
+            )
+        )
+        assertFalse(
+            Media3PlaybackPolicy.focusTransportOnRemoteInput(
+                isLive = false,
+                controlsVisible = true,
+                playerSurfaceFocused = false
+            )
+        )
+        assertFalse(
+            Media3PlaybackPolicy.focusTransportOnRemoteInput(
+                isLive = true,
+                controlsVisible = false,
+                playerSurfaceFocused = true
+            )
+        )
+    }
 }

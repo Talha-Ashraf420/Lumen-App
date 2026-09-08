@@ -1684,11 +1684,7 @@ class SearchScreenState extends State<SearchScreen>
             ),
           )
           .toList();
-      if (loading && mr.isEmpty && sr.isEmpty && lr.isEmpty) {
-        _visibleSearchGroups = const [];
-        return const GridLoading();
-      }
-      if (mr.isEmpty && sr.isEmpty && lr.isEmpty) {
+      if (!loading && mr.isEmpty && sr.isEmpty && lr.isEmpty) {
         _visibleSearchGroups = const [];
         return _empty('No results for “$_q”.');
       }
@@ -1705,8 +1701,18 @@ class SearchScreenState extends State<SearchScreen>
       return ListView(
         padding: const EdgeInsets.only(top: 8, bottom: 120),
         children: [
-          for (final group in groups)
-            _group(group.id, group.title, group.items),
+          if (movies == null)
+            _loadingSearchGroup('Movies', live: false)
+          else if (mr.isNotEmpty)
+            _group('movie', 'Movies', mr),
+          if (series == null)
+            _loadingSearchGroup('Series', live: false)
+          else if (sr.isNotEmpty)
+            _group('series', 'Series', sr),
+          if (live == null)
+            _loadingSearchGroup('Channels', live: true)
+          else if (lr.isNotEmpty)
+            _group('live', 'Channels', lr),
         ],
       );
     }
@@ -1899,6 +1905,51 @@ class SearchScreenState extends State<SearchScreen>
       ],
     );
   }
+
+  Widget _loadingSearchGroup(String title, {required bool live}) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(18, 18, 16, 12),
+        child: Row(
+          children: [
+            Text(
+              title,
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(width: 10),
+            SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2.2,
+                color: accentInk,
+              ),
+            ),
+            const SizedBox(width: 7),
+            Text(
+              'Loading',
+              style: TextStyle(
+                color: muted,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+      SizedBox(
+        height: posterShelfHeight(live: live),
+        child: const Align(
+          alignment: Alignment.topLeft,
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(18, 16, 0, 0),
+            child: SizedBox.shrink(),
+          ),
+        ),
+      ),
+    ],
+  );
 
   Widget _prompt() => Center(
     child: Text(

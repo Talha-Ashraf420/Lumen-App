@@ -1,8 +1,8 @@
-name: Build all platforms
+name: Build Android and Android TV
 
-# Builds Lumen for every platform on GitHub-hosted runners and uploads a
-# downloadable artifact per OS. Runs on each push to main/master, on tags, and
-# can be triggered manually from the Actions tab (Run workflow).
+# Builds the Android package used by phones and Android TV, plus the private
+# Google Play bundle. Desktop and iOS jobs are retained below but temporarily
+# disabled while the Android TV experience is being stabilised.
 on:
   push:
     branches: [main, master]
@@ -147,6 +147,8 @@ jobs:
 
   windows:
     needs: quality
+    # Temporarily disabled: Android and Android TV are the active targets.
+    if: ${{ false }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -168,6 +170,8 @@ jobs:
 
   macos:
     needs: quality
+    # Temporarily disabled: Android and Android TV are the active targets.
+    if: ${{ false }}
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -192,6 +196,8 @@ jobs:
 
   linux:
     needs: quality
+    # Temporarily disabled: Android and Android TV are the active targets.
+    if: ${{ false }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -217,6 +223,8 @@ jobs:
 
   ios:
     needs: quality
+    # Temporarily disabled: Android and Android TV are the active targets.
+    if: ${{ false }}
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -237,11 +245,10 @@ jobs:
           path: Lumen-iOS-unsigned.zip
           if-no-files-found: error
 
-  # Collect every platform build and publish them to a rolling "latest" GitHub
-  # Release, so the README can offer stable one-click download links.
+  # Publish the Android/Android TV package to the rolling "latest" release.
   release:
-    needs: [android, android-play, windows, macos, linux, ios]
-    # Publish whatever built successfully, even if some platform job failed.
+    needs: [android, android-play]
+    # Publish after both Android variants have been built and verified.
     if: ${{ always() }}
     runs-on: ubuntu-latest
     env:
@@ -252,34 +259,12 @@ jobs:
         with:
           name: Lumen-Android-apk
           path: dist
-      - name: Download Windows artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: Lumen-Windows
-          path: dist/Lumen-Windows
-      - name: Download macOS artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: Lumen-macOS
-          path: dist/Lumen-macOS
-      - name: Download Linux artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: Lumen-Linux
-          path: dist/Lumen-Linux
-      - name: Download iOS artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: Lumen-iOS-unsigned
-          path: dist/Lumen-iOS-unsigned
+      # Desktop and iOS artifact downloads are intentionally disabled with
+      # their jobs above. Restore these steps when those targets are re-enabled.
       - name: Stage release assets (stable names)
         run: |
           mkdir -p out
           cp dist/app-release.apk out/Lumen-Android.apk || echo "skip android"
-          cp dist/Lumen-Windows/Lumen-Windows.zip out/Lumen-Windows.zip || echo "skip windows"
-          cp dist/Lumen-macOS/Lumen-macOS.zip out/Lumen-macOS.zip || echo "skip macos"
-          cp dist/Lumen-Linux/Lumen-Linux-x64.tar.gz out/Lumen-Linux-x64.tar.gz || echo "skip linux"
-          cp dist/Lumen-iOS-unsigned/Lumen-iOS-unsigned.zip out/Lumen-iOS-unsigned.zip || echo "skip ios"
           if [ -f out/Lumen-Android.apk ]; then sha256sum out/Lumen-Android.apk > out/Lumen-Android.apk.sha256; fi
           ls -la out
       - name: Publish to "latest" release
