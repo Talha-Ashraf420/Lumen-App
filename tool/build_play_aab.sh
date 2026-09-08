@@ -42,7 +42,7 @@ if git -C "$repo_dir" ls-files --error-unmatch \
 fi
 
 cd "$repo_dir"
-flutter build appbundle --release "$@"
+ORG_GRADLE_PROJECT_lumenCommunityBuild=false flutter build appbundle --release "$@"
 
 bundle="$repo_dir/build/app/outputs/bundle/release/app-release.aab"
 if [[ ! -f "$bundle" ]]; then

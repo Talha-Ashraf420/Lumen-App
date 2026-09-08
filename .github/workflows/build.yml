@@ -35,6 +35,12 @@ jobs:
   android:
     needs: quality
     runs-on: ubuntu-latest
+    env:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_COMMUNITY_KEYSTORE_BASE64 }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_COMMUNITY_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_COMMUNITY_KEY_PASSWORD }}
+      ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_COMMUNITY_STORE_PASSWORD }}
+      ORG_GRADLE_PROJECT_lumenCommunityBuild: 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -47,7 +53,37 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
       - run: flutter pub get
+      - name: Configure Community APK signing
+        shell: bash
+        run: |
+          for value in ANDROID_KEYSTORE_BASE64 ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD ANDROID_STORE_PASSWORD; do
+            if [ -z "${!value:-}" ]; then
+              echo "Missing required GitHub Actions secret: $value"
+              exit 1
+            fi
+          done
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/community-release.p12
+          {
+            printf 'storeFile=community-release.p12\n'
+            printf 'storeType=PKCS12\n'
+            printf 'keyAlias=%s\n' "$ANDROID_KEY_ALIAS"
+            printf 'keyPassword=%s\n' "$ANDROID_KEY_PASSWORD"
+            printf 'storePassword=%s\n' "$ANDROID_STORE_PASSWORD"
+          } > android/key.properties
+          chmod 600 android/app/community-release.p12 android/key.properties
       - run: flutter build apk --release --build-number=${{ github.run_number }} --dart-define=APP_BUILD=${{ github.run_number }}
+      - name: Verify signed, installable Community APK
+        shell: bash
+        run: |
+          apk="build/app/outputs/flutter-apk/app-release.apk"
+          apksigner="$(find "$ANDROID_SDK_ROOT/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          if [ -z "$apksigner" ]; then
+            echo "Android apksigner was not found."
+            exit 1
+          fi
+          "$apksigner" verify --verbose --print-certs "$apk"
+          build_tools_dir="$(dirname "$apksigner")"
+          "$build_tools_dir/aapt" dump badging "$apk" | grep "package: name='com.talhaashraf.lumen.community'"
       - uses: actions/upload-artifact@v4
         with:
           name: Lumen-Android-apk
@@ -180,7 +216,8 @@ jobs:
             build: ${{ github.run_number }}
 
             Lumen automatic build. Install links are below.
-            On Android the app can update itself from here.
+            The Android asset is a signed Community build for direct installation
+            and uses a separate package from the Google Play edition.
           # Must NOT be a prerelease, or the /releases/latest/ download URLs 404.
           prerelease: false
           make_latest: true
@@ -222,6 +259,11 @@ jobs:
                     name: "Platforms",
                     value: "Android · Android TV",
                     inline: true
+                  },
+                  {
+                    name: "Install note",
+                    value: "Signed Community edition. It can be installed beside the Google Play edition.",
+                    inline: false
                   }
                 ],
                 footer: {

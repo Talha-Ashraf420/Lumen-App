@@ -18,9 +18,14 @@ A native, premium **IPTV player** for your own Xtream / X3U subscription — Liv
 Android and Android TV releases are distributed through Google Play. Lumen is
 currently in closed testing; visit the website to request tester access.
 
+Discord testers can also install the signed **Lumen Community** APK from GitHub
+Releases. It uses a separate Android package, so it can safely coexist with the
+Google Play edition and receive future Community APK updates.
+
 [![Lumen website](https://img.shields.io/badge/Official%20website-Lumen-BCFF3C?style=for-the-badge)](https://lumen-launch.vercel.app/)
 [![Discord](https://img.shields.io/badge/Join%20the%20community-Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/n8dfzrDNQg)
 [![Get it on Google Play](https://img.shields.io/badge/Get%20it%20on-Google%20Play-414141?style=for-the-badge&logo=googleplay&logoColor=white)](https://play.google.com/store/apps/details?id=com.talhaashraf.lumen)
+[![Download Community APK](https://img.shields.io/badge/Download-Community%20APK-BCFF3C?style=for-the-badge&logo=android&logoColor=111)](https://github.com/Talha-Ashraf420/Lumen-App/releases/latest/download/Lumen-Android.apk)
 
 Desktop builds remain available from GitHub Releases:
 
@@ -111,7 +116,7 @@ Build locally:
 ```bash
 flutter pub get
 flutter run                       # current device
-flutter build apk --release       # Android
+flutter build apk --release       # Android; requires private key.properties
 flutter build macos --release     # macOS
 flutter build windows --release   # Windows (on Windows)
 flutter build linux --release     # Linux

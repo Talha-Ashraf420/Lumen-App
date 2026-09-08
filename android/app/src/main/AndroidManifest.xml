@@ -12,7 +12,7 @@
          endpoints. Media3 must be allowed to open those streams; Lumen never
          sends app-owned credentials to an HTTP service. -->
     <application
-        android:label="Lumen"
+        android:label="@string/app_name"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:banner="@drawable/tv_banner"

@@ -14,12 +14,15 @@ val keystorePropertiesFile = rootProject.file("key.properties")
 val hasKeystore = keystorePropertiesFile.exists()
 val keystoreProperties = Properties()
 if (hasKeystore) keystoreProperties.load(FileInputStream(keystorePropertiesFile))
-val requiresPlaySigning = gradle.startParameter.taskNames.any {
-    it.contains("bundleRelease", ignoreCase = true)
+val requiresReleaseSigning = gradle.startParameter.taskNames.any {
+    it.contains("release", ignoreCase = true)
 }
-if (requiresPlaySigning && !hasKeystore) {
+val isCommunityBuild = providers.gradleProperty("lumenCommunityBuild")
+    .orNull
+    ?.toBooleanStrictOrNull() == true
+if (requiresReleaseSigning && !hasKeystore) {
     throw GradleException(
-        "Release app bundles require android/key.properties and a private upload keystore."
+        "Release Android artifacts require android/key.properties and a private signing keystore."
     )
 }
 
@@ -38,7 +41,16 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.talhaashraf.lumen"
+        applicationId = if (isCommunityBuild) {
+            "com.talhaashraf.lumen.community"
+        } else {
+            "com.talhaashraf.lumen"
+        }
+        resValue(
+            "string",
+            "app_name",
+            if (isCommunityBuild) "Lumen Community" else "Lumen",
+        )
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
@@ -54,6 +66,9 @@ android {
                 keyPassword = keystoreProperties["keyPassword"] as String
                 storeFile = file(keystoreProperties["storeFile"] as String)
                 storePassword = keystoreProperties["storePassword"] as String
+                (keystoreProperties["storeType"] as? String)?.let {
+                    storeType = it
+                }
             }
         }
     }
