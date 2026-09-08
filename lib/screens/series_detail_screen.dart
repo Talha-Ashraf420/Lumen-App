@@ -853,7 +853,8 @@ class _EpisodeChapter extends StatelessWidget {
     final target = routes[event.logicalKey];
     // A lazily built episode outside the current Sliver viewport is not yet
     // attached. Let Flutter's directional traversal scroll/build it first.
-    if (target == null || target.context == null) {
+    final targetContext = target?.context;
+    if (target == null || targetContext == null || !targetContext.mounted) {
       return KeyEventResult.ignored;
     }
     target.requestFocus();

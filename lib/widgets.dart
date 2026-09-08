@@ -32,7 +32,9 @@ class RemoteFocusTraversalPolicy extends ReadingOrderTraversalPolicy {
   @override
   bool inDirection(FocusNode currentNode, TraversalDirection direction) {
     final context = currentNode.context;
-    if (context == null) return super.inDirection(currentNode, direction);
+    if (context == null || !context.mounted) {
+      return super.inDirection(currentNode, direction);
+    }
 
     final axis = switch (direction) {
       TraversalDirection.left || TraversalDirection.right => Axis.horizontal,
@@ -88,7 +90,10 @@ class RemoteFocusTraversalPolicy extends ReadingOrderTraversalPolicy {
       position.jumpTo(target);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _scrollPending.remove(currentNode);
-        if (currentNode.hasFocus && currentNode.context != null) {
+        final currentContext = currentNode.context;
+        if (currentNode.hasFocus &&
+            currentContext != null &&
+            currentContext.mounted) {
           super.inDirection(currentNode, direction);
         }
       });
@@ -139,7 +144,9 @@ class _RemoteFocusVisibilityState extends State<RemoteFocusVisibility> {
     _lastDirection = null;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final context = node.context;
-      if (!mounted || !node.hasFocus || context == null) return;
+      if (!mounted || !node.hasFocus || context == null || !context.mounted) {
+        return;
+      }
       Scrollable.ensureVisible(
         context,
         duration: DeviceProfile.isTelevision
@@ -738,8 +745,6 @@ class _FocusableTapState extends State<FocusableTap> {
   bool _hover = false;
   bool _focus = false;
   FocusNode? _ownedFocusNode;
-  FocusOnKeyEventCallback? _previousNodeHandler;
-  late final FocusOnKeyEventCallback _installedNodeHandler = _handleKeyEvent;
 
   static const _activators = <ShortcutActivator, Intent>{
     SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
@@ -756,48 +761,23 @@ class _FocusableTapState extends State<FocusableTap> {
   @override
   void initState() {
     super.initState();
-    _attachKeyHandler();
+    if (widget.focusNode == null) _ownedFocusNode = FocusNode();
   }
 
   @override
   void didUpdateWidget(FocusableTap oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!identical(oldWidget.focusNode, widget.focusNode)) {
-      _detachKeyHandler(oldWidget.focusNode);
-      _attachKeyHandler();
+    if (oldWidget.focusNode == null && widget.focusNode != null) {
+      _ownedFocusNode?.dispose();
+      _ownedFocusNode = null;
+    } else if (oldWidget.focusNode != null && widget.focusNode == null) {
+      _ownedFocusNode = FocusNode();
     }
-  }
-
-  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
-    final result = widget.onKeyEvent?.call(node, event);
-    if (result != null && result != KeyEventResult.ignored) return result;
-    return _previousNodeHandler?.call(node, event) ?? KeyEventResult.ignored;
-  }
-
-  void _attachKeyHandler() {
-    final external = widget.focusNode;
-    if (external == null) {
-      _ownedFocusNode = FocusNode(onKeyEvent: _installedNodeHandler);
-      _previousNodeHandler = null;
-      return;
-    }
-    _previousNodeHandler = external.onKeyEvent;
-    external.onKeyEvent = _installedNodeHandler;
-  }
-
-  void _detachKeyHandler(FocusNode? external) {
-    if (external != null &&
-        identical(external.onKeyEvent, _installedNodeHandler)) {
-      external.onKeyEvent = _previousNodeHandler;
-    }
-    _ownedFocusNode?.dispose();
-    _ownedFocusNode = null;
-    _previousNodeHandler = null;
   }
 
   @override
   void dispose() {
-    _detachKeyHandler(widget.focusNode);
+    _ownedFocusNode?.dispose();
     super.dispose();
   }
 
@@ -863,7 +843,18 @@ class _FocusableTapState extends State<FocusableTap> {
         ),
       ),
     );
-    return detector;
+    final onKeyEvent = widget.onKeyEvent;
+    if (onKeyEvent == null) return detector;
+    // Keep key routing in the widget tree instead of replacing an external
+    // FocusNode's handler. Conditional/reordered controls can temporarily reuse
+    // State objects with different nodes; chaining handlers on the nodes can
+    // then form a recursive cycle and overflow the stack on the next D-pad key.
+    return Focus(
+      canRequestFocus: false,
+      skipTraversal: true,
+      onKeyEvent: (_, event) => onKeyEvent(_effectiveFocusNode, event),
+      child: detector,
+    );
   }
 }
 
@@ -942,59 +933,34 @@ class _RemoteTapState extends State<RemoteTap> {
   bool _focused = false;
   bool _hovered = false;
   FocusNode? _ownedFocusNode;
-  FocusOnKeyEventCallback? _previousNodeHandler;
-  late final FocusOnKeyEventCallback _installedNodeHandler = _handleKeyEvent;
 
   FocusNode get _effectiveFocusNode => widget.focusNode ?? _ownedFocusNode!;
 
   @override
   void initState() {
     super.initState();
-    _attachKeyHandler();
+    if (widget.focusNode == null) {
+      _ownedFocusNode = FocusNode(debugLabel: widget.semanticLabel);
+    }
   }
 
   @override
   void didUpdateWidget(RemoteTap oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!identical(oldWidget.focusNode, widget.focusNode)) {
-      _detachKeyHandler(oldWidget.focusNode);
-      _attachKeyHandler();
+    if (oldWidget.focusNode == null && widget.focusNode != null) {
+      _ownedFocusNode?.dispose();
+      _ownedFocusNode = null;
+    } else if (oldWidget.focusNode != null && widget.focusNode == null) {
+      _ownedFocusNode = FocusNode(debugLabel: widget.semanticLabel);
+    } else if (widget.focusNode == null &&
+        oldWidget.semanticLabel != widget.semanticLabel) {
+      _ownedFocusNode?.debugLabel = widget.semanticLabel;
     }
-  }
-
-  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
-    final result = widget.onKeyEvent?.call(node, event);
-    if (result != null && result != KeyEventResult.ignored) return result;
-    return _previousNodeHandler?.call(node, event) ?? KeyEventResult.ignored;
-  }
-
-  void _attachKeyHandler() {
-    final external = widget.focusNode;
-    if (external == null) {
-      _ownedFocusNode = FocusNode(
-        debugLabel: widget.semanticLabel,
-        onKeyEvent: _installedNodeHandler,
-      );
-      _previousNodeHandler = null;
-      return;
-    }
-    _previousNodeHandler = external.onKeyEvent;
-    external.onKeyEvent = _installedNodeHandler;
-  }
-
-  void _detachKeyHandler(FocusNode? external) {
-    if (external != null &&
-        identical(external.onKeyEvent, _installedNodeHandler)) {
-      external.onKeyEvent = _previousNodeHandler;
-    }
-    _ownedFocusNode?.dispose();
-    _ownedFocusNode = null;
-    _previousNodeHandler = null;
   }
 
   @override
   void dispose() {
-    _detachKeyHandler(widget.focusNode);
+    _ownedFocusNode?.dispose();
     super.dispose();
   }
 
@@ -1068,7 +1034,14 @@ class _RemoteTapState extends State<RemoteTap> {
         ),
       ),
     );
-    return detector;
+    final onKeyEvent = widget.onKeyEvent;
+    if (onKeyEvent == null) return detector;
+    return Focus(
+      canRequestFocus: false,
+      skipTraversal: true,
+      onKeyEvent: (_, event) => onKeyEvent(_effectiveFocusNode, event),
+      child: detector,
+    );
   }
 }
 

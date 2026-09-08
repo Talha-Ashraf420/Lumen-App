@@ -321,6 +321,8 @@ void main() {
   testWidgets('TV profile four-way graph reaches every settings control', (
     tester,
   ) async {
+    DeviceProfile.isTelevision = true;
+    addTearDown(() => DeviceProfile.isTelevision = false);
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(1280, 900);
     addTearDown(tester.view.resetDevicePixelRatio);
@@ -407,6 +409,30 @@ void main() {
     ]) {
       await move(LogicalKeyboardKey.arrowDown, label);
     }
+
+    final profileScrollable = tester.state<ScrollableState>(
+      find
+          .descendant(
+            of: find.byType(SingleChildScrollView),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    expect(profileScrollable.position.pixels, greaterThan(0));
+    entry.requestFocus();
+    await tester.pump();
+    await tester.pump();
+    expect(
+      profileScrollable.position.pixels,
+      profileScrollable.position.minScrollExtent,
+    );
+    await move(LogicalKeyboardKey.arrowUp, 'Profile test top');
+    expect(
+      profileScrollable.position.pixels,
+      profileScrollable.position.minScrollExtent,
+    );
+    entry.requestFocus();
+    await tester.pump();
 
     final expected = <String>{
       'Profile add account',

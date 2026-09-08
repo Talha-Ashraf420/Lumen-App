@@ -23,6 +23,8 @@ internal enum class Media3PlaybackMode {
     }
 }
 
+internal enum class SeekFeedbackSide { LEFT, CENTER, RIGHT }
+
 /**
  * Buffer and source-fallback rules kept independent from the Android Activity
  * so the behavior can be covered by fast JVM tests.
@@ -74,6 +76,33 @@ internal object Media3PlaybackPolicy {
         Media3PlaybackMode.LOW_LATENCY -> 0L
         Media3PlaybackMode.BALANCED -> 75L
         Media3PlaybackMode.STABLE -> 150L
+    }
+
+    fun bufferingLabel(isLive: Boolean, reconnecting: Boolean): String = when {
+        isLive && reconnecting -> "Reconnecting to live stream…"
+        isLive -> "Connecting to live stream…"
+        reconnecting -> "Recovering video…"
+        else -> "Buffering…"
+    }
+
+    fun seekFeedbackSide(offsetMs: Long, isTelevision: Boolean): SeekFeedbackSide =
+        if (!isTelevision) {
+            SeekFeedbackSide.CENTER
+        } else if (offsetMs < 0L) {
+            SeekFeedbackSide.LEFT
+        } else {
+            SeekFeedbackSide.RIGHT
+        }
+
+    /**
+     * A tap keeps the familiar ten-second seek. Once Android reports a held
+     * key, seek from the original key-down position in whole-minute stages.
+     * Advancing once per eight repeat events keeps long scrubs controllable
+     * across remotes with very different key-repeat rates.
+     */
+    fun heldSeekDistanceMs(repeatCount: Int): Long {
+        if (repeatCount <= 0) return 10_000L
+        return (1L + (repeatCount - 1) / 8L) * 60_000L
     }
 
     fun shouldTryAlternate(

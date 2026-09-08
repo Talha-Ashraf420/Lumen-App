@@ -285,12 +285,13 @@ class SearchScreenState extends State<SearchScreen>
 
     void attempt(int remainingFrames) {
       if (!mounted) return;
-      if (node.context != null && node.canRequestFocus) {
+      final nodeContext = node.context;
+      if (nodeContext != null && nodeContext.mounted && node.canRequestFocus) {
         // Re-enter through the category scope when focus comes from the
         // sibling shell rail. A direct request can leave the rail primary on
         // Android TV even though the category paints as selected.
         _categoryScope.requestFocus(node);
-        final targetContext = node.context!;
+        final targetContext = nodeContext;
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted || !node.hasFocus || !targetContext.mounted) return;
           Scrollable.ensureVisible(
@@ -335,6 +336,24 @@ class SearchScreenState extends State<SearchScreen>
   bool _isDirectionalKeyEvent(KeyEvent event) =>
       event is KeyDownEvent || event is KeyRepeatEvent;
 
+  void _requestShellTopFocus() {
+    final top = widget.shellTopFocusNode;
+    if (top == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final topContext = top.context;
+      if (!mounted ||
+          topContext == null ||
+          !topContext.mounted ||
+          !top.canRequestFocus) {
+        return;
+      }
+      top.requestFocus();
+    });
+    // A hardware D-pad event may not schedule another frame. The deferred
+    // cross-scope handoff must run without waiting for unrelated UI activity.
+    WidgetsBinding.instance.ensureVisualUpdate();
+  }
+
   KeyEventResult _moveSearchFieldFocus(FocusNode _, KeyEvent event) {
     if (!_isDirectionalKeyEvent(event)) return KeyEventResult.ignored;
     if (event.logicalKey == LogicalKeyboardKey.select ||
@@ -350,8 +369,7 @@ class SearchScreenState extends State<SearchScreen>
       return KeyEventResult.handled;
     }
     if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-      final top = widget.shellTopFocusNode;
-      if (top != null && top.canRequestFocus) top.requestFocus();
+      _requestShellTopFocus();
       return KeyEventResult.handled;
     }
     // Left and Right remain text-cursor commands while editing.
@@ -436,8 +454,10 @@ class SearchScreenState extends State<SearchScreen>
     }
     if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
       if (_browse) {
-        final top = widget.shellTopFocusNode;
-        if (top != null && top.canRequestFocus) top.requestFocus();
+        // Sort and the command bar live in sibling focus scopes. Defer their
+        // handoff until this key dispatch completes; changing the primary
+        // scope synchronously can crash or promote rootScope on Android TV.
+        _requestShellTopFocus();
       } else {
         _searchFocus.requestFocus();
       }
@@ -482,7 +502,8 @@ class SearchScreenState extends State<SearchScreen>
     void attempt(int remainingFrames) {
       if (!mounted || serial != _searchFocusRequestSerial) return;
       final node = nodes[index];
-      if (node.context != null && node.canRequestFocus) {
+      final nodeContext = node.context;
+      if (nodeContext != null && nodeContext.mounted && node.canRequestFocus) {
         _pendingSearchFocus = null;
         node.requestFocus();
         return;
@@ -568,7 +589,13 @@ class SearchScreenState extends State<SearchScreen>
     setState(() => _cat = id);
     if (!restoreCategoryFocus) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && node.canRequestFocus) node.requestFocus();
+      final nodeContext = node.context;
+      if (mounted &&
+          nodeContext != null &&
+          nodeContext.mounted &&
+          node.canRequestFocus) {
+        _categoryScope.requestFocus(node);
+      }
     });
   }
 
@@ -662,13 +689,17 @@ class SearchScreenState extends State<SearchScreen>
     void attempt(int remainingFrames) {
       if (!mounted || requestSerial != _gridFocusRequestSerial) return;
       final node = _gridFocus[target];
-      if (node.context != null && node.canRequestFocus) {
+      final nodeContext = node.context;
+      if (nodeContext != null && nodeContext.mounted && node.canRequestFocus) {
         _pendingGridFocus = null;
-        node.requestFocus();
+        // Re-enter through the grid scope. A tile kept alive outside the
+        // viewport can remain attached after switching categories, and a
+        // direct request may leave the category scope primary on Android TV.
+        _gridScope.requestFocus(node);
         // Android TV does not automatically reveal focus inside lazy grids.
         // Keep the newly focused row visible in both directions, especially
         // when walking back upward from the bottom of a long catalog.
-        final targetContext = node.context!;
+        final targetContext = nodeContext;
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted || !node.hasFocus || !targetContext.mounted) return;
           Scrollable.ensureVisible(

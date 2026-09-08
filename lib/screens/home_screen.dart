@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter/services.dart';
 import 'dart:async';
 import '../catalog_cache.dart';
 import '../device_profile.dart';
@@ -380,6 +381,10 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
   bool _loaded = false;
   Timer? _timer;
   final Map<int, TmdbInfo?> _meta = {};
+  final List<FocusNode> _railFocusNodes = List.generate(
+    8,
+    (index) => FocusNode(debugLabel: 'Home spotlight tile $index'),
+  );
   int _request = 0;
 
   @override
@@ -428,7 +433,36 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
   @override
   void dispose() {
     _timer?.cancel();
+    for (final node in _railFocusNodes) {
+      node.dispose();
+    }
     super.dispose();
+  }
+
+  KeyEventResult _handleRailKey(int index, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    final key = event.logicalKey;
+    if (key != LogicalKeyboardKey.arrowLeft &&
+        key != LogicalKeyboardKey.arrowRight) {
+      return KeyEventResult.ignored;
+    }
+
+    final target = index + (key == LogicalKeyboardKey.arrowLeft ? -1 : 1);
+    // Left from the first tile deliberately bubbles to HomeShell, which moves
+    // focus to the navigation rail. Keep focus put at the rightmost edge.
+    if (target < 0) return KeyEventResult.ignored;
+    if (target >= _items.length) return KeyEventResult.handled;
+
+    final targetNode = _railFocusNodes[target];
+    final targetContext = targetNode.context;
+    if (targetContext == null || !targetContext.mounted) {
+      // Let the app's traversal policy reveal a lazily built tile first.
+      return KeyEventResult.ignored;
+    }
+    targetNode.requestFocus();
+    return KeyEventResult.handled;
   }
 
   void _advance() {
@@ -695,6 +729,8 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
                   image: img,
                   number: i + 1,
                   selected: i == _index,
+                  focusNode: _railFocusNodes[i],
+                  onKeyEvent: (event) => _handleRailKey(i, event),
                   onTap: () => _select(i),
                 );
               },
@@ -936,6 +972,8 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
                       number: i + 1,
                       selected: i == _index,
                       width: DeviceProfile.isTelevision ? 158 : 122,
+                      focusNode: _railFocusNodes[i],
+                      onKeyEvent: (event) => _handleRailKey(i, event),
                       onFocus: () => _select(i),
                       onTap: () => widget.onOpen(it),
                     );
@@ -968,6 +1006,8 @@ class _RailThumb extends StatelessWidget {
   final int number;
   final bool selected;
   final double width;
+  final FocusNode? focusNode;
+  final KeyEventResult Function(KeyEvent event)? onKeyEvent;
   final VoidCallback? onFocus;
   final VoidCallback onTap;
   const _RailThumb({
@@ -976,6 +1016,8 @@ class _RailThumb extends StatelessWidget {
     required this.number,
     required this.selected,
     this.width = 112,
+    this.focusNode,
+    this.onKeyEvent,
     this.onFocus,
     required this.onTap,
   });
@@ -983,6 +1025,8 @@ class _RailThumb extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return FocusableTap(
+      focusNode: focusNode,
+      onKeyEvent: onKeyEvent == null ? null : (_, event) => onKeyEvent!(event),
       onFocusChange: (focused) {
         if (focused) onFocus?.call();
       },

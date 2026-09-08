@@ -6,6 +6,25 @@ import 'package:lumen_tv/playback_mode.dart';
 import 'package:lumen_tv/xtream.dart';
 
 void main() {
+  test('live opening copy distinguishes connection from reconnection', () {
+    expect(
+      PlaybackPolicy.openingStatus(
+        live: true,
+        reconnectAttempt: 0,
+        retryLimit: 3,
+      ),
+      'Connecting to live stream…',
+    );
+    expect(
+      PlaybackPolicy.openingStatus(
+        live: true,
+        reconnectAttempt: 2,
+        retryLimit: 3,
+      ),
+      'Reconnecting to live stream (2/3)…',
+    );
+  });
+
   test('playback startup and retry policy is bounded', () {
     const config = ReconnectConfig(
       maxAttempts: 3,

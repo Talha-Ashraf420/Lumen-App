@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen_tv/catalog_cache.dart';
 import 'package:lumen_tv/downloads.dart';
+import 'package:lumen_tv/device_profile.dart';
 import 'package:lumen_tv/home_config.dart';
 import 'package:lumen_tv/library.dart';
 import 'package:lumen_tv/models.dart';
@@ -465,6 +466,96 @@ void main() {
     await tester.pump();
   });
 
+  testWidgets('Home spotlight reaches its first two tiles before the rail', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1920, 1080);
+    DeviceProfile.isTelevision = true;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(() => DeviceProfile.isTelevision = false);
+    final client = XtreamClient(XtreamCredentials.demoProfile);
+    addTearDown(client.close);
+
+    await tester.runAsync(() async {
+      await CatalogCache.instance.vod(client, priority: true);
+      await CatalogCache.instance.vodStreams(
+        client,
+        'demo_featured',
+        priority: true,
+      );
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildTheme(darkPalette),
+        home: HomeShell(
+          client: client,
+          onLogout: () async {},
+          onSwitch: (_) {},
+          homeCategoryLoader: () async => [
+            Category('demo_featured', 'Featured stories'),
+          ],
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 250)),
+    );
+    await tester.pump(const Duration(seconds: 2));
+
+    final focusControls = tester
+        .widgetList<FocusableActionDetector>(
+          find.byType(FocusableActionDetector),
+        )
+        .toList();
+    final focusLabels = focusControls
+        .map((control) => control.focusNode?.debugLabel)
+        .whereType<String>()
+        .toList();
+    expect(
+      focusLabels,
+      contains('Home spotlight tile 0'),
+      reason: 'Mounted focus controls: $focusLabels',
+    );
+    FocusNode tileFocus(int index) => focusControls
+        .singleWhere(
+          (control) =>
+              control.focusNode?.debugLabel == 'Home spotlight tile $index',
+        )
+        .focusNode!;
+
+    final first = tileFocus(0);
+    final second = tileFocus(1);
+    final third = tileFocus(2);
+    third.requestFocus();
+    await tester.pump();
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pump();
+    expect(second.hasFocus, isTrue);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pump();
+    expect(first.hasFocus, isTrue);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pump();
+    final homeControl = tester.widget<FocusableActionDetector>(
+      find
+          .descendant(
+            of: find.byTooltip('Home'),
+            matching: find.byType(FocusableActionDetector),
+          )
+          .first,
+    );
+    expect(homeControl.focusNode!.hasFocus, isTrue);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('every TV destination has stable content and top-bar routes', (
     tester,
   ) async {
@@ -553,6 +644,28 @@ void main() {
         route.$2.$2,
         reason: '${route.$1} must reach the global command bar with Up.',
       );
+      if (route.$1 == 'Movies' || route.$1 == 'Series' || route.$1 == 'Live') {
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+        await tester.pump(const Duration(milliseconds: 80));
+        expect(
+          FocusManager.instance.primaryFocus?.debugLabel,
+          'Command refresh',
+        );
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+        await tester.pump(const Duration(milliseconds: 80));
+        expect(
+          FocusManager.instance.primaryFocus?.debugLabel,
+          'Command profile',
+        );
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+        await tester.pump(const Duration(milliseconds: 80));
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+        await tester.pump(const Duration(milliseconds: 80));
+        expect(
+          FocusManager.instance.primaryFocus?.debugLabel,
+          'Command find anything',
+        );
+      }
     }
 
     await tester.pumpWidget(const SizedBox.shrink());

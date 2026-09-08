@@ -75,4 +75,41 @@ class Media3PlaybackPolicyTest {
             )
         )
     }
+
+    @Test
+    fun liveConnectionCopyDistinguishesOpeningFromRecovery() {
+        assertEquals(
+            "Connecting to live stream…",
+            Media3PlaybackPolicy.bufferingLabel(isLive = true, reconnecting = false)
+        )
+        assertEquals(
+            "Reconnecting to live stream…",
+            Media3PlaybackPolicy.bufferingLabel(isLive = true, reconnecting = true)
+        )
+    }
+
+    @Test
+    fun televisionSeekFeedbackUsesThePhysicalSeekSide() {
+        assertEquals(
+            SeekFeedbackSide.LEFT,
+            Media3PlaybackPolicy.seekFeedbackSide(-10_000L, isTelevision = true)
+        )
+        assertEquals(
+            SeekFeedbackSide.RIGHT,
+            Media3PlaybackPolicy.seekFeedbackSide(10_000L, isTelevision = true)
+        )
+        assertEquals(
+            SeekFeedbackSide.CENTER,
+            Media3PlaybackPolicy.seekFeedbackSide(10_000L, isTelevision = false)
+        )
+    }
+
+    @Test
+    fun heldSeekAcceleratesFromSecondsIntoControlledMinuteStages() {
+        assertEquals(10_000L, Media3PlaybackPolicy.heldSeekDistanceMs(repeatCount = 0))
+        assertEquals(60_000L, Media3PlaybackPolicy.heldSeekDistanceMs(repeatCount = 1))
+        assertEquals(60_000L, Media3PlaybackPolicy.heldSeekDistanceMs(repeatCount = 8))
+        assertEquals(120_000L, Media3PlaybackPolicy.heldSeekDistanceMs(repeatCount = 9))
+        assertEquals(180_000L, Media3PlaybackPolicy.heldSeekDistanceMs(repeatCount = 17))
+    }
 }

@@ -70,6 +70,19 @@ class PlaybackPolicy {
     required String? reconnectStatus,
     required bool retryExhausted,
   }) => reconnectStatus == null && !retryExhausted;
+
+  static String openingStatus({
+    required bool live,
+    required int reconnectAttempt,
+    required int retryLimit,
+  }) {
+    if (!live) {
+      return reconnectAttempt > 0 ? 'Recovering video…' : 'Starting playback…';
+    }
+    return reconnectAttempt > 0
+        ? 'Reconnecting to live stream ($reconnectAttempt/$retryLimit)…'
+        : 'Connecting to live stream…';
+  }
 }
 
 /// Memory-buffer targets for network playback.
@@ -714,7 +727,11 @@ class PlaybackController extends ChangeNotifier {
     _sourceIndex = 0;
     _resumeAfterRecovery = null;
     _diagnosticEvents.clear();
-    reconnectStatus = isLive ? 'Opening live channel…' : 'Starting playback…';
+    reconnectStatus = PlaybackPolicy.openingStatus(
+      live: isLive,
+      reconnectAttempt: reconnectAttempt,
+      retryLimit: retryLimit,
+    );
     final current = item;
     if (!isPlayableMediaUrl(current.url)) {
       _setFailure(
@@ -910,9 +927,11 @@ class PlaybackController extends ChangeNotifier {
     _rememberRecoveryPosition();
     reconnectAttempt++;
     final delay = PlaybackPolicy.retryDelay(reconnectAttempt, reconnectConfig);
-    reconnectStatus = isLive
-        ? 'Reconnecting live channel ($reconnectAttempt/$retryLimit)…'
-        : 'Trying the stream again…';
+    reconnectStatus = PlaybackPolicy.openingStatus(
+      live: isLive,
+      reconnectAttempt: reconnectAttempt,
+      retryLimit: retryLimit,
+    );
     _recordDiagnostic(
       'Recovery scheduled',
       'attempt $reconnectAttempt/$retryLimit',
@@ -935,7 +954,11 @@ class PlaybackController extends ChangeNotifier {
     _startedCurrent = false;
     failure = null;
     playbackError = null;
-    reconnectStatus = isLive ? 'Opening live channel…' : 'Starting playback…';
+    reconnectStatus = PlaybackPolicy.openingStatus(
+      live: isLive,
+      reconnectAttempt: reconnectAttempt,
+      retryLimit: retryLimit,
+    );
     final current = item;
     final token = ++_openToken;
     notifyListeners();
@@ -980,7 +1003,11 @@ class PlaybackController extends ChangeNotifier {
       _sourceIndex = (_sourceIndex + 1) % _sourceCandidates.length;
     }
     _recordDiagnostic('Manual retry', _sourceDetail);
-    reconnectStatus = isLive ? 'Opening live channel…' : 'Starting playback…';
+    reconnectStatus = PlaybackPolicy.openingStatus(
+      live: isLive,
+      reconnectAttempt: reconnectAttempt,
+      retryLimit: retryLimit,
+    );
     if (!isPlayableMediaUrl(item.url)) {
       _setFailure(classifyPlaybackFailure('', invalidAddress: true));
       _finishUnavailable(failure!.message);

@@ -171,6 +171,41 @@ class _PagedClient extends XtreamClient {
   }
 }
 
+class _MultiCategoryPagedClient extends XtreamClient {
+  _MultiCategoryPagedClient()
+    : super(
+        const XtreamCredentials(
+          baseUrl: 'https://multi-category.example',
+          username: 'large-library',
+          password: 'test-only',
+        ),
+      );
+
+  @override
+  Future<List<Category>> vodCategories() async => [
+    Category('one', 'First library'),
+    Category('two', 'Second library'),
+  ];
+
+  @override
+  Future<List<VodStream>> vodStreams(String? categoryId) async {
+    final category = categoryId ?? 'one';
+    return List.generate(
+      60,
+      (index) => VodStream(
+        index + (category == 'one' ? 1 : 1001),
+        '${category == 'one' ? 'First' : 'Second'} Movie '
+            '${(index + 1).toString().padLeft(2, '0')} (2026)',
+        '',
+        category,
+        'mp4',
+        8,
+        '${1000 + index}',
+      ),
+    );
+  }
+}
+
 class _CategoryOnlyClient extends XtreamClient {
   _CategoryOnlyClient()
     : super(
@@ -599,27 +634,43 @@ void main() {
   testWidgets('catalog D-pad reaches Sort and returns to the content grid', (
     tester,
   ) async {
+    DeviceProfile.isTelevision = true;
+    addTearDown(() => DeviceProfile.isTelevision = false);
     final client = _HomeClient();
     final searchKey = GlobalKey<SearchScreenState>();
     final railFocus = FocusNode(debugLabel: 'Movies shell rail');
+    final topFocus = FocusNode(debugLabel: 'Catalog command search');
     addTearDown(client.close);
     addTearDown(railFocus.dispose);
+    addTearDown(topFocus.dispose);
 
     await pumpAt(
       tester,
-      Row(
+      Column(
         children: [
           RemoteTap(
-            focusNode: railFocus,
+            focusNode: topFocus,
             onTap: () {},
-            child: const SizedBox(width: 72, height: 72),
+            child: const SizedBox(width: 300, height: 52),
           ),
           Expanded(
-            child: SearchScreen(
-              key: searchKey,
-              client: client,
-              initialSection: 'movie',
-              shellRailFocusNode: railFocus,
+            child: Row(
+              children: [
+                RemoteTap(
+                  focusNode: railFocus,
+                  onTap: () {},
+                  child: const SizedBox(width: 72, height: 72),
+                ),
+                Expanded(
+                  child: SearchScreen(
+                    key: searchKey,
+                    client: client,
+                    initialSection: 'movie',
+                    shellRailFocusNode: railFocus,
+                    shellTopFocusNode: topFocus,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -662,6 +713,16 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
     await tester.pump();
     expect(FocusManager.instance.primaryFocus?.debugLabel, 'Catalog sort');
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+    await tester.pump();
+    await tester.pump();
+    expect(
+      FocusManager.instance.primaryFocus?.debugLabel,
+      'Catalog command search',
+    );
+    tile.focusNode!.requestFocus();
+    await tester.pump();
 
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
     await tester.pump();
@@ -757,6 +818,88 @@ void main() {
     expect(tester.takeException(), isNull);
     await disposeUi(tester);
   });
+
+  testWidgets(
+    'reopening a previously scrolled category restores visible grid focus',
+    (tester) async {
+      DeviceProfile.isTelevision = true;
+      addTearDown(() => DeviceProfile.isTelevision = false);
+      final client = _MultiCategoryPagedClient();
+      final key = GlobalKey<SearchScreenState>();
+      addTearDown(client.close);
+
+      await pumpAt(
+        tester,
+        FocusTraversalGroup(
+          policy: RemoteFocusTraversalPolicy(),
+          child: SearchScreen(
+            key: key,
+            client: client,
+            initialSection: 'movie',
+          ),
+        ),
+        const Size(1280, 800),
+      );
+      await waitFor(
+        tester,
+        () => find.text('First Movie 60 (2026)').evaluate().isNotEmpty,
+      );
+
+      key.currentState!.focusCatalogEntry();
+      await tester.pump();
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        'movie category one',
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pump();
+
+      for (var i = 0; i < 7; i++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+        await tester.pumpAndSettle();
+      }
+      final grid = tester.widget<GridView>(find.byType(GridView));
+      expect(grid.controller!.offset, greaterThan(0));
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      await tester.pumpAndSettle();
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        'movie category one',
+      );
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pump(const Duration(milliseconds: 240));
+      await waitFor(
+        tester,
+        () => find.text('Second Movie 60 (2026)').evaluate().isNotEmpty,
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      await tester.pump(const Duration(milliseconds: 240));
+      await tester.pumpAndSettle();
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        'movie category one',
+      );
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pumpAndSettle();
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        startsWith('Catalog tile '),
+      );
+
+      final focusedContext = FocusManager.instance.primaryFocus!.context!;
+      final focusedBox = focusedContext.findRenderObject()! as RenderBox;
+      final gridBox = tester.renderObject<RenderBox>(find.byType(GridView));
+      final focusedRect =
+          focusedBox.localToGlobal(Offset.zero) & focusedBox.size;
+      final gridRect = gridBox.localToGlobal(Offset.zero) & gridBox.size;
+      expect(gridRect.contains(focusedRect.center), isTrue);
+
+      await disposeUi(tester);
+    },
+  );
 
   testWidgets('Movies browse appends a second page near the grid end', (
     tester,

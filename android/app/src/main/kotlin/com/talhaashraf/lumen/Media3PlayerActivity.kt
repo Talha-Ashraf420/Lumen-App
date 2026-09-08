@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.ApplicationInfo
+import android.content.res.Configuration
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
@@ -23,6 +24,8 @@ import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
@@ -89,10 +92,11 @@ class Media3PlayerActivity : Activity() {
     private lateinit var backButton: TextView
     private lateinit var titleText: TextView
     private lateinit var titleSubtitleText: TextView
-    private lateinit var previousButton: TextView
-    private lateinit var nextButton: TextView
+    private lateinit var centerTransport: LinearLayout
+    private lateinit var previousButton: ImageButton
+    private lateinit var nextButton: ImageButton
     private lateinit var rewindButton: TextView
-    private lateinit var playPauseButton: TextView
+    private lateinit var playPauseButton: ImageButton
     private lateinit var forwardButton: TextView
     private lateinit var playlistButton: TextView
     private lateinit var subtitleButton: TextView
@@ -134,8 +138,13 @@ class Media3PlayerActivity : Activity() {
     private var volumeBeforeMute = 1f
     private var externalSubtitleUri: Uri? = null
     private var externalSubtitleName = ""
+    private var heldSeekKeyCode = KeyEvent.KEYCODE_UNKNOWN
+    private var heldSeekAnchorMs = 0L
     private var pendingBufferMessage = ""
     private var selectedResizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+    private val isTelevisionDevice: Boolean
+        get() = resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK ==
+            Configuration.UI_MODE_TYPE_TELEVISION
 
     private data class TrackChoice(
         val group: Tracks.Group,
@@ -268,8 +277,8 @@ class Media3PlayerActivity : Activity() {
         root.addView(titleBar)
         controlsBar = buildControlsBar().apply { visibility = View.GONE }
         root.addView(controlsBar)
-        playPauseButton = buildCenterPlayButton().apply { visibility = View.GONE }
-        root.addView(playPauseButton)
+        centerTransport = buildCenterTransport().apply { visibility = View.GONE }
+        root.addView(centerTransport)
         bufferingBadge = buildBufferingBadge()
         root.addView(bufferingBadge)
         seekFeedback = buildSeekFeedback()
@@ -483,23 +492,39 @@ class Media3PlayerActivity : Activity() {
         titleSubtitleText.visibility = if (details.isBlank()) View.GONE else View.VISIBLE
     }
 
-    private fun buildCenterPlayButton(): TextView = themedButton(
-        "Ⅱ",
-        "Pause playback",
-        prominent = true,
-        round = true
-    ) {
-        togglePlayPause()
-    }.apply {
-        textSize = 27f
-        setPadding(0, 0, 0, 0)
-        background = centerButtonBackground()
-        setTextColor(Color.WHITE)
-        layoutParams = FrameLayout.LayoutParams(dp(68), dp(68), Gravity.CENTER)
+    private fun buildCenterTransport(): LinearLayout {
+        previousButton = iconButton(
+            R.drawable.ic_player_previous,
+            "Previous channel"
+        ) { openPlaylistItem(playlistIndex - 1, navigationDirection = -1) }
+        playPauseButton = iconButton(
+            R.drawable.ic_player_pause,
+            "Pause playback",
+            prominent = true
+        ) { togglePlayPause() }
+        nextButton = iconButton(
+            R.drawable.ic_player_next,
+            "Next channel"
+        ) { openPlaylistItem(playlistIndex + 1, navigationDirection = 1) }
+
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            background = roundedRect(0x99111511.toInt(), 0x66596157, 1, 40)
+            setPadding(dp(8), dp(7), dp(8), dp(7))
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.CENTER
+            )
+            addView(previousButton, transportParams(dp(52), dp(52)))
+            addView(playPauseButton, transportParams(dp(68), dp(68)))
+            addView(nextButton, transportParams(dp(52), dp(52)))
+        }
     }
 
     private fun buildBufferingBadge(): TextView = TextView(this).apply {
-        text = if (isLive) "Reconnecting live stream…" else "Buffering…"
+        text = Media3PlaybackPolicy.bufferingLabel(isLive, reconnecting = false)
         textSize = 13f
         typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
         setTextColor(0xFFE6EAE3.toInt())
@@ -532,11 +557,11 @@ class Media3PlayerActivity : Activity() {
 
     private fun showBufferingStatus(message: String) {
         if (!::bufferingBadge.isInitialized || terminalError) return
-        pendingBufferMessage = when {
-            message.contains("reconnect", ignoreCase = true) -> "Reconnecting…"
-            isLive -> "Reconnecting live stream…"
-            else -> "Buffering…"
-        }
+        val reconnecting = retryAttempt > 0 || retryScheduled ||
+            message.contains("reconnect", ignoreCase = true) ||
+            message.contains("recover", ignoreCase = true) ||
+            message.contains("compatible", ignoreCase = true)
+        pendingBufferMessage = Media3PlaybackPolicy.bufferingLabel(isLive, reconnecting)
         handler.removeCallbacks(revealBufferingBadge)
         if (bufferingBadge.visibility == View.VISIBLE) {
             bufferingBadge.text = pendingBufferMessage
@@ -555,7 +580,28 @@ class Media3PlayerActivity : Activity() {
         if (!::seekFeedback.isInitialized || isLive) return
         handler.removeCallbacks(hideSeekFeedback)
         val seconds = kotlin.math.abs(offsetMs / 1_000L)
-        seekFeedback.text = if (offsetMs < 0L) "−${seconds}s" else "+${seconds}s"
+        val amount = if (seconds >= 60L && seconds % 60L == 0L) {
+            "${seconds / 60L}m"
+        } else {
+            "${seconds}s"
+        }
+        seekFeedback.text = if (offsetMs < 0L) "−$amount" else "+$amount"
+        val side = Media3PlaybackPolicy.seekFeedbackSide(
+            offsetMs,
+            isTelevision = isTelevisionDevice
+        )
+        seekFeedback.layoutParams = FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            when (side) {
+                SeekFeedbackSide.LEFT -> Gravity.CENTER_VERTICAL or Gravity.LEFT
+                SeekFeedbackSide.RIGHT -> Gravity.CENTER_VERTICAL or Gravity.RIGHT
+                SeekFeedbackSide.CENTER -> Gravity.CENTER
+            }
+        ).apply {
+            if (side == SeekFeedbackSide.LEFT) marginStart = dp(96)
+            if (side == SeekFeedbackSide.RIGHT) marginEnd = dp(96)
+        }
         seekFeedback.animate().cancel()
         seekFeedback.alpha = 0f
         seekFeedback.visibility = View.VISIBLE
@@ -647,14 +693,8 @@ class Media3PlayerActivity : Activity() {
         )
         progressRow.addView(durationText, LinearLayout.LayoutParams(dp(76), dp(40)))
 
-        // Remote left/right already performs seeking. Keep the corresponding
-        // views as non-rendered action targets for playlist/error logic instead
-        // of presenting a second oversized transport row.
-        previousButton = themedButton(
-            "│◀",
-            if (isLive) "Previous channel" else "Previous episode",
-            round = true
-        ) { openPlaylistItem(playlistIndex - 1) }.apply { visibility = View.GONE }
+        // Remote left/right performs seeking for on-demand playback. These
+        // hidden actions remain available to keyboard/media-key handling.
         rewindButton = themedButton("−10", "Rewind 10 seconds", round = true) {
             seekBy(-SEEK_INCREMENT_MS)
             showSeekFeedback(-SEEK_INCREMENT_MS)
@@ -663,12 +703,6 @@ class Media3PlayerActivity : Activity() {
             seekBy(SEEK_INCREMENT_MS)
             showSeekFeedback(SEEK_INCREMENT_MS)
         }.apply { visibility = View.GONE }
-        nextButton = themedButton(
-            "▶│",
-            if (isLive) "Next channel" else "Next episode",
-            round = true
-        ) { openPlaylistItem(playlistIndex + 1) }.apply { visibility = View.GONE }
-
         playlistButton = toolButton(
             "▦",
             if (isLive) "Channels" else "Episodes",
@@ -787,6 +821,60 @@ class Media3PlayerActivity : Activity() {
                 handler.removeCallbacks(hideControls)
                 if (showPlayerControlsOnFocus) showControls()
             } else if (showPlayerControlsOnFocus) {
+                scheduleControlsHide()
+            }
+            view.animate()
+                .scaleX(if (focused) 1.08f else 1f)
+                .scaleY(if (focused) 1.08f else 1f)
+                .setDuration(120L)
+                .start()
+            view.elevation = if (focused) dp(10).toFloat() else 0f
+        }
+        setOnClickListener {
+            onClick()
+            showControls()
+        }
+    }
+
+    private fun iconButton(
+        icon: Int,
+        description: String,
+        prominent: Boolean = false,
+        onClick: () -> Unit
+    ): ImageButton = ImageButton(this).apply {
+        id = View.generateViewId()
+        contentDescription = description
+        setImageResource(icon)
+        scaleType = ImageView.ScaleType.CENTER_INSIDE
+        val inset = dp(if (prominent) 19 else 15)
+        setPadding(inset, inset, inset, inset)
+        background = if (prominent) {
+            centerButtonBackground()
+        } else {
+            buttonBackground(round = true)
+        }
+        imageTintList = ColorStateList(
+            arrayOf(
+                intArrayOf(-android.R.attr.state_enabled),
+                intArrayOf(android.R.attr.state_focused),
+                intArrayOf(android.R.attr.state_pressed),
+                intArrayOf()
+            ),
+            intArrayOf(
+                0x667F877D,
+                0xFF0B0D0B.toInt(),
+                0xFF0B0D0B.toInt(),
+                if (prominent) 0xFFC5FF63.toInt() else Color.WHITE
+            )
+        )
+        isFocusable = true
+        isClickable = true
+        setOnFocusChangeListener { view, focused ->
+            if (focused) {
+                logFocus(view.contentDescription?.toString() ?: description)
+                handler.removeCallbacks(hideControls)
+                showControls()
+            } else {
                 scheduleControlsHide()
             }
             view.animate()
@@ -945,6 +1033,9 @@ class Media3PlayerActivity : Activity() {
         if (!::previousButton.isInitialized) return
         previousButton.isEnabled = playlistIndex > 0
         nextButton.isEnabled = playlistIndex < playlistUrls.lastIndex
+        val showChannelNavigation = isTelevisionDevice && isLive
+        previousButton.visibility = if (showChannelNavigation) View.VISIBLE else View.GONE
+        nextButton.visibility = if (showChannelNavigation) View.VISIBLE else View.GONE
         playlistButton.isEnabled = playlistUrls.size > 1
         playlistButton.visibility = if (playlistUrls.size > 1) View.VISIBLE else View.GONE
         playlistButton.text = if (isLive) "▦\nChannels" else "▦\nEpisodes"
@@ -978,13 +1069,29 @@ class Media3PlayerActivity : Activity() {
         backButton.nextFocusRightId = backButton.id
         backButton.nextFocusUpId = backButton.id
         backButton.nextFocusDownId = playPauseButton.id
-        playPauseButton.nextFocusLeftId = playPauseButton.id
-        playPauseButton.nextFocusRightId = playPauseButton.id
+        playPauseButton.nextFocusLeftId = if (
+            previousButton.visibility == View.VISIBLE && previousButton.isEnabled
+        ) previousButton.id else playPauseButton.id
+        playPauseButton.nextFocusRightId = if (
+            nextButton.visibility == View.VISIBLE && nextButton.isEnabled
+        ) nextButton.id else playPauseButton.id
         playPauseButton.nextFocusUpId = backButton.id
         playPauseButton.nextFocusDownId = if (progressBar.visibility == View.VISIBLE) {
             progressBar.id
         } else {
             tools.firstOrNull()?.id ?: playPauseButton.id
+        }
+        if (previousButton.visibility == View.VISIBLE) {
+            previousButton.nextFocusLeftId = previousButton.id
+            previousButton.nextFocusRightId = playPauseButton.id
+            previousButton.nextFocusUpId = backButton.id
+            previousButton.nextFocusDownId = playPauseButton.nextFocusDownId
+        }
+        if (nextButton.visibility == View.VISIBLE) {
+            nextButton.nextFocusLeftId = playPauseButton.id
+            nextButton.nextFocusRightId = nextButton.id
+            nextButton.nextFocusUpId = backButton.id
+            nextButton.nextFocusDownId = playPauseButton.nextFocusDownId
         }
         if (progressBar.visibility == View.VISIBLE) {
             progressBar.nextFocusUpId = playPauseButton.id
@@ -994,7 +1101,7 @@ class Media3PlayerActivity : Activity() {
         playerView.nextFocusDownId = playPauseButton.id
     }
 
-    private fun openPlaylistItem(index: Int) {
+    private fun openPlaylistItem(index: Int, navigationDirection: Int = 0) {
         if (index !in playlistUrls.indices || index == playlistIndex) return
         retryAttempt = 0
         retryScheduled = false
@@ -1006,7 +1113,13 @@ class Media3PlayerActivity : Activity() {
         updateNavigationUi()
         open()
         showControls()
-        if (playlistButton.visibility == View.VISIBLE && playlistButton.isEnabled) {
+        if (navigationDirection < 0 && previousButton.isEnabled) {
+            previousButton.requestFocus()
+        } else if (navigationDirection > 0 && nextButton.isEnabled) {
+            nextButton.requestFocus()
+        } else if (navigationDirection != 0) {
+            playPauseButton.requestFocus()
+        } else if (playlistButton.visibility == View.VISIBLE && playlistButton.isEnabled) {
             playlistButton.requestFocus()
         } else {
             playPauseButton.requestFocus()
@@ -1047,10 +1160,28 @@ class Media3PlayerActivity : Activity() {
         updateProgressUi()
     }
 
+    private fun seekFromHeldKey(event: KeyEvent, direction: Int) {
+        if (isLive || !::player.isInitialized) return
+        if (event.repeatCount == 0 || heldSeekKeyCode != event.keyCode) {
+            heldSeekKeyCode = event.keyCode
+            heldSeekAnchorMs = player.currentPosition
+        }
+        val distance = Media3PlaybackPolicy.heldSeekDistanceMs(event.repeatCount)
+        val offset = distance * direction
+        val duration = player.duration.takeIf { it > 0L }
+        val target = (heldSeekAnchorMs + offset).coerceAtLeast(0L)
+        player.seekTo(duration?.let { target.coerceAtMost(it) } ?: target)
+        updateProgressUi()
+        showSeekFeedback(offset)
+    }
+
     private fun updateTransportUi() {
         if (!::playPauseButton.isInitialized || !::player.isInitialized) return
         val playing = player.isPlaying
-        playPauseButton.text = if (playing) "Ⅱ" else "▶"
+        playPauseButton.setImageResource(
+            if (playing) R.drawable.ic_player_pause
+            else R.drawable.ic_player_play
+        )
         playPauseButton.contentDescription = if (playing) {
             "Pause playback"
         } else {
@@ -1496,20 +1627,20 @@ class Media3PlayerActivity : Activity() {
         if (
             terminalError ||
             !::controlsBar.isInitialized ||
-            !::playPauseButton.isInitialized
+            !::centerTransport.isInitialized
         ) return
         controlsVisible = true
         titleBar.animate().cancel()
         controlsBar.animate().cancel()
-        playPauseButton.animate().cancel()
+        centerTransport.animate().cancel()
         // Show immediately. Entry fades can visibly lag on budget 4K TVs
         // because a large video surface is being composed at the same time.
         titleBar.alpha = 1f
         controlsBar.alpha = 1f
-        playPauseButton.alpha = 1f
+        centerTransport.alpha = 1f
         titleBar.visibility = View.VISIBLE
         controlsBar.visibility = View.VISIBLE
-        playPauseButton.visibility = View.VISIBLE
+        centerTransport.visibility = View.VISIBLE
         updateTransportUi()
         updateProgressUi()
         scheduleControlsHide()
@@ -1537,7 +1668,7 @@ class Media3PlayerActivity : Activity() {
         playerView.requestFocus()
         titleBar.animate().cancel()
         controlsBar.animate().cancel()
-        playPauseButton.animate().cancel()
+        centerTransport.animate().cancel()
         titleBar.animate()
             .alpha(0f)
             .setDuration(170L)
@@ -1552,11 +1683,11 @@ class Media3PlayerActivity : Activity() {
                 if (!controlsVisible) controlsBar.visibility = View.GONE
             }
             .start()
-        playPauseButton.animate()
+        centerTransport.animate()
             .alpha(0f)
             .setDuration(150L)
             .withEndAction {
-                if (!controlsVisible) playPauseButton.visibility = View.GONE
+                if (!controlsVisible) centerTransport.visibility = View.GONE
             }
             .start()
     }
@@ -1564,7 +1695,7 @@ class Media3PlayerActivity : Activity() {
     private fun playerControlsHaveFocus(): Boolean =
         (::titleBar.isInitialized && titleBar.hasFocus()) ||
             (::controlsBar.isInitialized && controlsBar.hasFocus()) ||
-            (::playPauseButton.isInitialized && playPauseButton.hasFocus())
+            (::centerTransport.isInitialized && centerTransport.hasFocus())
 
     private fun logFocus(label: String) {
         if ((applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0) {
@@ -1744,7 +1875,7 @@ class Media3PlayerActivity : Activity() {
         errorPanel.visibility = View.GONE
         showBufferingStatus(
             if (isLive) {
-                "Reconnecting live channel · ${retryAttempt}/${RETRY_DELAYS_MS.size}"
+                "Reconnecting to live stream · ${retryAttempt}/${RETRY_DELAYS_MS.size}"
             } else {
                 "Recovering video · ${retryAttempt}/${RETRY_DELAYS_MS.size}"
             }
@@ -1835,6 +1966,14 @@ class Media3PlayerActivity : Activity() {
             finish()
             return true
         }
+        if (
+            event.action == KeyEvent.ACTION_UP &&
+            event.keyCode == heldSeekKeyCode
+        ) {
+            heldSeekKeyCode = KeyEvent.KEYCODE_UNKNOWN
+            heldSeekAnchorMs = 0L
+            return true
+        }
         if (::errorPanel.isInitialized && errorPanel.visibility == View.VISIBLE) {
             if (event.action == KeyEvent.ACTION_DOWN) {
                 when (event.keyCode) {
@@ -1867,16 +2006,14 @@ class Media3PlayerActivity : Activity() {
                 }
                 KeyEvent.KEYCODE_J,
                 KeyEvent.KEYCODE_MEDIA_REWIND -> {
-                    seekBy(-SEEK_INCREMENT_MS)
-                    showSeekFeedback(-SEEK_INCREMENT_MS)
+                    seekFromHeldKey(event, -1)
                     showControls(requestTransportFocus = false)
                     scheduleControlsHide()
                     return true
                 }
                 KeyEvent.KEYCODE_L,
                 KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
-                    seekBy(SEEK_INCREMENT_MS)
-                    showSeekFeedback(SEEK_INCREMENT_MS)
+                    seekFromHeldKey(event, 1)
                     showControls(requestTransportFocus = false)
                     scheduleControlsHide()
                     return true
@@ -1907,8 +2044,7 @@ class Media3PlayerActivity : Activity() {
                     !isLive &&
                     (!controlsVisible || playerView.hasFocus() || playPauseButton.hasFocus())
                 ) {
-                    seekBy(-SEEK_INCREMENT_MS)
-                    showSeekFeedback(-SEEK_INCREMENT_MS)
+                    seekFromHeldKey(event, -1)
                     showControls(requestTransportFocus = false)
                     scheduleControlsHide()
                     return true
@@ -1917,8 +2053,7 @@ class Media3PlayerActivity : Activity() {
                     !isLive &&
                     (!controlsVisible || playerView.hasFocus() || playPauseButton.hasFocus())
                 ) {
-                    seekBy(SEEK_INCREMENT_MS)
-                    showSeekFeedback(SEEK_INCREMENT_MS)
+                    seekFromHeldKey(event, 1)
                     showControls(requestTransportFocus = false)
                     scheduleControlsHide()
                     return true

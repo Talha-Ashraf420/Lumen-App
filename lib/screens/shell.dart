@@ -50,11 +50,13 @@ class HomeShell extends StatefulWidget {
   final XtreamClient client;
   final Future<void> Function() onLogout;
   final void Function(XtreamCredentials) onSwitch;
+  final Future<List<Category>> Function()? homeCategoryLoader;
   const HomeShell({
     super.key,
     required this.client,
     required this.onLogout,
     required this.onSwitch,
+    this.homeCategoryLoader,
   });
   @override
   State<HomeShell> createState() => _HomeShellState();
@@ -240,6 +242,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       client: widget.client,
       onBrowse: () => _select(1),
       entryFocusNode: _homeEntryFocus,
+      categoryLoader: widget.homeCategoryLoader,
     ),
     1 => SearchScreen(
       key: _searchKey,
@@ -306,8 +309,14 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     final scope = _pageFocusScopes[page];
     final pageContext = _pageFocusScopes[page]?.context;
     final focusedContext = FocusManager.instance.primaryFocus?.context;
-    final pageBox = pageContext?.findRenderObject();
-    final focusedBox = focusedContext?.findRenderObject();
+    if (pageContext == null ||
+        !pageContext.mounted ||
+        focusedContext == null ||
+        !focusedContext.mounted) {
+      return KeyEventResult.ignored;
+    }
+    final pageBox = pageContext.findRenderObject();
+    final focusedBox = focusedContext.findRenderObject();
     if (rail == null ||
         scope == null ||
         !rail.canRequestFocus ||
@@ -320,8 +329,41 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     );
     if (key == LogicalKeyboardKey.arrowLeft) {
       final pageLeft = pageBox.localToGlobal(Offset.zero).dx;
-      // Child controls get the key first, so rows/grids can still move left.
-      // At the page's left edge the stable shell rail is the destination.
+      final focusedRect =
+          focusedBox.localToGlobal(Offset.zero) & focusedBox.size;
+      // Focus key handlers run before geometry traversal. A control can sit in
+      // the leftmost part of the page while still having a genuine same-row
+      // neighbour (the first Home spotlight cards are the important case).
+      // Let traversal reach that neighbour before treating the page as having
+      // reached its navigation-rail boundary.
+      final hasFocusableLeftInLane = scope.traversalDescendants.any((node) {
+        if (node == FocusManager.instance.primaryFocus ||
+            _isStructuralFocusNode(node) ||
+            !node.canRequestFocus ||
+            node.skipTraversal) {
+          return false;
+        }
+        final nodeContext = node.context;
+        if (nodeContext == null || !nodeContext.mounted) return false;
+        final box = nodeContext.findRenderObject();
+        if (box is! RenderBox) return false;
+        final rect = box.localToGlobal(Offset.zero) & box.size;
+        if (rect.center.dx >= focusedRect.center.dx - 8) return false;
+        final overlapTop = rect.top > focusedRect.top
+            ? rect.top
+            : focusedRect.top;
+        final overlapBottom = rect.bottom < focusedRect.bottom
+            ? rect.bottom
+            : focusedRect.bottom;
+        final smallerHeight = rect.height < focusedRect.height
+            ? rect.height
+            : focusedRect.height;
+        return overlapBottom - overlapTop >= smallerHeight * .35;
+      });
+      if (hasFocusableLeftInLane) return KeyEventResult.ignored;
+
+      // With no same-row neighbour, a control in the page's left zone has
+      // genuinely reached the stable shell rail boundary.
       if (focusedCenter.dx <= pageLeft + pageBox.size.width * .28) {
         rail.requestFocus();
         return KeyEventResult.handled;
@@ -335,12 +377,13 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     final hasFocusableAbove = scope.traversalDescendants.any((node) {
       if (node == FocusManager.instance.primaryFocus ||
           _isStructuralFocusNode(node) ||
-          node.context == null ||
           !node.canRequestFocus ||
           node.skipTraversal) {
         return false;
       }
-      final box = node.context?.findRenderObject();
+      final nodeContext = node.context;
+      if (nodeContext == null || !nodeContext.mounted) return false;
+      final box = nodeContext.findRenderObject();
       if (box is! RenderBox) return false;
       final center = box.localToGlobal(box.size.center(Offset.zero));
       return center.dy < focusedCenter.dy - 8;
@@ -372,30 +415,29 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       }
       final scope = _pageFocusScopes[page];
       if (scope == null) return;
-      if (page == 0 &&
-          _homeEntryFocus.context != null &&
-          _homeEntryFocus.canRequestFocus) {
+      bool isMountedTarget(FocusNode node) {
+        final nodeContext = node.context;
+        return nodeContext != null &&
+            nodeContext.mounted &&
+            node.canRequestFocus;
+      }
+
+      if (page == 0 && isMountedTarget(_homeEntryFocus)) {
         scope.requestFocus(_homeEntryFocus);
         return;
       }
       // My List can change from an empty, non-focusable page to a populated
       // one while its cached page stays mounted. Use its stable first filter
       // node instead of relying on a traversal snapshot from the empty state.
-      if (page == 2 &&
-          _myListEntryFocus.context != null &&
-          _myListEntryFocus.canRequestFocus) {
+      if (page == 2 && isMountedTarget(_myListEntryFocus)) {
         scope.requestFocus(_myListEntryFocus);
         return;
       }
-      if (page == 3 &&
-          _profileEntryFocus.context != null &&
-          _profileEntryFocus.canRequestFocus) {
+      if (page == 3 && isMountedTarget(_profileEntryFocus)) {
         scope.requestFocus(_profileEntryFocus);
         return;
       }
-      if (page == 7 &&
-          _downloadsEntryFocus.context != null &&
-          _downloadsEntryFocus.canRequestFocus) {
+      if (page == 7 && isMountedTarget(_downloadsEntryFocus)) {
         scope.requestFocus(_downloadsEntryFocus);
         return;
       }
@@ -405,8 +447,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         // They are not controls, and choosing one traps all four D-pad keys on
         // the page wrapper. Enter the first real descendant instead.
         if (!_isStructuralFocusNode(node) &&
-            node.context != null &&
-            node.canRequestFocus &&
+            isMountedTarget(node) &&
             !node.skipTraversal) {
           candidates.add(node);
         }
@@ -1286,7 +1327,10 @@ class _CommandBar extends StatelessWidget {
         // the rail synchronously while the command-bar Focus is handling Left
         // can briefly promote rootScope and make focus appear to vanish.
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (railFocusNode.context != null && railFocusNode.canRequestFocus) {
+          final railContext = railFocusNode.context;
+          if (railContext != null &&
+              railContext.mounted &&
+              railFocusNode.canRequestFocus) {
             railFocusNode.requestFocus();
           }
         });

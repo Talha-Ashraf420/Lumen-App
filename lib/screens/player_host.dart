@@ -39,6 +39,29 @@ enum PlayerKeyboardCommand {
 
 enum PlayerRecoveryFocusTarget { none, retryAction, player }
 
+enum PlayerHudPlacement { left, center, right }
+
+PlayerHudPlacement playerSeekHudPlacementFor({
+  required bool isTelevision,
+  required int seconds,
+}) {
+  if (!isTelevision) return PlayerHudPlacement.center;
+  return seconds < 0 ? PlayerHudPlacement.left : PlayerHudPlacement.right;
+}
+
+int playerHeldSeekDistanceSeconds(int repeatCount) {
+  if (repeatCount <= 0) return 10;
+  return (1 + ((repeatCount - 1) ~/ 8)) * 60;
+}
+
+String playerSeekHudLabelFor(int seconds) {
+  final absolute = seconds.abs();
+  final amount = absolute >= 60 && absolute % 60 == 0
+      ? '${absolute ~/ 60}m'
+      : '${absolute}s';
+  return seconds < 0 ? '−$amount' : '+$amount';
+}
+
 /// Recovery UI is inserted after the player already owns focus. Explicitly
 /// move focus into the failure actions when retries end, then return it to the
 /// player when a retry starts or a new source is selected.
@@ -153,7 +176,11 @@ class _PlayerHostState extends State<PlayerHost> {
   String? _hud;
   IconData? _hudIcon;
   double? _hudValue;
+  PlayerHudPlacement _hudPlacement = PlayerHudPlacement.center;
   Timer? _hudTimer;
+  LogicalKeyboardKey? _heldSeekKey;
+  Duration _heldSeekAnchor = Duration.zero;
+  int _heldSeekRepeats = 0;
 
   // sleep
   Timer? _sleepTimer;
@@ -708,7 +735,9 @@ class _PlayerHostState extends State<PlayerHost> {
         if (!mounted || !pc.hasMedia || pc.minimized) return;
         switch (recoveryFocusTarget) {
           case PlayerRecoveryFocusTarget.retryAction:
-            if (_recoveryActionFocus.context != null &&
+            final actionContext = _recoveryActionFocus.context;
+            if (actionContext != null &&
+                actionContext.mounted &&
                 _recoveryActionFocus.canRequestFocus) {
               _recoveryActionFocus.requestFocus();
             }
@@ -797,7 +826,8 @@ class _PlayerHostState extends State<PlayerHost> {
       if (_panelKind != null) {
         _panelFocusScope.requestFocus();
         _panelFocusScope.nextFocus();
-      } else if (_transportFocus.context != null) {
+      } else if (_transportFocus.context case final transportContext?
+          when transportContext.mounted) {
         _transportFocus.requestFocus();
       } else {
         _playerFocusScope.nextFocus();
@@ -833,6 +863,25 @@ class _PlayerHostState extends State<PlayerHost> {
     final p = pc.player!.state.position + Duration(seconds: secs);
     pc.player!.seek(p < Duration.zero ? Duration.zero : p);
     _scheduleHide();
+  }
+
+  void _seekFromHeldKey(int direction, KeyEvent event) {
+    final key = event.logicalKey;
+    if (event is KeyDownEvent || _heldSeekKey != key) {
+      _heldSeekKey = key;
+      _heldSeekAnchor = pc.player!.state.position;
+      _heldSeekRepeats = 0;
+    } else if (event is KeyRepeatEvent) {
+      _heldSeekRepeats++;
+    }
+    final distance = playerHeldSeekDistanceSeconds(_heldSeekRepeats);
+    var target = _heldSeekAnchor.inSeconds + direction * distance;
+    final duration = pc.player!.state.duration.inSeconds;
+    if (duration > 0) target = target.clamp(0, duration);
+    if (target < 0) target = 0;
+    pc.player!.seek(Duration(seconds: target));
+    _scheduleHide();
+    _flashSeekHud(direction * distance);
   }
 
   Future<void> _toggleFullscreen() async {
@@ -1170,6 +1219,12 @@ class _PlayerHostState extends State<PlayerHost> {
       );
 
   KeyEventResult _onKey(FocusNode node, KeyEvent e) {
+    if (e is KeyUpEvent && e.logicalKey == _heldSeekKey) {
+      _heldSeekKey = null;
+      _heldSeekAnchor = Duration.zero;
+      _heldSeekRepeats = 0;
+      return KeyEventResult.handled;
+    }
     if (pc.minimized || (e is! KeyDownEvent && e is! KeyRepeatEvent)) {
       return KeyEventResult.ignored;
     }
@@ -1223,13 +1278,11 @@ class _PlayerHostState extends State<PlayerHost> {
           _scheduleHide();
         case PlayerKeyboardCommand.seekBackward:
           if (!_isLive) {
-            _seekBy(-10);
-            _flashHud('−10s', Icons.replay_10_rounded);
+            _seekFromHeldKey(-1, e);
           }
         case PlayerKeyboardCommand.seekForward:
           if (!_isLive) {
-            _seekBy(10);
-            _flashHud('+10s', Icons.forward_10_rounded);
+            _seekFromHeldKey(1, e);
           }
         case PlayerKeyboardCommand.volumeUp:
           _adjustVolume(5);
@@ -1304,16 +1357,14 @@ class _PlayerHostState extends State<PlayerHost> {
     } else if (k == LogicalKeyboardKey.mediaFastForward ||
         k == LogicalKeyboardKey.mediaSkipForward) {
       if (!_isLive) {
-        _seekBy(10);
-        _flashHud('+10s', Icons.forward_10_rounded);
+        _seekFromHeldKey(1, e);
       } else if (_hasNext) {
         _go(pc.index + 1);
       }
     } else if (k == LogicalKeyboardKey.mediaRewind ||
         k == LogicalKeyboardKey.mediaSkipBackward) {
       if (!_isLive) {
-        _seekBy(-10);
-        _flashHud('−10s', Icons.replay_10_rounded);
+        _seekFromHeldKey(-1, e);
       } else if (_hasPrev) {
         _go(pc.index - 1);
       }
@@ -1342,10 +1393,10 @@ class _PlayerHostState extends State<PlayerHost> {
     }
     if (!_isLive && _doubleTapX < w * 0.35) {
       _seekBy(-10);
-      _flashHud('−10s', Icons.replay_10_rounded);
+      _flashSeekHud(-10);
     } else if (!_isLive && _doubleTapX > w * 0.65) {
       _seekBy(10);
-      _flashHud('+10s', Icons.forward_10_rounded);
+      _flashSeekHud(10);
     } else {
       pc.togglePlayPause();
       _scheduleHide();
@@ -1447,12 +1498,14 @@ class _PlayerHostState extends State<PlayerHost> {
     IconData icon, {
     double? value,
     bool persist = false,
+    PlayerHudPlacement placement = PlayerHudPlacement.center,
   }) {
     _hudTimer?.cancel();
     setState(() {
       _hud = text;
       _hudIcon = icon;
       _hudValue = value;
+      _hudPlacement = placement;
     });
     if (!persist)
       _hudTimer = Timer(
@@ -1460,6 +1513,15 @@ class _PlayerHostState extends State<PlayerHost> {
         () => mounted ? setState(() => _hud = null) : null,
       );
   }
+
+  void _flashSeekHud(int seconds) => _flashHud(
+    playerSeekHudLabelFor(seconds),
+    seconds < 0 ? Icons.replay_10_rounded : Icons.forward_10_rounded,
+    placement: playerSeekHudPlacementFor(
+      isTelevision: DeviceProfile.isTelevision,
+      seconds: seconds,
+    ),
+  );
 
   void _hideHud() {
     _hudTimer?.cancel();
@@ -1729,41 +1791,50 @@ class _PlayerHostState extends State<PlayerHost> {
 
   Widget _hudOverlay() {
     if (_hud == null) return const SizedBox.shrink();
-    return Center(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.6),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(_hudIcon, color: Colors.white, size: 30),
-            const SizedBox(height: 8),
-            Text(
-              _hud!,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            if (_hudValue != null) ...[
+    final alignment = switch (_hudPlacement) {
+      PlayerHudPlacement.left => const Alignment(-0.72, 0),
+      PlayerHudPlacement.center => Alignment.center,
+      PlayerHudPlacement.right => const Alignment(0.72, 0),
+    };
+    return SafeArea(
+      minimum: const EdgeInsets.symmetric(horizontal: 24),
+      child: Align(
+        alignment: alignment,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.6),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(_hudIcon, color: Colors.white, size: 30),
               const SizedBox(height: 8),
-              SizedBox(
-                width: 120,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(2),
-                  child: LinearProgressIndicator(
-                    value: _hudValue,
-                    minHeight: 4,
-                    backgroundColor: Colors.white24,
-                    valueColor: const AlwaysStoppedAnimation(Colors.white),
-                  ),
+              Text(
+                _hud!,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
+              if (_hudValue != null) ...[
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: 120,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(2),
+                    child: LinearProgressIndicator(
+                      value: _hudValue,
+                      minHeight: 4,
+                      backgroundColor: Colors.white24,
+                      valueColor: const AlwaysStoppedAnimation(Colors.white),
+                    ),
+                  ),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -2059,6 +2130,7 @@ class _PlayerHostState extends State<PlayerHost> {
   }
 
   Widget _centerControls() {
+    final television = DeviceProfile.isTelevision;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
@@ -2077,13 +2149,25 @@ class _PlayerHostState extends State<PlayerHost> {
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          _smallBtn(
-            Icons.skip_previous_rounded,
-            _hasPrev ? () => _go(pc.index - 1) : null,
-          ),
+          if (_isLive)
+            _channelBtn(
+              Icons.skip_previous_rounded,
+              'Previous channel',
+              _hasPrev ? () => _go(pc.index - 1) : null,
+            )
+          else
+            _smallBtn(
+              Icons.skip_previous_rounded,
+              'Previous episode',
+              _hasPrev ? () => _go(pc.index - 1) : null,
+            ),
           if (!_isLive) ...[
             const SizedBox(width: 5),
-            _roundBtn(Icons.replay_10_rounded, () => _seekBy(-10)),
+            _roundBtn(
+              Icons.replay_10_rounded,
+              'Rewind 10 seconds',
+              () => _seekBy(-10),
+            ),
           ],
           const SizedBox(width: 9),
           StreamBuilder<bool>(
@@ -2101,17 +2185,22 @@ class _PlayerHostState extends State<PlayerHost> {
                     _scheduleHide();
                   },
                   child: Container(
-                    width: 58,
-                    height: 58,
+                    width: television ? 64 : 58,
+                    height: television ? 64 : 58,
                     decoration: BoxDecoration(
-                      color: accent,
+                      color: television
+                          ? Colors.black.withValues(alpha: 0.72)
+                          : accent,
                       shape: BoxShape.circle,
-                      boxShadow: glow(accent, a: 0.32),
+                      border: television
+                          ? Border.all(color: accent, width: 2)
+                          : null,
+                      boxShadow: glow(accent, a: television ? 0.24 : 0.32),
                     ),
                     child: Icon(
                       playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                      color: onAccent,
-                      size: 32,
+                      color: television ? accent : onAccent,
+                      size: television ? 36 : 32,
                     ),
                   ),
                 ),
@@ -2120,50 +2209,96 @@ class _PlayerHostState extends State<PlayerHost> {
           ),
           if (!_isLive) ...[
             const SizedBox(width: 9),
-            _roundBtn(Icons.forward_10_rounded, () => _seekBy(10)),
+            _roundBtn(
+              Icons.forward_10_rounded,
+              'Fast forward 10 seconds',
+              () => _seekBy(10),
+            ),
           ],
           const SizedBox(width: 5),
-          _smallBtn(
-            Icons.skip_next_rounded,
-            _hasNext ? () => _go(pc.index + 1) : null,
-          ),
+          if (_isLive)
+            _channelBtn(
+              Icons.skip_next_rounded,
+              'Next channel',
+              _hasNext ? () => _go(pc.index + 1) : null,
+            )
+          else
+            _smallBtn(
+              Icons.skip_next_rounded,
+              'Next episode',
+              _hasNext ? () => _go(pc.index + 1) : null,
+            ),
         ],
       ),
     );
   }
 
-  Widget _roundBtn(IconData icon, VoidCallback onTap) => MouseRegion(
-    cursor: SystemMouseCursors.click,
+  Widget _roundBtn(IconData icon, String semanticLabel, VoidCallback onTap) =>
+      MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: RemoteTap(
+          onTap: onTap,
+          semanticLabel: semanticLabel,
+          child: Container(
+            width: 40,
+            height: 40,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.10),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: Colors.white, size: 23),
+          ),
+        ),
+      );
+
+  Widget _channelBtn(
+    IconData icon,
+    String semanticLabel,
+    VoidCallback? onTap,
+  ) => MouseRegion(
+    cursor: onTap == null ? MouseCursor.defer : SystemMouseCursors.click,
     child: RemoteTap(
       onTap: onTap,
+      semanticLabel: semanticLabel,
+      focusRadius: 999,
       child: Container(
-        width: 40,
-        height: 40,
+        width: 50,
+        height: 50,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.10),
+          color: Colors.white.withValues(alpha: onTap == null ? 0.04 : 0.10),
           shape: BoxShape.circle,
+          border: Border.all(
+            color: onTap == null ? Colors.white10 : Colors.white24,
+          ),
         ),
-        child: Icon(icon, color: Colors.white, size: 23),
+        child: Icon(
+          icon,
+          color: onTap == null ? Colors.white24 : Colors.white,
+          size: 28,
+        ),
       ),
     ),
   );
 
-  Widget _smallBtn(IconData icon, VoidCallback? onTap) => MouseRegion(
-    cursor: onTap == null ? MouseCursor.defer : SystemMouseCursors.click,
-    child: RemoteTap(
-      onTap: onTap,
-      child: SizedBox(
-        width: 38,
-        height: 38,
-        child: Icon(
-          icon,
-          color: onTap == null ? Colors.white24 : Colors.white,
-          size: 25,
+  Widget _smallBtn(IconData icon, String semanticLabel, VoidCallback? onTap) =>
+      MouseRegion(
+        cursor: onTap == null ? MouseCursor.defer : SystemMouseCursors.click,
+        child: RemoteTap(
+          onTap: onTap,
+          semanticLabel: semanticLabel,
+          child: SizedBox(
+            width: 38,
+            height: 38,
+            child: Icon(
+              icon,
+              color: onTap == null ? Colors.white24 : Colors.white,
+              size: 25,
+            ),
+          ),
         ),
-      ),
-    ),
-  );
+      );
 
   Widget _bottomBar() {
     return Container(

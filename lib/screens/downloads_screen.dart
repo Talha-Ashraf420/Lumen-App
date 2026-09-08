@@ -94,7 +94,8 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
     void attempt(int frames) {
       if (!mounted || target >= _itemFocus.length) return;
       final node = _itemFocus[target];
-      if (node.context != null && node.canRequestFocus) {
+      final nodeContext = node.context;
+      if (nodeContext != null && nodeContext.mounted && node.canRequestFocus) {
         node.requestFocus();
         return;
       }
@@ -176,7 +177,10 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
     if (event.logicalKey == LogicalKeyboardKey.arrowRight &&
         _itemFocus[index].hasFocus) {
       final firstAction = _actionFocus[index].first;
-      if (firstAction.context != null && firstAction.canRequestFocus) {
+      final actionContext = firstAction.context;
+      if (actionContext != null &&
+          actionContext.mounted &&
+          firstAction.canRequestFocus) {
         firstAction.requestFocus();
       }
       return KeyEventResult.handled;

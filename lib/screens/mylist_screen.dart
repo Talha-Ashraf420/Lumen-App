@@ -74,7 +74,8 @@ class _MyListScreenState extends State<MyListScreen> {
     void attempt(int frames) {
       if (!mounted || target >= _gridFocus.length) return;
       final node = _gridFocus[target];
-      if (node.context != null && node.canRequestFocus) {
+      final nodeContext = node.context;
+      if (nodeContext != null && nodeContext.mounted && node.canRequestFocus) {
         node.requestFocus();
         return;
       }

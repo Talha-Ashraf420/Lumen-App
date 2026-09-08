@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen_tv/downloads.dart';
+import 'package:lumen_tv/library.dart';
 import 'package:lumen_tv/models.dart';
 import 'package:lumen_tv/widgets.dart';
 import 'package:lumen_tv/screens/downloads_screen.dart';
+import 'package:lumen_tv/screens/mylist_screen.dart';
 import 'package:lumen_tv/screens/player_host.dart';
 import 'package:lumen_tv/screens/shell.dart';
 import 'package:lumen_tv/xtream.dart';
@@ -354,6 +356,162 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(seconds: 1));
   });
+
+  testWidgets(
+    'My List restores visible focus after filtering a scrolled grid',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1280, 720);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+      Library.instance.favourites
+        ..clear()
+        ..addAll([
+          for (var index = 0; index < 60; index++)
+            MediaRef(kind: 'movie', id: index, name: 'Film $index'),
+          for (var index = 0; index < 60; index++)
+            MediaRef(kind: 'series', id: 1000 + index, name: 'Series $index'),
+        ]);
+      addTearDown(Library.instance.favourites.clear);
+      final client = XtreamClient(
+        const XtreamCredentials(
+          baseUrl: 'https://example.invalid',
+          username: 'test',
+          password: 'test',
+        ),
+      );
+      addTearDown(client.close);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: MyListScreen(client: client)),
+        ),
+      );
+      await tester.pump();
+      final grid = find.byType(GridView);
+      await tester.drag(grid, const Offset(0, -2600));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Films 60'));
+      await tester.pump();
+      await tester.tap(find.text('All 120'));
+      await tester.pump();
+      final allFilter = tester.widget<FocusableActionDetector>(
+        find
+            .ancestor(
+              of: find.text('All 120'),
+              matching: find.byType(FocusableActionDetector),
+            )
+            .first,
+      );
+      allFilter.focusNode!.requestFocus();
+      await tester.pump();
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pump();
+      await tester.pump();
+      expect(FocusManager.instance.primaryFocus?.debugLabel, 'My List tile 0');
+      final tileContext = FocusManager.instance.primaryFocus!.context!;
+      final tileBox = tileContext.findRenderObject()! as RenderBox;
+      final gridBox = tester.renderObject<RenderBox>(grid);
+      final tileCenter = tileBox.localToGlobal(
+        tileBox.size.center(Offset.zero),
+      );
+      final gridRect = gridBox.localToGlobal(Offset.zero) & gridBox.size;
+      expect(gridRect.contains(tileCenter), isTrue);
+      expect(tester.takeException(), isNull);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(seconds: 1));
+    },
+  );
+
+  testWidgets(
+    'Downloads restores visible focus after filtering a scrolled grid',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1280, 720);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+      Downloads.instance.items
+        ..clear()
+        ..addAll([
+          for (var index = 0; index < 60; index++)
+            DownloadItem(
+              id: 'ready:$index',
+              title: 'Ready $index',
+              poster: '',
+              kind: 'movie',
+              remoteUrl: 'https://example.invalid/ready-$index.mp4',
+              fileName: 'ready-$index.mp4',
+              progressKey: 'movie:$index',
+              status: DlStatus.completed,
+            ),
+          for (var index = 0; index < 60; index++)
+            DownloadItem(
+              id: 'active:$index',
+              title: 'Active $index',
+              poster: '',
+              kind: 'movie',
+              remoteUrl: 'https://example.invalid/active-$index.mp4',
+              fileName: 'active-$index.mp4',
+              progressKey: 'movie:${1000 + index}',
+              status: DlStatus.paused,
+            ),
+        ]);
+      addTearDown(Downloads.instance.items.clear);
+      final client = XtreamClient(
+        const XtreamCredentials(
+          baseUrl: 'https://example.invalid',
+          username: 'test',
+          password: 'test',
+        ),
+      );
+      addTearDown(client.close);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: DownloadsScreen(client: client)),
+        ),
+      );
+      await tester.pump();
+      final grid = find.byType(GridView);
+      await tester.drag(grid, const Offset(0, -2600));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Ready 60'));
+      await tester.pump();
+      await tester.tap(find.text('All 120'));
+      await tester.pump();
+      final allFilter = tester.widget<FocusableActionDetector>(
+        find
+            .ancestor(
+              of: find.text('All 120'),
+              matching: find.byType(FocusableActionDetector),
+            )
+            .first,
+      );
+      allFilter.focusNode!.requestFocus();
+      await tester.pump();
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pump();
+      await tester.pump();
+      expect(FocusManager.instance.primaryFocus?.debugLabel, 'Download item 0');
+      final itemContext = FocusManager.instance.primaryFocus!.context!;
+      final itemBox = itemContext.findRenderObject()! as RenderBox;
+      final gridBox = tester.renderObject<RenderBox>(grid);
+      final itemCenter = itemBox.localToGlobal(
+        itemBox.size.center(Offset.zero),
+      );
+      final gridRect = gridBox.localToGlobal(Offset.zero) & gridBox.size;
+      expect(gridRect.contains(itemCenter), isTrue);
+      expect(tester.takeException(), isNull);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(seconds: 1));
+    },
+  );
 
   testWidgets('navigation tabs can select as soon as focus lands', (
     tester,

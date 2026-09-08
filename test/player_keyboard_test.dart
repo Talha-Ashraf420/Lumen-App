@@ -3,6 +3,32 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen_tv/screens/player_host.dart';
 
 void main() {
+  test('TV seek feedback stays clear of the center transport', () {
+    expect(
+      playerSeekHudPlacementFor(isTelevision: true, seconds: -10),
+      PlayerHudPlacement.left,
+    );
+    expect(
+      playerSeekHudPlacementFor(isTelevision: true, seconds: 10),
+      PlayerHudPlacement.right,
+    );
+    expect(
+      playerSeekHudPlacementFor(isTelevision: false, seconds: 10),
+      PlayerHudPlacement.center,
+    );
+  });
+
+  test('held seeking accelerates from ten seconds into minute stages', () {
+    expect(playerHeldSeekDistanceSeconds(0), 10);
+    expect(playerHeldSeekDistanceSeconds(1), 60);
+    expect(playerHeldSeekDistanceSeconds(8), 60);
+    expect(playerHeldSeekDistanceSeconds(9), 120);
+    expect(playerHeldSeekDistanceSeconds(17), 180);
+    expect(playerSeekHudLabelFor(10), '+10s');
+    expect(playerSeekHudLabelFor(60), '+1m');
+    expect(playerSeekHudLabelFor(-120), '−2m');
+  });
+
   test('recovery focus enters actions and returns to the player', () {
     expect(
       playerRecoveryFocusTargetFor(

@@ -42,6 +42,7 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
+  final _pageScroll = ScrollController();
   final _entryFocus = FocusNode(debugLabel: 'Profile add account');
   final _themeEntryFocus = FocusNode(debugLabel: 'Dark appearance');
   final _accentEntryFocus = FocusNode(debugLabel: 'Signal lime accent');
@@ -68,6 +69,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
     if (event.logicalKey == LogicalKeyboardKey.arrowUp &&
         _entryFocusNode.hasFocus) {
+      _restoreProfileTop();
       final top = widget.shellTopFocusNode;
       if (top != null && top.canRequestFocus) {
         top.requestFocus();
@@ -79,8 +81,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
     final rail = widget.shellRailFocusNode;
     final focusedContext = FocusManager.instance.primaryFocus?.context;
+    if (focusedContext == null || !focusedContext.mounted) {
+      return KeyEventResult.ignored;
+    }
     final pageBox = context.findRenderObject();
-    final focusedBox = focusedContext?.findRenderObject();
+    final focusedBox = focusedContext.findRenderObject();
     if (rail == null ||
         !rail.canRequestFocus ||
         pageBox is! RenderBox ||
@@ -102,6 +107,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   FocusNode get _entryFocusNode => widget.entryFocusNode ?? _entryFocus;
+
+  void _restoreProfileTop() {
+    if (!_pageScroll.hasClients) return;
+    final position = _pageScroll.position;
+    if (position.pixels <= position.minScrollExtent) return;
+    if (DeviceProfile.isTelevision) {
+      _pageScroll.jumpTo(position.minScrollExtent);
+    } else {
+      _pageScroll.animateTo(
+        position.minScrollExtent,
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+      );
+    }
+  }
+
+  void _restoreTopWhenEntryFocused() {
+    if (!DeviceProfile.isTelevision || !_entryFocusNode.hasFocus) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _entryFocusNode.hasFocus) _restoreProfileTop();
+    });
+    WidgetsBinding.instance.ensureVisualUpdate();
+  }
 
   String _profileKey(XtreamCredentials profile) => Store.profileScope(profile);
 
@@ -181,7 +209,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     target.requestFocus();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final targetContext = target.context;
-      if (!mounted || !target.hasFocus || targetContext == null) return;
+      if (!mounted ||
+          !target.hasFocus ||
+          targetContext == null ||
+          !targetContext.mounted) {
+        return;
+      }
       Scrollable.ensureVisible(
         targetContext,
         duration: DeviceProfile.isTelevision
@@ -215,7 +248,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     target.requestFocus();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final targetContext = target.context;
-      if (!mounted || !target.hasFocus || targetContext == null) return;
+      if (!mounted ||
+          !target.hasFocus ||
+          targetContext == null ||
+          !targetContext.mounted) {
+        return;
+      }
       Scrollable.ensureVisible(
         targetContext,
         duration: DeviceProfile.isTelevision
@@ -237,6 +275,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       event,
       down: _firstProfileSwitchFocus ?? _themeEntryFocus,
     );
+    _entryFocusNode.addListener(_restoreTopWhenEntryFocused);
     widget.client
         .authenticate()
         .then((i) {
@@ -453,7 +492,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   void dispose() {
+    _entryFocusNode.removeListener(_restoreTopWhenEntryFocused);
     _entryFocusNode.onKeyEvent = null;
+    _pageScroll.dispose();
     _entryFocus.dispose();
     _themeEntryFocus.dispose();
     _accentEntryFocus.dispose();
@@ -511,6 +552,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           skipTraversal: true,
           onKeyEvent: _handlePageKey,
           child: SingleChildScrollView(
+            controller: _pageScroll,
             padding: EdgeInsets.fromLTRB(
               shellIsWide ? 28 : 18,
               shellIsWide ? 18 : 12,
