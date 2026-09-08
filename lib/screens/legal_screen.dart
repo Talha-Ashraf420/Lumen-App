@@ -248,7 +248,7 @@ class LegalScreen extends StatelessWidget {
                                         index: '04',
                                         title: 'Third-party services',
                                         body:
-                                            'Metadata may come from TMDB and optional subtitle searches may use OpenSubtitles. Those independent services have their own terms and privacy practices.',
+                                            'Metadata may come from TMDB, missing channel artwork may be matched from IPTV-org’s public catalog, and optional subtitle searches may use OpenSubtitles. Those independent services have their own terms and privacy practices.',
                                       ),
                                       _Section(
                                         width: cardWidth,

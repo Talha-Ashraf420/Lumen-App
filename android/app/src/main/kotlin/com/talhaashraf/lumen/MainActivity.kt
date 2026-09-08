@@ -83,6 +83,8 @@ class MainActivity : FlutterActivity() {
                     val playlistUrls = ArrayList<String>()
                     val playlistAlternateUrls = ArrayList<String>()
                     val playlistTitles = ArrayList<String>()
+                    val playlistFavoriteKeys = ArrayList<String>()
+                    val playlistFavoriteStates = ArrayList<Boolean>()
                     (args["playlist"] as? List<*>)?.forEach { rawItem ->
                         val item = rawItem as? Map<*, *> ?: return@forEach
                         val itemUrl = item["url"] as? String
@@ -92,6 +94,12 @@ class MainActivity : FlutterActivity() {
                                 item["alternateUrl"] as? String ?: ""
                             )
                             playlistTitles.add(item["title"] as? String ?: "")
+                            playlistFavoriteKeys.add(
+                                item["favoriteKey"] as? String ?: ""
+                            )
+                            playlistFavoriteStates.add(
+                                item["favorite"] as? Boolean ?: false
+                            )
                         }
                     }
                     val intent = Intent(this, Media3PlayerActivity::class.java).apply {
@@ -120,6 +128,14 @@ class MainActivity : FlutterActivity() {
                         putStringArrayListExtra(
                             Media3PlayerActivity.EXTRA_PLAYLIST_TITLES,
                             playlistTitles
+                        )
+                        putStringArrayListExtra(
+                            Media3PlayerActivity.EXTRA_PLAYLIST_FAVORITE_KEYS,
+                            playlistFavoriteKeys
+                        )
+                        putExtra(
+                            Media3PlayerActivity.EXTRA_PLAYLIST_FAVORITE_STATES,
+                            playlistFavoriteStates.toBooleanArray()
                         )
                         putExtra(
                             Media3PlayerActivity.EXTRA_INITIAL_INDEX,
@@ -313,7 +329,20 @@ class MainActivity : FlutterActivity() {
             val result = pendingMedia3Result ?: return
             pendingMedia3Result = null
             result.success(
-                resultCode != Media3PlayerActivity.RESULT_USE_EMBEDDED_ENGINE
+                mapOf(
+                    "opened" to
+                        (resultCode == Activity.RESULT_OK),
+                    "lastIndex" to
+                        (data?.getIntExtra(Media3PlayerActivity.EXTRA_LAST_INDEX, -1) ?: -1),
+                    "favoriteKeys" to
+                        (data?.getStringArrayListExtra(
+                            Media3PlayerActivity.EXTRA_PLAYLIST_FAVORITE_KEYS
+                        ) ?: arrayListOf<String>()),
+                    "favoriteStates" to
+                        (data?.getBooleanArrayExtra(
+                            Media3PlayerActivity.EXTRA_PLAYLIST_FAVORITE_STATES
+                        )?.toList() ?: emptyList<Boolean>())
+                )
             )
             return
         }

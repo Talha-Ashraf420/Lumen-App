@@ -41,6 +41,11 @@ enum PlayerRecoveryFocusTarget { none, retryAction, player }
 
 enum PlayerHudPlacement { left, center, right }
 
+bool playerSubtitleViewVisibleFor({
+  required bool minimized,
+  required bool subtitlesDisabled,
+}) => !minimized && !subtitlesDisabled;
+
 PlayerHudPlacement playerSeekHudPlacementFor({
   required bool isTelevision,
   required int seconds,
@@ -194,6 +199,7 @@ class _PlayerHostState extends State<PlayerHost> {
   double _subScale = 1.0;
   bool _subBg = false;
   double _subDelay = 0;
+  bool _subtitlesDisabled = false;
 
   // online subtitle search (OpenSubtitles)
   bool _subsOnline = false;
@@ -201,6 +207,7 @@ class _PlayerHostState extends State<PlayerHost> {
   String _subLang = 'en';
   String? _subError;
   String? _appliedSubName; // label of an applied online or local subtitle
+  SubtitleTrack? _appliedSubTrack;
   List<SubResult> _subResults = [];
   final TextEditingController _subQueryCtrl = TextEditingController();
 
@@ -761,6 +768,8 @@ class _PlayerHostState extends State<PlayerHost> {
     _subBusy = false;
     _subError = null;
     _appliedSubName = null;
+    _appliedSubTrack = null;
+    _subtitlesDisabled = false;
     _subResults = [];
     _subQueryCtrl.text = _subCleanTitle(pc.item.title);
     pc.player?.setRate(1.0);
@@ -993,7 +1002,10 @@ class _PlayerHostState extends State<PlayerHost> {
                           controls: NoVideoControls,
                           fit: mini ? BoxFit.cover : _fit,
                           subtitleViewConfiguration: SubtitleViewConfiguration(
-                            visible: !mini,
+                            visible: playerSubtitleViewVisibleFor(
+                              minimized: mini,
+                              subtitlesDisabled: _subtitlesDisabled,
+                            ),
                             style: TextStyle(
                               height: 1.4,
                               fontSize: 32.0 * _subScale,
@@ -2539,18 +2551,19 @@ class _PlayerHostState extends State<PlayerHost> {
     });
     try {
       final srt = await OpenSubs.download(s);
-      await pc.player!.setSubtitleTrack(
-        SubtitleTrack.data(
-          srt,
-          title: s.name,
-          language: s.iso.isEmpty ? null : s.iso,
-        ),
+      final track = SubtitleTrack.data(
+        srt,
+        title: s.name,
+        language: s.iso.isEmpty ? null : s.iso,
       );
+      await pc.player!.setSubtitleTrack(track);
       if (!mounted) return;
       setState(() {
         _appliedSubName = s.langName.isEmpty
             ? 'Online · ${s.name}'
             : 'Online · ${s.langName} · ${s.name}';
+        _appliedSubTrack = track;
+        _subtitlesDisabled = false;
         _subBusy = false;
       });
       _closePanel();
@@ -2578,12 +2591,13 @@ class _PlayerHostState extends State<PlayerHost> {
         setState(() => _subBusy = false);
         return;
       }
-      await pc.player!.setSubtitleTrack(
-        SubtitleTrack.data(picked.data, title: picked.name),
-      );
+      final track = SubtitleTrack.data(picked.data, title: picked.name);
+      await pc.player!.setSubtitleTrack(track);
       if (!mounted) return;
       setState(() {
         _appliedSubName = 'Local · ${picked.name}';
+        _appliedSubTrack = track;
+        _subtitlesDisabled = false;
         _subBusy = false;
       });
       _closePanel();
@@ -2614,6 +2628,21 @@ class _PlayerHostState extends State<PlayerHost> {
         _panelFocusScope.nextFocus();
       }
     });
+  }
+
+  Future<void> _disableSubtitles({bool closePanel = false}) async {
+    if (mounted) setState(() => _subtitlesDisabled = true);
+    await pc.player?.setSubtitleTrack(SubtitleTrack.no());
+    if (closePanel && mounted) _closePanel();
+  }
+
+  Future<void> _selectSubtitle(
+    SubtitleTrack track, {
+    bool closePanel = false,
+  }) async {
+    if (mounted) setState(() => _subtitlesDisabled = false);
+    await pc.player?.setSubtitleTrack(track);
+    if (closePanel && mounted) _closePanel();
   }
 
   void _openDiagnostics() {
@@ -2740,12 +2769,16 @@ class _PlayerHostState extends State<PlayerHost> {
             ),
           ),
         ),
-        _subRow('Off', current.id == 'no', () {
-          pc.player!.setSubtitleTrack(SubtitleTrack.no());
-          _closePanel();
+        _subRow('Off', _subtitlesDisabled || current.id == 'no', () {
+          unawaited(_disableSubtitles(closePanel: true));
         }),
-        if (_appliedSubName != null)
-          _subRow(_appliedSubName!, current.id != 'no', () => _closePanel()),
+        if (_appliedSubName != null && _appliedSubTrack != null)
+          _subRow(
+            _appliedSubName!,
+            !_subtitlesDisabled && current.id == _appliedSubTrack!.id,
+            () =>
+                unawaited(_selectSubtitle(_appliedSubTrack!, closePanel: true)),
+          ),
         ...real.map((t) {
           final label = [
             t.title,
@@ -2753,10 +2786,9 @@ class _PlayerHostState extends State<PlayerHost> {
           ].whereType<String>().where((e) => e.isNotEmpty).join(' · ');
           return _subRow(
             label.isEmpty ? 'Track ${t.id}' : label,
-            current.id == t.id,
+            !_subtitlesDisabled && current.id == t.id,
             () {
-              pc.player!.setSubtitleTrack(t);
-              _closePanel();
+              unawaited(_selectSubtitle(t, closePanel: true));
             },
           );
         }),
@@ -3223,6 +3255,36 @@ class _PlayerHostState extends State<PlayerHost> {
             ],
           ),
         ),
+        if (_item.favRef != null) ...[
+          _settingLabel('My List'),
+          AnimatedBuilder(
+            animation: Library.instance,
+            builder: (_, _) {
+              final ref = _item.favRef!;
+              final saved = Library.instance.isFav(ref.key);
+              return ListTile(
+                dense: true,
+                onTap: () => Library.instance.toggleFav(ref),
+                leading: Icon(
+                  saved
+                      ? Icons.favorite_rounded
+                      : Icons.favorite_border_rounded,
+                  color: saved ? accent : Colors.white70,
+                ),
+                title: Text(
+                  saved ? 'Remove from My List' : 'Add to My List',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                subtitle: Text(
+                  saved
+                      ? 'This title is saved on this device.'
+                      : 'Keep this title or channel close.',
+                  style: const TextStyle(color: Colors.white54, fontSize: 12),
+                ),
+              );
+            },
+          ),
+        ],
         _settingLabel('Volume'),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -3337,9 +3399,8 @@ class _PlayerHostState extends State<PlayerHost> {
             );
           }),
         _settingLabel('Subtitles'),
-        _trackRow('Off', curSub.id == 'no', () {
-          pc.player!.setSubtitleTrack(SubtitleTrack.no());
-          setState(() {});
+        _trackRow('Off', _subtitlesDisabled || curSub.id == 'no', () {
+          unawaited(_disableSubtitles());
         }),
         ...subs.map((t) {
           final label = [
@@ -3348,10 +3409,9 @@ class _PlayerHostState extends State<PlayerHost> {
           ].whereType<String>().where((e) => e.isNotEmpty).join(' · ');
           return _trackRow(
             label.isEmpty ? 'Track ${t.id}' : label,
-            curSub.id == t.id,
+            !_subtitlesDisabled && curSub.id == t.id,
             () {
-              pc.player!.setSubtitleTrack(t);
-              setState(() {});
+              unawaited(_selectSubtitle(t));
             },
           );
         }),

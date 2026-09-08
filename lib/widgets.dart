@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'device_profile.dart';
+import 'library.dart';
 import 'theme.dart';
 
 /// Directional traversal for TV remotes. Flutter can only traverse to widgets
@@ -669,6 +670,7 @@ class MediaImage extends StatelessWidget {
     this.memCacheWidth,
     this.placeholder,
     this.error,
+    this.fallbackSource,
     this.filterQuality = FilterQuality.medium,
   });
 
@@ -678,6 +680,7 @@ class MediaImage extends StatelessWidget {
   final int? memCacheWidth;
   final Widget? placeholder;
   final Widget? error;
+  final String? fallbackSource;
   final FilterQuality filterQuality;
 
   static bool isAsset(String source) => source.startsWith('asset://');
@@ -706,7 +709,20 @@ class MediaImage extends StatelessWidget {
       fadeOutDuration: Duration.zero,
       useOldImageOnUrlChange: true,
       placeholder: placeholder == null ? null : (_, _) => placeholder!,
-      errorWidget: (_, _, _) => error ?? const SizedBox.shrink(),
+      errorWidget: (_, _, _) {
+        final fallback = fallbackSource?.trim() ?? '';
+        if (fallback.isNotEmpty && fallback != source) {
+          return MediaImage(
+            source: fallback,
+            fit: fit,
+            alignment: alignment,
+            memCacheWidth: memCacheWidth,
+            error: error,
+            filterQuality: filterQuality,
+          );
+        }
+        return error ?? const SizedBox.shrink();
+      },
     );
   }
 }
@@ -720,6 +736,7 @@ class MediaImage extends StatelessWidget {
 class FocusableTap extends StatefulWidget {
   final Widget Function(BuildContext context, bool active) builder;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
   final bool autofocus;
   final FocusNode? focusNode;
   final ValueChanged<bool>? onFocusChange;
@@ -730,6 +747,7 @@ class FocusableTap extends StatefulWidget {
     super.key,
     required this.builder,
     required this.onTap,
+    this.onLongPress,
     this.autofocus = false,
     this.focusNode,
     this.onFocusChange,
@@ -745,6 +763,8 @@ class _FocusableTapState extends State<FocusableTap> {
   bool _hover = false;
   bool _focus = false;
   FocusNode? _ownedFocusNode;
+  Timer? _longPressTimer;
+  bool _longPressFired = false;
 
   static const _activators = <ShortcutActivator, Intent>{
     SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
@@ -777,11 +797,17 @@ class _FocusableTapState extends State<FocusableTap> {
 
   @override
   void dispose() {
+    _longPressTimer?.cancel();
     _ownedFocusNode?.dispose();
     super.dispose();
   }
 
   void _focusChanged(bool value) {
+    if (!value) {
+      _longPressTimer?.cancel();
+      _longPressTimer = null;
+      _longPressFired = false;
+    }
     if (_focus != value) setState(() => _focus = value);
     widget.onFocusChange?.call(value);
     // The app-level RemoteFocusVisibility handles every focused control. On TV
@@ -799,6 +825,37 @@ class _FocusableTapState extends State<FocusableTap> {
     });
   }
 
+  static bool _isActivationKey(LogicalKeyboardKey key) =>
+      key == LogicalKeyboardKey.enter ||
+      key == LogicalKeyboardKey.numpadEnter ||
+      key == LogicalKeyboardKey.space ||
+      key == LogicalKeyboardKey.select ||
+      key == LogicalKeyboardKey.accept ||
+      key == LogicalKeyboardKey.execute ||
+      key == LogicalKeyboardKey.gameButtonA;
+
+  KeyEventResult _routeKey(FocusNode node, KeyEvent event) {
+    final longPress = widget.onLongPress;
+    if (longPress != null && _isActivationKey(event.logicalKey)) {
+      if (event is KeyDownEvent && _longPressTimer == null) {
+        _longPressFired = false;
+        _longPressTimer = Timer(const Duration(milliseconds: 650), () {
+          if (!mounted || !_effectiveFocusNode.hasFocus) return;
+          _longPressFired = true;
+          HapticFeedback.mediumImpact();
+          longPress();
+        });
+      } else if (event is KeyUpEvent) {
+        _longPressTimer?.cancel();
+        _longPressTimer = null;
+        if (!_longPressFired) widget.onTap();
+        _longPressFired = false;
+      }
+      return KeyEventResult.handled;
+    }
+    return widget.onKeyEvent?.call(node, event) ?? KeyEventResult.ignored;
+  }
+
   @override
   Widget build(BuildContext context) {
     Theme.of(context);
@@ -806,7 +863,11 @@ class _FocusableTapState extends State<FocusableTap> {
       focusNode: _effectiveFocusNode,
       autofocus: widget.autofocus,
       mouseCursor: SystemMouseCursors.click,
-      shortcuts: _activators,
+      // Activation must reach [_routeKey] when a long-press action exists so
+      // key-down starts the hold timer and key-up decides between tap/hold.
+      shortcuts: widget.onLongPress == null
+          ? _activators
+          : const <ShortcutActivator, Intent>{},
       actions: {
         ActivateIntent: CallbackAction<ActivateIntent>(
           onInvoke: (_) {
@@ -820,9 +881,11 @@ class _FocusableTapState extends State<FocusableTap> {
       child: Semantics(
         button: true,
         onTap: widget.onTap,
+        onLongPress: widget.onLongPress,
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: widget.onTap,
+          onLongPress: widget.onLongPress,
           child: AnimatedContainer(
             duration: lumenMotionFast,
             foregroundDecoration: widget.showFocusRing && _focus
@@ -843,8 +906,9 @@ class _FocusableTapState extends State<FocusableTap> {
         ),
       ),
     );
-    final onKeyEvent = widget.onKeyEvent;
-    if (onKeyEvent == null) return detector;
+    if (widget.onKeyEvent == null && widget.onLongPress == null) {
+      return detector;
+    }
     // Keep key routing in the widget tree instead of replacing an external
     // FocusNode's handler. Conditional/reordered controls can temporarily reuse
     // State objects with different nodes; chaining handlers on the nodes can
@@ -852,7 +916,7 @@ class _FocusableTapState extends State<FocusableTap> {
     return Focus(
       canRequestFocus: false,
       skipTraversal: true,
-      onKeyEvent: (_, event) => onKeyEvent(_effectiveFocusNode, event),
+      onKeyEvent: (_, event) => _routeKey(_effectiveFocusNode, event),
       child: detector,
     );
   }
@@ -2368,20 +2432,24 @@ class _Fallback extends StatelessWidget {
 class ChannelCard extends StatelessWidget {
   final String name;
   final String logo;
+  final String backupLogo;
   final VoidCallback onTap;
   final int index;
   final FocusNode? focusNode;
   final FocusOnKeyEventCallback? onKeyEvent;
   final ValueChanged<bool>? onFocusChange;
+  final MediaRef? favoriteRef;
   const ChannelCard({
     super.key,
     required this.name,
     required this.logo,
+    this.backupLogo = '',
     required this.onTap,
     this.index = 0,
     this.focusNode,
     this.onKeyEvent,
     this.onFocusChange,
+    this.favoriteRef,
   });
 
   @override
@@ -2411,6 +2479,7 @@ class ChannelCard extends StatelessWidget {
                   child: logo.isNotEmpty
                       ? MediaImage(
                           source: logo,
+                          fallbackSource: backupLogo,
                           fit: BoxFit.contain,
                           memCacheWidth:
                               (180 * MediaQuery.devicePixelRatioOf(context))
@@ -2454,6 +2523,35 @@ class ChannelCard extends StatelessWidget {
                     ),
                   ),
                 ),
+                if (favoriteRef != null)
+                  Positioned(
+                    right: 8,
+                    top: 8,
+                    child: AnimatedBuilder(
+                      animation: Library.instance,
+                      builder: (_, _) {
+                        final saved = Library.instance.isFav(favoriteRef!.key);
+                        return Container(
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(
+                              alpha: saved ? 0.72 : 0.48,
+                            ),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white24),
+                          ),
+                          child: Icon(
+                            saved
+                                ? Icons.favorite_rounded
+                                : Icons.favorite_border_rounded,
+                            color: saved ? accentInk : Colors.white70,
+                            size: 16,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
               ],
             ),
           ),
@@ -2473,6 +2571,9 @@ class ChannelCard extends StatelessWidget {
       onKeyEvent: onKeyEvent,
       onFocusChange: onFocusChange,
       onTap: onTap,
+      onLongPress: favoriteRef == null
+          ? null
+          : () => Library.instance.toggleFav(favoriteRef!),
       builder: (context, active) => AnimatedScale(
         scale: active ? 1.035 : 1.0,
         duration: lumenMotionFast,

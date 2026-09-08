@@ -25,6 +25,8 @@ String catalogDefaultSort(String section) =>
 
 class _Res {
   final String name, image, subtitle;
+  final String fallbackImage;
+  final MediaRef? favoriteRef;
   final double rating;
   final bool live;
   final VoidCallback onTap;
@@ -34,8 +36,10 @@ class _Res {
     this.rating,
     this.subtitle,
     this.live,
-    this.onTap,
-  );
+    this.onTap, {
+    this.fallbackImage = '',
+    this.favoriteRef,
+  });
 }
 
 class SearchScreen extends StatefulWidget {
@@ -1036,21 +1040,27 @@ class SearchScreenState extends State<SearchScreen>
       ),
     ),
   );
-  PlayerItem _liveItem(LiveStream s) {
+  MediaRef _liveRef(LiveStream s) {
     final url = widget.client.streamUrl('live', s.streamId, ext: 'ts');
+    return MediaRef(
+      kind: 'live',
+      id: s.streamId,
+      name: s.name,
+      image: s.effectiveIcon,
+      url: url,
+      cat: s.categoryId,
+    );
+  }
+
+  PlayerItem _liveItem(LiveStream s) {
+    final ref = _liveRef(s);
     return PlayerItem(
-      url,
+      ref.url,
       s.name,
       isLive: true,
-      poster: s.icon,
+      poster: s.effectiveIcon,
       httpHeaders: widget.client.streamHeaders(s.streamId),
-      favRef: MediaRef(
-        kind: 'live',
-        id: s.streamId,
-        name: s.name,
-        image: s.icon,
-        url: url,
-      ),
+      favRef: ref,
     );
   }
 
@@ -1676,11 +1686,13 @@ class SearchScreenState extends State<SearchScreen>
           .map(
             (entry) => _Res(
               entry.value.name,
-              entry.value.icon,
+              entry.value.effectiveIcon,
               0,
               '',
               true,
               () => PlaybackController.instance.open(livePlaylist, entry.key),
+              fallbackImage: entry.value.fallbackIcon,
+              favoriteRef: _liveRef(entry.value),
             ),
           )
           .toList();
@@ -1740,11 +1752,13 @@ class SearchScreenState extends State<SearchScreen>
           .map(
             (e) => _Res(
               e.value.name,
-              e.value.icon,
+              e.value.effectiveIcon,
               0,
               '',
               true,
               () => PlaybackController.instance.open(pl, e.key),
+              fallbackImage: e.value.fallbackIcon,
+              favoriteRef: _liveRef(e.value),
             ),
           )
           .toList();
@@ -1825,6 +1839,8 @@ class SearchScreenState extends State<SearchScreen>
                           ),
                           name: items[i].name,
                           logo: items[i].image,
+                          backupLogo: items[i].fallbackImage,
+                          favoriteRef: items[i].favoriteRef,
                           index: i,
                           onTap: items[i].onTap,
                         )
@@ -1885,6 +1901,8 @@ class SearchScreenState extends State<SearchScreen>
                           _moveSearchResultFocus(id, i, event),
                       name: items[i].name,
                       logo: items[i].image,
+                      backupLogo: items[i].fallbackImage,
+                      favoriteRef: items[i].favoriteRef,
                       index: i,
                       onTap: items[i].onTap,
                     )

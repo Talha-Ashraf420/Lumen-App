@@ -656,6 +656,11 @@ class CatalogStore {
     'name': item.name,
     'stream_icon': item.icon,
     'category_id': item.categoryId,
+    if (item.epgId.isNotEmpty) 'epg_channel_id': item.epgId,
+    if (item.epgName.isNotEmpty) 'tvg_name': item.epgName,
+    if (item.countryCode.isNotEmpty) 'country_code': item.countryCode,
+    if (item.fallbackIcon.isNotEmpty) '_lumen_fallback_icon': item.fallbackIcon,
+    if (item.logoSource.isNotEmpty) '_lumen_logo_source': item.logoSource,
   };
 
   static LiveStream _decodeLive(Map<String, dynamic> value) =>

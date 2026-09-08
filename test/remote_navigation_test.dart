@@ -65,6 +65,62 @@ void main() {
     expect(secondActivations, 1);
   });
 
+  testWidgets('holding remote select invokes long press without opening tile', (
+    tester,
+  ) async {
+    var taps = 0;
+    var longPresses = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: FocusableTap(
+            autofocus: true,
+            onTap: () => taps++,
+            onLongPress: () => longPresses++,
+            builder: (_, _) => const SizedBox(width: 160, height: 80),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.select);
+    await tester.pump(const Duration(milliseconds: 700));
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.select);
+    await tester.pump();
+
+    expect(longPresses, 1);
+    expect(taps, 0);
+  });
+
+  testWidgets('short remote select still opens a long-press capable tile', (
+    tester,
+  ) async {
+    var taps = 0;
+    var longPresses = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: FocusableTap(
+            autofocus: true,
+            onTap: () => taps++,
+            onLongPress: () => longPresses++,
+            builder: (_, _) => const SizedBox(width: 160, height: 80),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.select);
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.select);
+    await tester.pump();
+
+    expect(taps, 1);
+    expect(longPresses, 0);
+  });
+
   testWidgets('focused remote control scrolls into view', (tester) async {
     final controller = ScrollController();
 

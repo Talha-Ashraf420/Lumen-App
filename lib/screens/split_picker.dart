@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../catalog_cache.dart';
+import '../library.dart';
 import '../models.dart';
 import '../playback.dart';
 import '../theme.dart';
@@ -112,8 +113,16 @@ class _SplitPickerState extends State<SplitPicker> {
       widget.client.streamUrl('live', s.streamId, ext: 'ts'),
       s.name,
       isLive: true,
-      poster: s.icon,
+      poster: s.effectiveIcon,
       httpHeaders: widget.client.streamHeaders(s.streamId),
+      favRef: MediaRef(
+        kind: 'live',
+        id: s.streamId,
+        name: s.name,
+        image: s.effectiveIcon,
+        url: widget.client.streamUrl('live', s.streamId, ext: 'ts'),
+        cat: s.categoryId,
+      ),
     ),
   );
 
@@ -125,6 +134,13 @@ class _SplitPickerState extends State<SplitPicker> {
         m.name,
         poster: m.icon,
         ext: ext,
+        favRef: MediaRef(
+          kind: 'movie',
+          id: m.streamId,
+          name: m.name,
+          image: m.icon,
+          cat: m.categoryId,
+        ),
       ),
     );
   }
@@ -138,6 +154,15 @@ class _SplitPickerState extends State<SplitPicker> {
         '${_series?.name ?? 'Series'} · $name',
         poster: e.image.isNotEmpty ? e.image : (_info?.cover ?? ''),
         ext: ext,
+        favRef: _series == null
+            ? null
+            : MediaRef(
+                kind: 'series',
+                id: _series!.seriesId,
+                name: _series!.name,
+                image: _series!.cover,
+                cat: _series!.categoryId,
+              ),
       ),
     );
   }
@@ -313,7 +338,7 @@ class _SplitPickerState extends State<SplitPicker> {
         final it = _items[i];
         if (it is LiveStream) {
           return _pickerRow(
-            image: it.icon,
+            image: it.effectiveIcon,
             fallback: Icons.live_tv_rounded,
             title: Text(it.name, maxLines: 1, overflow: TextOverflow.ellipsis),
             subtitle: const Text(

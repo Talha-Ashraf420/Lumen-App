@@ -321,6 +321,7 @@ class _MyListScreenState extends State<MyListScreen> {
                                       _gridKey(i, visible.length, event),
                                   name: visible[i].name,
                                   logo: visible[i].image,
+                                  favoriteRef: visible[i],
                                   index: i,
                                   onTap: () =>
                                       _open(context, visible[i], visible),

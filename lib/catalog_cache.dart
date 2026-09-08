@@ -37,6 +37,7 @@ class CatalogCache {
   final Map<int, Future<VodInfo>> _vodInfo = {};
   final Map<int, Future<SeriesInfo>> _seriesInfo = {};
   final Map<String, Future<void>> _allImports = {};
+  final Set<String> _logoEnrichments = {};
 
   Future<List<Category>> vod(XtreamClient client, {bool priority = false}) {
     _ensureOwner(client);
@@ -145,7 +146,10 @@ class CatalogCache {
           value,
           generation: generation,
         ),
-        setMemory: (value) => _liveStreams[bucket] = Future.value(value),
+        setMemory: (value) {
+          _liveStreams[bucket] = Future.value(value);
+          _scheduleLogoEnrichment(client, bucket, value);
+        },
         priority: priority,
       ),
     );
@@ -199,6 +203,41 @@ class CatalogCache {
     _vodInfo.clear();
     _seriesInfo.clear();
     _allImports.clear();
+    _logoEnrichments.clear();
+  }
+
+  void _scheduleLogoEnrichment(
+    XtreamClient client,
+    String bucket,
+    List<LiveStream> channels,
+  ) {
+    if (client.creds.isDemo || channels.isEmpty) return;
+    final signature = Object.hashAll([
+      bucket,
+      for (final channel in channels)
+        '${channel.streamId}|${channel.icon}|${channel.fallbackIcon}|'
+            '${channel.epgId}|${channel.epgName}',
+    ]).toString();
+    if (!_logoEnrichments.add(signature)) return;
+    final epoch = _epoch;
+    final scope = Store.profileScope(client.creds);
+    unawaited(() async {
+      try {
+        final enriched = await client.enrichLiveLogos(channels);
+        if (_sameItems(channels, enriched)) return;
+        await CatalogStore.instance.replaceLive(
+          scope,
+          bucket,
+          enriched,
+          generation: _generation(),
+        );
+        if (epoch != _epoch || !identical(_owner, client)) return;
+        _liveStreams[bucket] = Future.value(enriched);
+        revision.value++;
+      } catch (_) {
+        // Artwork enrichment is optional and never affects channel playback.
+      }
+    }());
   }
 
   Future<List<Category>> _loadCategoriesCachedFirst(
@@ -293,6 +332,7 @@ class CatalogCache {
       try {
         fresh = await _requests.run(fetch, priority: priority);
       } catch (_) {
+        if (epoch == _epoch && identical(_owner, client)) setMemory(cached);
         return cached;
       }
       final reliable = fresh.isNotEmpty || cached.isEmpty ? fresh : cached;
@@ -750,7 +790,8 @@ class CatalogCache {
           '${value.categoryId}|${value.rating}|${value.releaseDate}',
     LiveStream value =>
       '${value.streamId}|${value.name}|${value.icon}|'
-          '${value.categoryId}',
+          '${value.categoryId}|${value.epgId}|${value.epgName}|'
+          '${value.countryCode}|${value.fallbackIcon}|${value.logoSource}',
     _ => '$item',
   };
 

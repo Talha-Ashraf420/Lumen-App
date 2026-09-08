@@ -675,6 +675,7 @@ class PlaybackController extends ChangeNotifier {
               url: sources.first,
               title: item.title,
               alternateUrl: sources.length > 1 ? sources[1] : null,
+              favoriteRef: item.favRef,
             );
           }(),
       ],

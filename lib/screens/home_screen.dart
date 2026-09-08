@@ -212,7 +212,8 @@ class _HomeScreenState extends State<HomeScreen>
   Widget _lastPlayedRow() {
     final recent = Library.instance.recent;
     if (recent.isEmpty) return const SizedBox.shrink();
-    final posterWidth = DeviceProfile.isTelevision ? 150.0 : kPosterW;
+    final cardWidth = DeviceProfile.isTelevision ? 310.0 : 260.0;
+    final cardHeight = DeviceProfile.isTelevision ? 112.0 : 96.0;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -221,7 +222,7 @@ class _HomeScreenState extends State<HomeScreen>
           child: SectionHeader(title: 'Last played'),
         ),
         SizedBox(
-          height: posterWidth * 1.5 + 4,
+          height: cardHeight,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             padding: EdgeInsets.symmetric(
@@ -234,7 +235,8 @@ class _HomeScreenState extends State<HomeScreen>
             itemBuilder: (_, i) => _RecentCard(
               item: recent[i],
               index: i,
-              width: posterWidth,
+              width: cardWidth,
+              height: cardHeight,
               onTap: () => _openRecent(recent[i]),
             ),
           ),
@@ -782,11 +784,7 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
             children: [
               ColoredBox(color: surface),
               if (heroArt.isNotEmpty)
-                Positioned(
-                  left: MediaQuery.sizeOf(context).width * 0.36,
-                  right: 0,
-                  top: 0,
-                  bottom: 0,
+                Positioned.fill(
                   child: AnimatedSwitcher(
                     duration: const Duration(milliseconds: 550),
                     child: MediaImage(
@@ -807,12 +805,25 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
                   gradient: LinearGradient(
                     begin: Alignment.centerLeft,
                     end: Alignment.centerRight,
-                    stops: const [0, 0.48, 0.82, 1],
+                    stops: const [0, 0.34, 0.68, 1],
                     colors: [
-                      surface,
-                      surface,
-                      surface.withValues(alpha: 0.60),
+                      surface.withValues(alpha: 0.98),
+                      surface.withValues(alpha: 0.86),
+                      surface.withValues(alpha: 0.35),
                       surface.withValues(alpha: 0.08),
+                    ],
+                  ),
+                ),
+              ),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    stops: const [0.50, 1],
+                    colors: [
+                      Colors.transparent,
+                      Colors.black.withValues(alpha: 0.72),
                     ],
                   ),
                 ),
@@ -1134,18 +1145,19 @@ class _RailThumb extends StatelessWidget {
   }
 }
 
-/// Uniform "Jump back in" card — one 2:3 tile for movies AND channels. Channel
-/// logos are contained on a dark tile (not stretched); every card carries a
-/// bottom scrim so the title stays readable in either theme.
+/// A compact landscape resume card so recent playback remains visible below
+/// the cinematic hero on television-sized viewports.
 class _RecentCard extends StatelessWidget {
   final MediaRef item;
   final int index;
   final double width;
+  final double height;
   final VoidCallback onTap;
   const _RecentCard({
     required this.item,
     required this.index,
-    this.width = kPosterW,
+    this.width = 280,
+    this.height = 104,
     required this.onTap,
   });
 
@@ -1154,150 +1166,120 @@ class _RecentCard extends StatelessWidget {
     final live = item.isLive;
     return SizedBox(
       width: width,
+      height: height,
       child:
           FocusableTap(
                 onTap: onTap,
-                builder: (context, active) => AspectRatio(
-                  aspectRatio: 2 / 3,
-                  child: ClipRRect(
+                builder: (context, active) => AnimatedContainer(
+                  duration: lumenMotionFast,
+                  decoration: BoxDecoration(
+                    color: active ? surfaceHi : surface,
                     borderRadius: BorderRadius.circular(16),
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        DecoratedBox(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [surfaceHi, surface],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                          ),
-                        ),
-                        if (item.image.isNotEmpty)
-                          live
-                              ? Padding(
-                                  padding: const EdgeInsets.fromLTRB(
-                                    18,
-                                    20,
-                                    18,
-                                    46,
-                                  ),
-                                  child: MediaImage(
-                                    source: item.image,
-                                    fit: BoxFit.contain,
-                                    memCacheWidth:
-                                        (190 *
-                                                MediaQuery.devicePixelRatioOf(
-                                                  context,
-                                                ))
-                                            .round()
-                                            .clamp(256, 540),
-                                  ),
-                                )
-                              : MediaImage(
+                    border: Border.all(color: active ? accent : line),
+                    boxShadow: active
+                        ? glow(accent, blur: 18, y: 7, a: .28)
+                        : null,
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: height * 1.05,
+                        height: height,
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            ColoredBox(color: surfaceHi),
+                            if (item.image.isNotEmpty)
+                              Padding(
+                                padding: EdgeInsets.all(live ? 14 : 0),
+                                child: MediaImage(
                                   source: item.image,
-                                  fit: BoxFit.cover,
+                                  fit: live ? BoxFit.contain : BoxFit.cover,
                                   memCacheWidth:
-                                      (220 *
+                                      (height *
+                                              1.5 *
                                               MediaQuery.devicePixelRatioOf(
                                                 context,
                                               ))
                                           .round()
-                                          .clamp(320, 640),
+                                          .clamp(240, 600),
                                 ),
-                        const DecoratedBox(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.bottomCenter,
-                              end: Alignment.topCenter,
-                              colors: [Colors.black, Colors.transparent],
-                              stops: [0.0, 0.55],
-                            ),
-                          ),
-                        ),
-                        if (live)
-                          Positioned(
-                            top: 8,
-                            left: 8,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 7,
-                                vertical: 3,
                               ),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFFF3B41),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: const Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Icons.circle,
-                                    color: Colors.white,
-                                    size: 6,
+                            if (live)
+                              Positioned(
+                                left: 8,
+                                top: 8,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 3,
                                   ),
-                                  SizedBox(width: 4),
-                                  Text(
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFF3B41),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: const Text(
                                     'LIVE',
                                     style: TextStyle(
                                       color: Colors.white,
-                                      fontSize: 9.5,
+                                      fontSize: 9,
                                       fontWeight: FontWeight.w900,
-                                      letterSpacing: 0.5,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 13),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                item.name,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: textHi,
+                                  fontSize: DeviceProfile.isTelevision
+                                      ? 14
+                                      : 13,
+                                  fontWeight: FontWeight.w800,
+                                  height: 1.15,
+                                ),
+                              ),
+                              const SizedBox(height: 7),
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.play_circle_fill_rounded,
+                                    size: 17,
+                                    color: active ? accent : muted,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      live ? 'Watch live' : 'Play again',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: active ? accent : muted,
+                                        fontSize: 11.5,
+                                        fontWeight: FontWeight.w700,
+                                      ),
                                     ),
                                   ),
                                 ],
                               ),
-                            ),
-                          ),
-                        Positioned(
-                          left: 11,
-                          right: 11,
-                          bottom: 10,
-                          child: Text(
-                            item.name,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              height: 1.15,
-                            ),
+                            ],
                           ),
                         ),
-                        AnimatedOpacity(
-                          opacity: active ? 1 : 0,
-                          duration: const Duration(milliseconds: 180),
-                          child: ColoredBox(
-                            color: Colors.black.withValues(alpha: 0.32),
-                            child: Center(
-                              child: Container(
-                                padding: const EdgeInsets.all(11),
-                                decoration: BoxDecoration(
-                                  color: accent,
-                                  shape: BoxShape.circle,
-                                  boxShadow: glow(accent),
-                                ),
-                                child: Icon(
-                                  Icons.play_arrow_rounded,
-                                  color: onAccent,
-                                  size: 26,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                        DecoratedBox(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.07),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
               )

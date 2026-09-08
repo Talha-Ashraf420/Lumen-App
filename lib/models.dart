@@ -123,12 +123,54 @@ class LiveStream {
   final String name;
   final String icon;
   final String categoryId;
-  LiveStream(this.streamId, this.name, this.icon, this.categoryId);
+  final String epgId;
+  final String epgName;
+  final String countryCode;
+  final String fallbackIcon;
+  final String logoSource;
+
+  LiveStream(
+    this.streamId,
+    this.name,
+    this.icon,
+    this.categoryId, {
+    this.epgId = '',
+    this.epgName = '',
+    this.countryCode = '',
+    this.fallbackIcon = '',
+    this.logoSource = '',
+  });
+
+  /// Artwork shown by catalog surfaces. A provider/playlist logo always wins;
+  /// guide and public-catalog matches only fill an empty value.
+  String get effectiveIcon => icon.isNotEmpty ? icon : fallbackIcon;
+
+  LiveStream copyWith({
+    String? icon,
+    String? fallbackIcon,
+    String? logoSource,
+  }) => LiveStream(
+    streamId,
+    name,
+    icon ?? this.icon,
+    categoryId,
+    epgId: epgId,
+    epgName: epgName,
+    countryCode: countryCode,
+    fallbackIcon: fallbackIcon ?? this.fallbackIcon,
+    logoSource: logoSource ?? this.logoSource,
+  );
+
   factory LiveStream.fromJson(Map<String, dynamic> j) => LiveStream(
     _toInt(j['stream_id']),
     _toStr(j['name']),
     _toStr(j['stream_icon']),
     _toStr(j['category_id']),
+    epgId: _toStr(j['epg_channel_id'] ?? j['tvg_id'] ?? j['tvg-id']),
+    epgName: _toStr(j['tvg_name'] ?? j['tvg-name']),
+    countryCode: _toStr(j['country'] ?? j['country_code']),
+    fallbackIcon: _toStr(j['_lumen_fallback_icon']),
+    logoSource: _toStr(j['_lumen_logo_source']),
   );
 }
 

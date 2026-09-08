@@ -175,11 +175,20 @@ class Library extends ChangeNotifier {
   // ---- favourites ----
   bool isFav(String key) => favourites.any((e) => e.key == key);
   void toggleFav(MediaRef ref) {
+    setFavorite(ref, !isFav(ref.key));
+  }
+
+  /// Apply an explicit favorite state. The native Android TV player returns
+  /// its final state when it closes, so this must be idempotent rather than a
+  /// second blind toggle.
+  void setFavorite(MediaRef ref, bool saved) {
     final i = favourites.indexWhere((e) => e.key == ref.key);
-    if (i >= 0) {
+    if (saved && i < 0) {
+      favourites.insert(0, ref);
+    } else if (!saved && i >= 0) {
       favourites.removeAt(i);
     } else {
-      favourites.insert(0, ref);
+      return;
     }
     notifyListeners();
     _save();

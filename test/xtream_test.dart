@@ -28,8 +28,8 @@ void main() {
 
   group('M3U parsing', () {
     const first = '''
-#EXTM3U
-#EXTINF:-1 group-title="News",News
+#EXTM3U url-tvg="https://guide.example/epg.xml"
+#EXTINF:-1 tvg-id="NewsOne.in" tvg-name="News One" group-title="News",News
 #EXTVLCOPT:http-user-agent=Lumen Test
 #KODIPROP:inputstream.adaptive.stream_headers=Referer=https%3A%2F%2Fportal.example
 https://stream.example/news.m3u8
@@ -63,6 +63,9 @@ https://stream.example/news.m3u8
       final sport = parsed.channels.singleWhere((c) => c.name == 'Sport');
 
       expect(news.categoryId, 'News');
+      expect(news.epgId, 'NewsOne.in');
+      expect(news.epgName, 'News One');
+      expect(parsed.epgUrls, ['https://guide.example/epg.xml']);
       expect(parsed.headers[news.streamId], {
         'User-Agent': 'Lumen Test',
         'Referer': 'https://portal.example',

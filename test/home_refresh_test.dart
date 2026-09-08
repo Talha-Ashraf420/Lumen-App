@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen_tv/catalog_cache.dart';
+import 'package:lumen_tv/library.dart';
 import 'package:lumen_tv/models.dart';
 import 'package:lumen_tv/refresh.dart';
 import 'package:lumen_tv/screens/home_screen.dart';
@@ -29,6 +30,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     activePalette = darkPalette;
     CatalogCache.instance.clear();
+    Library.instance.recent.clear();
   });
 
   test('Home spotlight prefers a clean English movies category', () {
@@ -96,5 +98,33 @@ void main() {
 
     nextCategories.complete(<Category>[]);
     await tester.pump(const Duration(milliseconds: 500));
+  });
+
+  testWidgets('Home exposes the most recently played item', (tester) async {
+    Library.instance.addRecent(
+      const MediaRef(
+        kind: 'live',
+        id: 7,
+        name: 'Evening News',
+        image: '',
+        url: 'https://stream.example/live.ts',
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildTheme(darkPalette),
+        home: HomeScreen(
+          client: _RefreshClient(),
+          onBrowse: () {},
+          categoryLoader: () async => <Category>[],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Last played'), findsOneWidget);
+    expect(find.text('Evening News'), findsOneWidget);
+    expect(find.text('Watch live'), findsOneWidget);
   });
 }

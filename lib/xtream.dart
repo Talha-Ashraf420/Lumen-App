@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
 import 'package:http/http.dart' as http;
+import 'channel_logos.dart';
 import 'demo_catalog.dart';
 import 'models.dart';
 
@@ -88,12 +89,14 @@ class ParsedM3uPlaylist {
   final List<LiveStream> channels;
   final Map<int, String> urls;
   final Map<int, Map<String, String>> headers;
+  final List<String> epgUrls;
 
   const ParsedM3uPlaylist({
     required this.categories,
     required this.channels,
     required this.urls,
     required this.headers,
+    required this.epgUrls,
   });
 }
 
@@ -165,6 +168,7 @@ ParsedM3uPlaylist parseM3uPlaylist(String body) {
   final headersById = <int, Map<String, String>>{};
   final usedIds = <int>{};
   final seenSources = <String>{};
+  final epgUrls = <String>[];
 
   String? extinf;
   String? extGroup;
@@ -174,6 +178,19 @@ ParsedM3uPlaylist parseM3uPlaylist(String body) {
     final line = raw.trim();
     if (line.isEmpty) continue;
     final upper = line.toUpperCase();
+    if (upper.startsWith('#EXTM3U')) {
+      for (final key in ['url-tvg', 'x-tvg-url']) {
+        final value = _m3uAttribute(key, line);
+        if (value.isEmpty) continue;
+        for (final url in value.split(',')) {
+          final trimmed = url.trim();
+          if (trimmed.isNotEmpty && !epgUrls.contains(trimmed)) {
+            epgUrls.add(trimmed);
+          }
+        }
+      }
+      continue;
+    }
     if (upper.startsWith('#EXTINF')) {
       extinf = line;
       extGroup = null;
@@ -230,6 +247,8 @@ ParsedM3uPlaylist parseM3uPlaylist(String body) {
         ? groupAttr
         : ((extGroup ?? '').isNotEmpty ? extGroup! : 'Uncategorized');
     final logo = _m3uAttribute('tvg-logo', extinf);
+    final epgId = _m3uAttribute('tvg-id', extinf);
+    final epgName = _m3uAttribute('tvg-name', extinf);
     final sourceKey = '$name\n$url';
     if (!seenSources.add(sourceKey)) {
       extinf = null;
@@ -243,7 +262,9 @@ ParsedM3uPlaylist parseM3uPlaylist(String body) {
     }
 
     groups.add(group);
-    channels.add(LiveStream(id, name, logo, group));
+    channels.add(
+      LiveStream(id, name, logo, group, epgId: epgId, epgName: epgName),
+    );
     urls[id] = url;
     if (pendingHeaders.isNotEmpty) {
       headersById[id] = Map.unmodifiable(pendingHeaders);
@@ -257,6 +278,7 @@ ParsedM3uPlaylist parseM3uPlaylist(String body) {
     channels: List.unmodifiable(channels),
     urls: Map.unmodifiable(urls),
     headers: Map.unmodifiable(headersById),
+    epgUrls: List.unmodifiable(epgUrls),
   );
 }
 
@@ -283,6 +305,8 @@ class XtreamClient {
   final List<LiveStream> _m3uChannels = [];
   final Map<int, String> _m3uUrlById = {}; // streamId -> direct stream URL
   final Map<int, Map<String, String>> _m3uHeadersById = {};
+  final List<Uri> _m3uEpgUrls = [];
+  ChannelLogoResolver? _logoResolver;
 
   Future<void> _ensureM3u() async {
     final existing = _m3uLoad;
@@ -319,6 +343,16 @@ class XtreamClient {
     _m3uHeadersById
       ..clear()
       ..addAll(parsed.headers);
+    final playlistUri = Uri.parse(creds.m3uUrl!);
+    _m3uEpgUrls
+      ..clear()
+      ..addAll(
+        parsed.epgUrls
+            .map(Uri.tryParse)
+            .whereType<Uri>()
+            .map(playlistUri.resolveUri)
+            .where((uri) => uri.scheme == 'http' || uri.scheme == 'https'),
+      );
     if (_m3uChannels.isEmpty)
       throw XtreamException('No channels found in this playlist.');
   }
@@ -441,6 +475,25 @@ class XtreamClient {
       }),
       LiveStream.fromJson,
     );
+  }
+
+  /// Resolve missing channel artwork away from the foreground catalog fetch.
+  /// CatalogCache invokes this after it has already returned cached/provider
+  /// rows, then publishes one quiet revision when richer artwork is ready.
+  Future<List<LiveStream>> enrichLiveLogos(List<LiveStream> channels) async {
+    if (creds.isDemo || channels.isEmpty) return channels;
+    final resolver = _logoResolver ??= ChannelLogoResolver(httpClient: _http);
+    final guideUrls = creds.isM3u
+        ? List<Uri>.of(_m3uEpgUrls)
+        : [
+            Uri.parse('${creds.baseUrl}/xmltv.php').replace(
+              queryParameters: {
+                'username': creds.username,
+                'password': creds.password,
+              },
+            ),
+          ];
+    return resolver.resolve(channels, guideUrls: guideUrls);
   }
 
   // Plain M3U playlists carry only live channels — VOD/series are empty.

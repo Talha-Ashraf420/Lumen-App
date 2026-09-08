@@ -29,6 +29,21 @@ void main() {
     expect(playerSeekHudLabelFor(-120), '−2m');
   });
 
+  test('subtitle Off hides the rendered subtitle layer', () {
+    expect(
+      playerSubtitleViewVisibleFor(minimized: false, subtitlesDisabled: false),
+      isTrue,
+    );
+    expect(
+      playerSubtitleViewVisibleFor(minimized: false, subtitlesDisabled: true),
+      isFalse,
+    );
+    expect(
+      playerSubtitleViewVisibleFor(minimized: true, subtitlesDisabled: false),
+      isFalse,
+    );
+  });
+
   test('recovery focus enters actions and returns to the player', () {
     expect(
       playerRecoveryFocusTargetFor(

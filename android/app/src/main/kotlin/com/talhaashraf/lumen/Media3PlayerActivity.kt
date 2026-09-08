@@ -68,7 +68,10 @@ class Media3PlayerActivity : Activity() {
         const val EXTRA_PLAYLIST_URLS = "playlistUrls"
         const val EXTRA_PLAYLIST_ALTERNATE_URLS = "playlistAlternateUrls"
         const val EXTRA_PLAYLIST_TITLES = "playlistTitles"
+        const val EXTRA_PLAYLIST_FAVORITE_KEYS = "playlistFavoriteKeys"
+        const val EXTRA_PLAYLIST_FAVORITE_STATES = "playlistFavoriteStates"
         const val EXTRA_INITIAL_INDEX = "initialIndex"
+        const val EXTRA_LAST_INDEX = "lastIndex"
         const val RESULT_USE_EMBEDDED_ENGINE = Activity.RESULT_FIRST_USER + 20
 
         private const val CONNECT_TIMEOUT_MS = 15_000
@@ -124,6 +127,8 @@ class Media3PlayerActivity : Activity() {
     private var playlistUrls = listOf<String>()
     private var playlistAlternateUrls = listOf<String>()
     private var playlistTitles = listOf<String>()
+    private var playlistFavoriteKeys = listOf<String>()
+    private var playlistFavoriteStates = mutableListOf<Boolean>()
     private var playlistIndex = 0
     private var alternateUrl = ""
     private var usingAlternateSource = false
@@ -142,6 +147,7 @@ class Media3PlayerActivity : Activity() {
     private var heldSeekAnchorMs = 0L
     private var pendingBufferMessage = ""
     private var selectedResizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+    private var returningToEmbeddedEngine = false
     private val isTelevisionDevice: Boolean
         get() = resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK ==
             Configuration.UI_MODE_TYPE_TELEVISION
@@ -237,6 +243,13 @@ class Media3PlayerActivity : Activity() {
             .orEmpty()
         playlistTitles = intent.getStringArrayListExtra(EXTRA_PLAYLIST_TITLES)
             .orEmpty()
+        playlistFavoriteKeys = intent
+            .getStringArrayListExtra(EXTRA_PLAYLIST_FAVORITE_KEYS)
+            .orEmpty()
+        playlistFavoriteStates = intent
+            .getBooleanArrayExtra(EXTRA_PLAYLIST_FAVORITE_STATES)
+            ?.toMutableList()
+            ?: mutableListOf()
         if (playlistUrls.isEmpty()) {
             playlistUrls = listOf(url)
             playlistAlternateUrls = listOf("")
@@ -244,6 +257,12 @@ class Media3PlayerActivity : Activity() {
         }
         if (playlistAlternateUrls.size != playlistUrls.size) {
             playlistAlternateUrls = List(playlistUrls.size) { "" }
+        }
+        if (playlistFavoriteKeys.size != playlistUrls.size) {
+            playlistFavoriteKeys = List(playlistUrls.size) { "" }
+        }
+        if (playlistFavoriteStates.size != playlistUrls.size) {
+            playlistFavoriteStates = MutableList(playlistUrls.size) { false }
         }
         playlistIndex = intent.getIntExtra(EXTRA_INITIAL_INDEX, 0)
             .coerceIn(0, playlistUrls.lastIndex)
@@ -349,6 +368,7 @@ class Media3PlayerActivity : Activity() {
             }
         })
         updateNavigationUi()
+        updateFavoriteUi()
         updateTransportUi()
         open()
         handler.post(watchdog)
@@ -1124,6 +1144,7 @@ class Media3PlayerActivity : Activity() {
         externalSubtitleUri = null
         externalSubtitleName = ""
         updateNavigationUi()
+        updateFavoriteUi()
         open()
         showControls()
         if (!isLive && navigationDirection != 0) {
@@ -1314,13 +1335,31 @@ class Media3PlayerActivity : Activity() {
             AspectRatioFrameLayout.RESIZE_MODE_FIT,
             AspectRatioFrameLayout.RESIZE_MODE_ZOOM
         )
-        val labels = arrayOf("Fit to screen", "Fill screen")
         val selected = modes.indexOf(selectedResizeMode).coerceAtLeast(0)
+        val favoriteKey = playlistFavoriteKeys.getOrNull(playlistIndex).orEmpty()
+        val saved = playlistFavoriteStates.getOrNull(playlistIndex) == true
+        val labels = buildList {
+            add(if (selected == 0) "✓  Fit to screen" else "Fit to screen")
+            add(if (selected == 1) "✓  Fill screen" else "Fill screen")
+            if (favoriteKey.isNotBlank()) {
+                add(if (saved) "♥  Remove from My List" else "♡  Add to My List")
+            }
+        }.toTypedArray()
         val dialog = AlertDialog.Builder(this)
-            .setTitle("Picture size")
-            .setSingleChoiceItems(labels, selected) { activeDialog, index ->
-                selectedResizeMode = modes[index]
-                playerView.resizeMode = selectedResizeMode
+            .setTitle("More")
+            .setItems(labels) { activeDialog, index ->
+                if (index < modes.size) {
+                    selectedResizeMode = modes[index]
+                    playerView.resizeMode = selectedResizeMode
+                } else {
+                    playlistFavoriteStates[playlistIndex] = !saved
+                    updateFavoriteUi()
+                    Toast.makeText(
+                        this,
+                        if (saved) "Removed from My List" else "Added to My List",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
                 activeDialog.dismiss()
             }
             .setNegativeButton("Cancel", null)
@@ -1335,6 +1374,18 @@ class Media3PlayerActivity : Activity() {
             moreButton.post { moreButton.requestFocus() }
         }
         dialog.show()
+    }
+
+    private fun updateFavoriteUi() {
+        if (!::moreButton.isInitialized) return
+        val available = playlistFavoriteKeys.getOrNull(playlistIndex).orEmpty().isNotBlank()
+        val saved = playlistFavoriteStates.getOrNull(playlistIndex) == true
+        moreButton.text = if (available && saved) "♥\nMore" else "⋮\nMore"
+        moreButton.contentDescription = if (available && saved) {
+            "More playback options, saved in My List"
+        } else {
+            "More playback options"
+        }
     }
 
     private fun showSubtitleDialog() {
@@ -1366,12 +1417,15 @@ class Media3PlayerActivity : Activity() {
                         openSubtitlePicker()
                     }
                     itemIndex == 0 -> {
+                        externalSubtitleUri = null
+                        externalSubtitleName = ""
                         player.trackSelectionParameters =
                             player.trackSelectionParameters
                                 .buildUpon()
                                 .clearOverridesOfType(C.TRACK_TYPE_TEXT)
                                 .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
                                 .build()
+                        playerView.subtitleView?.setCues(emptyList())
                         activeDialog.dismiss()
                     }
                     else -> {
@@ -1930,6 +1984,7 @@ class Media3PlayerActivity : Activity() {
             bufferingBadge.text = "Switching playback engine…"
             bufferingBadge.visibility = View.VISIBLE
             handler.postDelayed({
+                returningToEmbeddedEngine = true
                 setResult(RESULT_USE_EMBEDDED_ENGINE)
                 finish()
             }, 650L)
@@ -1942,6 +1997,26 @@ class Media3PlayerActivity : Activity() {
         errorPanel.visibility = View.VISIBLE
         updateErrorNavigationUi()
         retryButton.requestFocus()
+    }
+
+    override fun finish() {
+        if (!returningToEmbeddedEngine && playlistUrls.isNotEmpty()) {
+            setResult(
+                RESULT_OK,
+                Intent().apply {
+                    putExtra(EXTRA_LAST_INDEX, playlistIndex)
+                    putStringArrayListExtra(
+                        EXTRA_PLAYLIST_FAVORITE_KEYS,
+                        ArrayList(playlistFavoriteKeys)
+                    )
+                    putExtra(
+                        EXTRA_PLAYLIST_FAVORITE_STATES,
+                        playlistFavoriteStates.toBooleanArray()
+                    )
+                }
+            )
+        }
+        super.finish()
     }
 
     private fun friendlyError(error: PlaybackException): String {
