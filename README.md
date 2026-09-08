@@ -27,6 +27,9 @@ Google Play edition and receive future Community APK updates.
 [![Get it on Google Play](https://img.shields.io/badge/Get%20it%20on-Google%20Play-414141?style=for-the-badge&logo=googleplay&logoColor=white)](https://play.google.com/store/apps/details?id=com.talhaashraf.lumen)
 [![Download Community APK](https://img.shields.io/badge/Download-Community%20APK-BCFF3C?style=for-the-badge&logo=android&logoColor=111)](https://github.com/Talha-Ashraf420/Lumen-App/releases/latest/download/Lumen-Android.apk)
 
+On Android TV, open the **Downloader** app and enter code **`4560142`**, or
+visit **[aftv.news/4560142](https://aftv.news/4560142)**.
+
 Desktop builds remain available from GitHub Releases:
 
 [![Windows](https://img.shields.io/badge/Download-Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/Talha-Ashraf420/Lumen-App/releases/latest/download/Lumen-Windows.zip)

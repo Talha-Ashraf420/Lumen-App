@@ -8,6 +8,7 @@ import 'package:lumen_tv/device_profile.dart';
 import 'package:lumen_tv/models.dart';
 import 'package:lumen_tv/screens/login_screen.dart';
 import 'package:lumen_tv/theme.dart';
+import 'package:lumen_tv/widgets.dart';
 import 'package:lumen_tv/xtream.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -141,10 +142,10 @@ void main() {
 
       expect(loggedIn?.username, 'viewer');
       expect(find.text('Opening your library…'), findsNothing);
-      final submit = tester.widget<FilledButton>(
-        find.bySubtype<FilledButton>(),
+      final submit = tester.widget<RemoteTap>(
+        find.byKey(const ValueKey('login-submit')),
       );
-      expect(submit.onPressed, isNotNull);
+      expect(submit.onTap, isNotNull);
     },
   );
 
@@ -203,7 +204,9 @@ void main() {
     final fields = tester
         .widgetList<TextField>(find.byType(TextField))
         .toList();
-    final submit = tester.widget<FilledButton>(find.bySubtype<FilledButton>());
+    final submit = tester.widget<RemoteTap>(
+      find.byKey(const ValueKey('login-submit')),
+    );
     final playlist = tester.widget<TextButton>(find.bySubtype<TextButton>());
     final demo = tester.widget<OutlinedButton>(
       find.bySubtype<OutlinedButton>(),
@@ -266,9 +269,30 @@ void main() {
     final fields = tester
         .widgetList<TextField>(find.byType(TextField))
         .toList();
-    final submit = tester.widget<FilledButton>(find.bySubtype<FilledButton>());
+    final submit = tester.widget<RemoteTap>(
+      find.byKey(const ValueKey('login-submit')),
+    );
     expect(fields.first.focusNode!.hasFocus, isTrue);
     expect(submit.focusNode!.hasFocus, isFalse);
+  });
+
+  testWidgets('TV submit has an unmistakable high-contrast focus treatment', (
+    tester,
+  ) async {
+    await pumpLogin(tester, clientFactory: _SuccessfulLoginClient.new);
+
+    final submitFinder = find.byKey(const ValueKey('login-submit'));
+    final submit = tester.widget<RemoteTap>(submitFinder);
+    expect(submit.focusRingColor, Colors.white);
+
+    submit.focusNode!.requestFocus();
+    await tester.pump(lumenMotionFast);
+
+    final scales = tester.widgetList<AnimatedScale>(
+      find.descendant(of: submitFinder, matching: find.byType(AnimatedScale)),
+    );
+    expect(scales.single.scale, greaterThan(1));
+    expect(submit.focusNode!.hasFocus, isTrue);
   });
 
   testWidgets('TV OK opens the keyboard for a focused login field', (

@@ -675,18 +675,16 @@ class _LoginScreenState extends State<LoginScreen> {
         const SizedBox(height: 15),
         SizedBox(
           width: double.infinity,
-          child: FilledButton.icon(
+          child: RemoteTap(
+            key: const ValueKey('login-submit'),
             focusNode: _submitFocus,
             autofocus: !DeviceProfile.isTelevision,
-            style: FilledButton.styleFrom(
-              backgroundColor: accent,
-              foregroundColor: onAccent,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
-              ),
-            ),
-            onPressed: _busy
+            semanticLabel: _status ?? 'Enter Lumen',
+            focusRadius: 14,
+            // The lime button and the normal lime focus ring blended together
+            // on a television. A white ring is unambiguous from across a room.
+            focusRingColor: Colors.white,
+            onTap: _busy
                 ? null
                 : () => _connect(
                     XtreamCredentials(
@@ -695,19 +693,42 @@ class _LoginScreenState extends State<LoginScreen> {
                       password: _pass.text.trim(),
                     ),
                   ),
-            icon: _busy
-                ? SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
+            child: AnimatedContainer(
+              key: const ValueKey('login-submit-surface'),
+              duration: lumenMotionFast,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              decoration: BoxDecoration(
+                color: _busy ? accent.withValues(alpha: .58) : accent,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (_busy)
+                    SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: onAccent,
+                      ),
+                    )
+                  else
+                    Icon(
+                      Icons.arrow_forward_rounded,
+                      size: 19,
                       color: onAccent,
                     ),
-                  )
-                : const Icon(Icons.arrow_forward_rounded, size: 19),
-            label: Text(
-              _status ?? 'Enter Lumen',
-              style: TextStyle(fontWeight: FontWeight.w800),
+                  const SizedBox(width: 8),
+                  Text(
+                    _status ?? 'Enter Lumen',
+                    style: TextStyle(
+                      color: onAccent,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

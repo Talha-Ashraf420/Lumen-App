@@ -878,6 +878,7 @@ class RemoteTap extends StatefulWidget {
   final bool autofocus;
   final String? semanticLabel;
   final double focusRadius;
+  final Color? focusRingColor;
   final bool showFocusRing;
   final ValueChanged<bool>? onFocusChange;
   final FocusOnKeyEventCallback? onKeyEvent;
@@ -891,6 +892,7 @@ class RemoteTap extends StatefulWidget {
     this.autofocus = false,
     this.semanticLabel,
     this.focusRadius = 16,
+    this.focusRingColor,
     this.showFocusRing = true,
     this.onFocusChange,
     this.onKeyEvent,
@@ -1016,6 +1018,7 @@ class _RemoteTapState extends State<RemoteTap> {
     Theme.of(context);
     final enabled = widget.onTap != null;
     final active = enabled && (_focused || _hovered);
+    final focusColor = widget.focusRingColor ?? accentInk;
     final detector = FocusableActionDetector(
       enabled: enabled,
       focusNode: _effectiveFocusNode,
@@ -1046,10 +1049,10 @@ class _RemoteTapState extends State<RemoteTap> {
             foregroundDecoration: widget.showFocusRing && _focused
                 ? BoxDecoration(
                     borderRadius: BorderRadius.circular(widget.focusRadius),
-                    border: Border.all(color: accentInk, width: 3),
+                    border: Border.all(color: focusColor, width: 3),
                     boxShadow: [
                       BoxShadow(
-                        color: accent.withValues(alpha: isDark ? .48 : .32),
+                        color: focusColor.withValues(alpha: isDark ? .48 : .32),
                         blurRadius: 20,
                         spreadRadius: 1,
                       ),

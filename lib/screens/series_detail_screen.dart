@@ -16,6 +16,8 @@ import '../xtream.dart';
 
 typedef EpisodePlaylistOpener =
     void Function(List<PlayerItem> items, int index);
+typedef EpisodeDownloadStarter =
+    void Function(Episode episode, SeriesInfo info);
 
 class SeriesDetailScreen extends StatefulWidget {
   const SeriesDetailScreen({
@@ -25,6 +27,7 @@ class SeriesDetailScreen extends StatefulWidget {
     required this.title,
     this.preview,
     this.episodeOpener,
+    this.episodeDownloader,
   });
 
   final XtreamClient client;
@@ -38,6 +41,10 @@ class SeriesDetailScreen extends StatefulWidget {
   /// Optional playback seam used by embedders and widget tests. Production
   /// defaults to the app-level player so episode playback remains continuous.
   final EpisodePlaylistOpener? episodeOpener;
+
+  /// Optional download seam used to verify that TV activation never confuses
+  /// the adjacent play and download actions.
+  final EpisodeDownloadStarter? episodeDownloader;
 
   @override
   State<SeriesDetailScreen> createState() => _SeriesDetailScreenState();
@@ -386,7 +393,8 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
       downloadUp: downloadAt(index - columns),
       downloadDown: downloadAt(index + columns),
       onPlay: () => _playEpisodes(episodes, index, info),
-      onDownload: () => _downloadEpisode(episode, info),
+      onDownload: () =>
+          (widget.episodeDownloader ?? _downloadEpisode)(episode, info),
     );
   }
 }
@@ -865,122 +873,136 @@ class _EpisodeChapter extends StatelessWidget {
     // desktop SliverGrid can still tighten this to its 152px main-axis extent.
     final chapter = SizedBox(
       height: 142,
-      child: RemoteTap(
-        semanticLabel: 'Play episode ${episode.episodeNum}: $title',
-        focusNode: playFocus,
-        onKeyEvent: (_, event) => _move(event, {
-          LogicalKeyboardKey.arrowLeft: playLeft,
-          LogicalKeyboardKey.arrowRight: downloadFocus,
-          LogicalKeyboardKey.arrowUp: playUp,
-          LogicalKeyboardKey.arrowDown: playDown,
-        }),
-        onTap: onPlay,
-        child: Container(
-          clipBehavior: Clip.antiAlias,
-          decoration: BoxDecoration(
-            color: surface,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: line),
-          ),
-          child: Row(
-            children: [
-              SizedBox(
-                width: 150,
-                height: double.infinity,
-                child: Stack(
-                  fit: StackFit.expand,
+      child: Container(
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: surface,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: line),
+        ),
+        child: Row(
+          children: [
+            // Play and download must be sibling focus targets. Nesting the
+            // download control inside the play target allowed a TV OK event to
+            // activate the wrong action on some remote/IME implementations.
+            Expanded(
+              child: RemoteTap(
+                key: ValueKey('episode-play-${episode.id}'),
+                semanticLabel: 'Play episode ${episode.episodeNum}: $title',
+                focusNode: playFocus,
+                focusRadius: 16,
+                onKeyEvent: (_, event) => _move(event, {
+                  LogicalKeyboardKey.arrowLeft: playLeft,
+                  LogicalKeyboardKey.arrowRight: downloadFocus,
+                  LogicalKeyboardKey.arrowUp: playUp,
+                  LogicalKeyboardKey.arrowDown: playDown,
+                }),
+                onTap: onPlay,
+                child: Row(
                   children: [
-                    _EpisodeFallback(number: episode.episodeNum),
-                    if (image.isNotEmpty)
-                      MediaImage(
-                        source: image,
-                        fit: BoxFit.cover,
-                        memCacheWidth: 420,
+                    SizedBox(
+                      width: 150,
+                      height: double.infinity,
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          _EpisodeFallback(number: episode.episodeNum),
+                          if (image.isNotEmpty)
+                            MediaImage(
+                              source: image,
+                              fit: BoxFit.cover,
+                              memCacheWidth: 420,
+                            ),
+                          DecoratedBox(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.centerRight,
+                                end: Alignment.centerLeft,
+                                colors: [surface, Colors.transparent],
+                              ),
+                            ),
+                          ),
+                          Center(
+                            child: Container(
+                              width: 38,
+                              height: 38,
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: .48),
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.white24),
+                              ),
+                              child: const Icon(
+                                Icons.play_arrow_rounded,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                          if (progress != null)
+                            Align(
+                              alignment: Alignment.bottomCenter,
+                              child: LinearProgressIndicator(
+                                value: progress.fraction,
+                                minHeight: 3,
+                                backgroundColor: Colors.white24,
+                                valueColor: AlwaysStoppedAnimation(accent),
+                              ),
+                            ),
+                        ],
                       ),
-                    DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.centerRight,
-                          end: Alignment.centerLeft,
-                          colors: [surface, Colors.transparent],
+                    ),
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'EPISODE ${episode.episodeNum.toString().padLeft(2, '0')}',
+                              style: kSection(),
+                            ),
+                            const SizedBox(height: 7),
+                            Text(
+                              title,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 15,
+                                height: 1.22,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            if (progress != null) ...[
+                              const SizedBox(height: 7),
+                              Text(
+                                '${(progress.fraction * 100).round()}% watched',
+                                style: TextStyle(
+                                  color: accentInk,
+                                  fontSize: 11.5,
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                       ),
                     ),
-                    Center(
-                      child: Container(
-                        width: 38,
-                        height: 38,
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: .48),
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white24),
-                        ),
-                        child: const Icon(
-                          Icons.play_arrow_rounded,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                    if (progress != null)
-                      Align(
-                        alignment: Alignment.bottomCenter,
-                        child: LinearProgressIndicator(
-                          value: progress.fraction,
-                          minHeight: 3,
-                          backgroundColor: Colors.white24,
-                          valueColor: AlwaysStoppedAnimation(accent),
-                        ),
-                      ),
                   ],
                 ),
               ),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'EPISODE ${episode.episodeNum.toString().padLeft(2, '0')}',
-                        style: kSection(),
-                      ),
-                      const SizedBox(height: 7),
-                      Text(
-                        title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          height: 1.22,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      if (progress != null) ...[
-                        const SizedBox(height: 7),
-                        Text(
-                          '${(progress.fraction * 100).round()}% watched',
-                          style: TextStyle(color: accentInk, fontSize: 11.5),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-              _EpisodeDownload(
-                id: 'ep:${episode.id}',
-                focusNode: downloadFocus,
-                onKeyEvent: (_, event) => _move(event, {
-                  LogicalKeyboardKey.arrowLeft: playFocus,
-                  LogicalKeyboardKey.arrowRight: downloadRight,
-                  LogicalKeyboardKey.arrowUp: downloadUp,
-                  LogicalKeyboardKey.arrowDown: downloadDown,
-                }),
-                onDownload: onDownload,
-              ),
-              const SizedBox(width: 8),
-            ],
-          ),
+            ),
+            _EpisodeDownload(
+              id: 'ep:${episode.id}',
+              focusNode: downloadFocus,
+              onKeyEvent: (_, event) => _move(event, {
+                LogicalKeyboardKey.arrowLeft: playFocus,
+                LogicalKeyboardKey.arrowRight: downloadRight,
+                LogicalKeyboardKey.arrowUp: downloadUp,
+                LogicalKeyboardKey.arrowDown: downloadDown,
+              }),
+              onDownload: onDownload,
+            ),
+            const SizedBox(width: 8),
+          ],
         ),
       ),
     );
@@ -1037,6 +1059,7 @@ class _EpisodeDownload extends StatelessWidget {
       }
 
       return RemoteTap(
+        key: ValueKey('episode-download-$id'),
         semanticLabel: label,
         focusNode: focusNode,
         onKeyEvent: onKeyEvent,

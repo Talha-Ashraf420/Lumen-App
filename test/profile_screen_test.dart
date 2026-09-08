@@ -1,9 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen_tv/main.dart';
+import 'package:lumen_tv/catalog_store.dart';
+import 'package:lumen_tv/device_profile.dart';
 import 'package:lumen_tv/models.dart';
 import 'package:lumen_tv/screens/profile_screen.dart';
 import 'package:lumen_tv/theme.dart';
@@ -34,8 +37,9 @@ class _ProfileTestClient extends XtreamClient {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  setUp(() {
+  setUp(() async {
     SharedPreferences.setMockInitialValues({});
+    await CatalogStore.instance.disableForWidgetTests();
     activePalette = darkPalette;
   });
 
@@ -44,6 +48,8 @@ void main() {
     Size size, {
     double? contentWidth,
     Future<void> Function()? onLogout,
+    XtreamClient? client,
+    ValueChanged<XtreamCredentials>? onSwitch,
   }) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = size;
@@ -59,9 +65,9 @@ void main() {
             child: SizedBox(
               width: contentWidth,
               child: ProfileScreen(
-                client: _ProfileTestClient(),
+                client: client ?? _ProfileTestClient(),
                 onLogout: onLogout ?? () async {},
-                onSwitch: (_) {},
+                onSwitch: onSwitch ?? (_) {},
               ),
             ),
           ),
@@ -105,6 +111,94 @@ void main() {
     expect(find.text('Profile'), findsNothing);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'TV D-pad switches and removes saved accounts without pointer input',
+    (tester) async {
+      const active = XtreamCredentials(
+        baseUrl: 'https://provider.example',
+        username: 'Living room',
+        password: 'test-only',
+      );
+      const bedroom = XtreamCredentials(
+        baseUrl: 'https://bedroom.example',
+        username: 'Bedroom',
+        password: 'test-only',
+      );
+      const guest = XtreamCredentials(
+        baseUrl: 'https://guest.example',
+        username: 'Guest',
+        password: 'test-only',
+      );
+      SharedPreferences.setMockInitialValues({
+        'lumen_profiles': jsonEncode([
+          active.toJson(),
+          bedroom.toJson(),
+          guest.toJson(),
+        ]),
+      });
+      DeviceProfile.isTelevision = true;
+      addTearDown(() => DeviceProfile.isTelevision = false);
+      XtreamCredentials? switchedTo;
+
+      await pumpProfile(
+        tester,
+        const Size(1280, 900),
+        client: _ProfileTestClient(),
+        onSwitch: (profile) => switchedTo = profile,
+      );
+
+      FocusNode node(String label) => FocusManager
+          .instance
+          .rootScope
+          .descendants
+          .firstWhere((candidate) => candidate.debugLabel == label);
+
+      node('Profile add account').requestFocus();
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pump();
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        'Switch account Bedroom',
+      );
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pump();
+      expect(switchedTo?.username, 'Bedroom');
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pump();
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        'Remove account Bedroom',
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      expect(find.text('Remove account?'), findsOneWidget);
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        'Cancel account removal',
+      );
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pump();
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        'Confirm account removal',
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Remove account?'), findsNothing);
+      expect(find.text('Bedroom'), findsNothing);
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        'Profile add account',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('narrow desktop keeps shell title and stacks dashboard', (
     tester,

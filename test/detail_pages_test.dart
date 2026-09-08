@@ -409,9 +409,21 @@ void main() {
     tester,
   ) async {
     final client = _DetailClient();
+    var playCalls = 0;
+    var downloadCalls = 0;
+    int? openedIndex;
     await pumpAt(
       tester,
-      SeriesDetailScreen(client: client, seriesId: 91, title: 'Signal House'),
+      SeriesDetailScreen(
+        client: client,
+        seriesId: 91,
+        title: 'Signal House',
+        episodeOpener: (items, index) {
+          playCalls++;
+          openedIndex = index;
+        },
+        episodeDownloader: (episode, info) => downloadCalls++,
+      ),
       const Size(1280, 900),
     );
     await tester.pump(const Duration(milliseconds: 400));
@@ -421,12 +433,22 @@ void main() {
 
     node('Episode 1 play').requestFocus();
     await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+    expect(playCalls, 1);
+    expect(openedIndex, 0);
+    expect(downloadCalls, 0);
+
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
     await tester.pump();
     expect(
       FocusManager.instance.primaryFocus?.debugLabel,
       'Episode 1 download',
     );
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+    expect(playCalls, 1);
+    expect(downloadCalls, 1);
 
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
     await tester.pump();

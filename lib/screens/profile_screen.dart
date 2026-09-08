@@ -55,6 +55,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _legalFocus = FocusNode(debugLabel: 'Legal & privacy');
   final _updateFocus = FocusNode(debugLabel: 'Check for updates');
   final _signOutFocus = FocusNode(debugLabel: 'Sign out of Lumen');
+  final Map<String, FocusNode> _profileSwitchFocus = {};
+  final Map<String, FocusNode> _profileDeleteFocus = {};
   Map<String, dynamic>? _info;
   List<XtreamCredentials> _profiles = [];
   bool _accountInfoLoading = true;
@@ -101,6 +103,99 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   FocusNode get _entryFocusNode => widget.entryFocusNode ?? _entryFocus;
 
+  String _profileKey(XtreamCredentials profile) => Store.profileScope(profile);
+
+  List<XtreamCredentials> get _otherProfiles =>
+      _profiles.where((profile) => !_isActive(profile)).toList();
+
+  FocusNode? get _firstProfileSwitchFocus {
+    final profiles = _otherProfiles;
+    return profiles.isEmpty
+        ? null
+        : _profileSwitchFocus[_profileKey(profiles.first)];
+  }
+
+  FocusNode? get _lastProfileSwitchFocus {
+    final profiles = _otherProfiles;
+    return profiles.isEmpty
+        ? null
+        : _profileSwitchFocus[_profileKey(profiles.last)];
+  }
+
+  void _syncProfileFocus(List<XtreamCredentials> profiles) {
+    final visible = profiles.where((profile) => !_isActive(profile)).toList();
+    final liveKeys = visible.map(_profileKey).toSet();
+    for (final nodes in [_profileSwitchFocus, _profileDeleteFocus]) {
+      final removed = nodes.keys
+          .where((key) => !liveKeys.contains(key))
+          .toList();
+      for (final key in removed) {
+        final node = nodes.remove(key);
+        if (node != null) {
+          // Let RemoteTap detach its key handler during this rebuild before
+          // disposing the external node it was using.
+          WidgetsBinding.instance.addPostFrameCallback((_) => node.dispose());
+        }
+      }
+    }
+    for (final profile in visible) {
+      final key = _profileKey(profile);
+      final label = profile.isDemo ? 'Demo Mode' : profile.username;
+      _profileSwitchFocus.putIfAbsent(
+        key,
+        () => FocusNode(debugLabel: 'Switch account $label'),
+      );
+      _profileDeleteFocus.putIfAbsent(
+        key,
+        () => FocusNode(debugLabel: 'Remove account $label'),
+      );
+    }
+  }
+
+  void _setProfiles(
+    List<XtreamCredentials> profiles, {
+    FocusNode? restoreFocus,
+  }) {
+    _syncProfileFocus(profiles);
+    setState(() => _profiles = profiles);
+    if (restoreFocus != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && restoreFocus.canRequestFocus) {
+          restoreFocus.requestFocus();
+        }
+      });
+    }
+  }
+
+  KeyEventResult _moveInFocusGraph(
+    KeyEvent event,
+    Map<LogicalKeyboardKey, FocusNode?> routes,
+  ) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    final target = routes[event.logicalKey];
+    if (target == null || !target.canRequestFocus) {
+      return KeyEventResult.ignored;
+    }
+    target.requestFocus();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final targetContext = target.context;
+      if (!mounted || !target.hasFocus || targetContext == null) return;
+      Scrollable.ensureVisible(
+        targetContext,
+        duration: DeviceProfile.isTelevision
+            ? Duration.zero
+            : const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+        alignmentPolicy: event.logicalKey == LogicalKeyboardKey.arrowUp
+            ? ScrollPositionAlignmentPolicy.keepVisibleAtStart
+            : ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+      );
+    });
+    return KeyEventResult.handled;
+  }
+
   KeyEventResult _moveVertically(
     KeyEvent event, {
     FocusNode? up,
@@ -138,8 +233,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void initState() {
     super.initState();
-    _entryFocusNode.onKeyEvent = (_, event) =>
-        _moveVertically(event, down: _themeEntryFocus);
+    _entryFocusNode.onKeyEvent = (_, event) => _moveVertically(
+      event,
+      down: _firstProfileSwitchFocus ?? _themeEntryFocus,
+    );
     widget.client
         .authenticate()
         .then((i) {
@@ -153,9 +250,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         .catchError((_) {
           if (mounted) setState(() => _accountInfoLoading = false);
         });
-    Store.savedProfiles().then(
-      (p) => mounted ? setState(() => _profiles = p) : null,
-    );
+    Store.savedProfiles().then((profiles) {
+      if (!mounted) return;
+      _setProfiles(profiles);
+    });
   }
 
   bool _isActive(XtreamCredentials p) =>
@@ -173,7 +271,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
     final p = await Store.savedProfiles();
-    if (mounted) setState(() => _profiles = p);
+    if (mounted) _setProfiles(p, restoreFocus: _entryFocusNode);
   }
 
   void _switch(XtreamCredentials p) {
@@ -186,29 +284,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final wasActive = _isActive(p);
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: surface,
-        title: const Text('Remove account?'),
-        content: Text(
-          '“${p.username}” will be removed from this device.'
-          '${wasActive ? '\n\nYou’re currently signed in to it — you’ll be switched out.' : ''}',
-        ),
-        actions: [
-          TextButton(
-            autofocus: true,
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancel', style: TextStyle(color: muted)),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFFFF5277),
-              foregroundColor: foregroundFor(const Color(0xFFFF5277)),
-            ),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Remove'),
-          ),
-        ],
-      ),
+      builder: (ctx) =>
+          _AccountRemovalDialog(username: p.username, active: wasActive),
     );
     if (ok != true) return;
     final left = await Store.removeProfile(p);
@@ -222,7 +299,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
       return;
     }
-    setState(() => _profiles = left);
+    _setProfiles(left, restoreFocus: _entryFocusNode);
   }
 
   Future<void> _clearHistory() async {
@@ -390,6 +467,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _legalFocus.dispose();
     _updateFocus.dispose();
     _signOutFocus.dispose();
+    for (final node in _profileSwitchFocus.values) {
+      node.dispose();
+    }
+    for (final node in _profileDeleteFocus.values) {
+      node.dispose();
+    }
     super.dispose();
   }
 
@@ -621,7 +704,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   );
 
   Widget _profilesCard() {
-    final profiles = _profiles.where((profile) => !_isActive(profile)).toList();
+    final profiles = _otherProfiles;
     return Glass(
       radius: 24,
       padding: const EdgeInsets.all(6),
@@ -695,7 +778,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           else
             for (var i = 0; i < profiles.length; i++) ...[
               if (i > 0) _divider(),
-              _profileRow(profiles[i]),
+              _profileRow(profiles, i),
             ],
         ],
       ),
@@ -711,7 +794,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       const SizedBox(height: 10),
       _ThemeSelector(
         entryFocusNode: _themeEntryFocus,
-        upFocusNode: _entryFocusNode,
+        upFocusNode: _lastProfileSwitchFocus ?? _entryFocusNode,
         downFocusNode: _accentEntryFocus,
         leftExitFocusNode: widget.shellRailFocusNode,
       ),
@@ -1110,14 +1193,36 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _divider() =>
       Divider(height: 1, color: line, indent: 12, endIndent: 12);
 
-  Widget _profileRow(XtreamCredentials p) {
-    final active = _isActive(p);
+  Widget _profileRow(List<XtreamCredentials> profiles, int index) {
+    final p = profiles[index];
+    final key = _profileKey(p);
+    final switchFocus = _profileSwitchFocus[key]!;
+    final deleteFocus = _profileDeleteFocus[key]!;
+    FocusNode? switchAt(int target) => target >= 0 && target < profiles.length
+        ? _profileSwitchFocus[_profileKey(profiles[target])]
+        : null;
+    FocusNode? deleteAt(int target) => target >= 0 && target < profiles.length
+        ? _profileDeleteFocus[_profileKey(profiles[target])]
+        : null;
     final host = p.isDemo
         ? 'Offline sample library'
         : p.baseUrl.replaceFirst(RegExp(r'^https?://'), '');
     return RemoteTap(
+      key: ValueKey('profile-switch-$key'),
       behavior: HitTestBehavior.opaque,
-      onTap: active ? null : () => _switch(p),
+      focusNode: switchFocus,
+      semanticLabel: 'Switch to ${p.isDemo ? 'Demo Mode' : p.username}',
+      onKeyEvent: (_, event) => _moveInFocusGraph(event, {
+        LogicalKeyboardKey.arrowLeft: widget.shellRailFocusNode,
+        LogicalKeyboardKey.arrowRight: deleteFocus,
+        LogicalKeyboardKey.arrowUp: index == 0
+            ? _entryFocusNode
+            : switchAt(index - 1),
+        LogicalKeyboardKey.arrowDown: index == profiles.length - 1
+            ? _themeEntryFocus
+            : switchAt(index + 1),
+      }),
+      onTap: () => _switch(p),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         child: Row(
@@ -1127,20 +1232,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
               height: 38,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: active ? accent : surfaceHi,
+                color: surfaceHi,
                 shape: BoxShape.circle,
               ),
               child: p.isDemo
-                  ? Icon(
-                      Icons.auto_awesome_rounded,
-                      color: active ? onAccent : muted,
-                      size: 19,
-                    )
+                  ? Icon(Icons.auto_awesome_rounded, color: muted, size: 19)
                   : Text(
                       p.username.isNotEmpty ? p.username[0].toUpperCase() : '?',
                       style: TextStyle(
                         fontWeight: FontWeight.w800,
-                        color: active ? onAccent : muted,
+                        color: muted,
                       ),
                     ),
             ),
@@ -1164,38 +1265,128 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ],
               ),
             ),
-            if (active)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+            Icon(Icons.swap_horiz_rounded, color: muted, size: 20),
+            const SizedBox(width: 7),
+            RemoteTap(
+              key: ValueKey('profile-remove-$key'),
+              focusNode: deleteFocus,
+              semanticLabel:
+                  'Remove ${p.isDemo ? 'Demo Mode' : p.username} account',
+              focusRadius: 10,
+              onKeyEvent: (_, event) => _moveInFocusGraph(event, {
+                LogicalKeyboardKey.arrowLeft: switchFocus,
+                LogicalKeyboardKey.arrowUp: index == 0
+                    ? _entryFocusNode
+                    : deleteAt(index - 1),
+                LogicalKeyboardKey.arrowDown: index == profiles.length - 1
+                    ? _themeEntryFocus
+                    : deleteAt(index + 1),
+              }),
+              onTap: () => _delete(p),
+              child: Container(
+                width: 36,
+                height: 36,
+                alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: accentInk.withValues(alpha: isDark ? 0.18 : 0.11),
-                  borderRadius: BorderRadius.circular(8),
+                  color: surfaceHi,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: line),
                 ),
-                child: Text(
-                  'Active',
-                  style: TextStyle(
-                    color: accentInk,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              )
-            else ...[
-              Icon(Icons.swap_horiz_rounded, color: muted, size: 20),
-              const SizedBox(width: 4),
-              IconButton(
-                onPressed: () => _delete(p),
-                icon: Icon(
+                child: Icon(
                   Icons.delete_outline_rounded,
                   color: subtle,
                   size: 20,
                 ),
-                visualDensity: VisualDensity.compact,
               ),
-            ],
+            ),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _AccountRemovalDialog extends StatefulWidget {
+  const _AccountRemovalDialog({required this.username, required this.active});
+
+  final String username;
+  final bool active;
+
+  @override
+  State<_AccountRemovalDialog> createState() => _AccountRemovalDialogState();
+}
+
+class _AccountRemovalDialogState extends State<_AccountRemovalDialog> {
+  final _cancelFocus = FocusNode(debugLabel: 'Cancel account removal');
+  final _removeFocus = FocusNode(debugLabel: 'Confirm account removal');
+
+  KeyEventResult _move(KeyEvent event, FocusNode target) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    if (event.logicalKey != LogicalKeyboardKey.arrowLeft &&
+        event.logicalKey != LogicalKeyboardKey.arrowRight) {
+      return KeyEventResult.ignored;
+    }
+    target.requestFocus();
+    return KeyEventResult.handled;
+  }
+
+  @override
+  void dispose() {
+    _cancelFocus.dispose();
+    _removeFocus.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const danger = Color(0xFFFF5277);
+    return AlertDialog(
+      backgroundColor: surface,
+      title: const Text('Remove account?'),
+      content: Text(
+        '“${widget.username}” will be removed from this device.'
+        '${widget.active ? '\n\nYou’re currently signed in to it — you’ll be switched out.' : ''}',
+      ),
+      actions: [
+        RemoteTap(
+          autofocus: true,
+          focusNode: _cancelFocus,
+          semanticLabel: 'Cancel account removal',
+          onKeyEvent: (_, event) => _move(event, _removeFocus),
+          onTap: () => Navigator.pop(context, false),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 11),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: muted, fontWeight: FontWeight.w700),
+            ),
+          ),
+        ),
+        RemoteTap(
+          focusNode: _removeFocus,
+          semanticLabel: 'Confirm account removal',
+          focusRadius: 12,
+          focusRingColor: Colors.white,
+          onKeyEvent: (_, event) => _move(event, _cancelFocus),
+          onTap: () => Navigator.pop(context, true),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+            decoration: BoxDecoration(
+              color: danger,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              'Remove',
+              style: TextStyle(
+                color: foregroundFor(danger),
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
