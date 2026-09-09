@@ -47,6 +47,21 @@ const lumenRadiusLg = 24.0;
 const lumenMotionFast = Duration(milliseconds: 140);
 const lumenMotion = Duration(milliseconds: 190);
 
+/// Offline-safe type choices designed for both ten-foot TV interfaces and
+/// handheld screens. The device option deliberately has no family so Flutter
+/// uses the platform's native UI font.
+enum LumenFont {
+  lumen('Lumen', 'SpaceGrotesk', 'Cinematic and compact'),
+  inter('Inter', 'Inter', 'Clean and highly readable'),
+  device('Device', null, 'Use the system font');
+
+  const LumenFont(this.label, this.family, this.description);
+
+  final String label;
+  final String? family;
+  final String description;
+}
+
 /// A named, deliberately small set of polished Lumen accents. Keeping this to
 /// five avoids the "rainbow picker" look and makes each choice feel like a
 /// complete visual direction rather than a random colour.
@@ -207,46 +222,67 @@ List<BoxShadow> glow(
   ),
 ];
 
-// Space Grotesk gives the interface a compact editorial rhythm without making
-// long metadata or settings text feel ornamental.
-TextStyle kHero({Color? color}) => GoogleFonts.spaceGrotesk(
-  fontSize: 62,
-  fontWeight: FontWeight.w500,
-  letterSpacing: -2.4,
-  height: 0.98,
-  color: color ?? textHi,
+String? get activeFontFamily => ThemeController.instance.font.value.family;
+
+TextStyle _appFontStyle(TextStyle style) {
+  final selected = ThemeController.instance.font.value;
+  if (selected == LumenFont.lumen) {
+    return GoogleFonts.spaceGrotesk(textStyle: style);
+  }
+  return style.copyWith(fontFamily: selected.family);
+}
+
+TextStyle kHero({Color? color}) => _appFontStyle(
+  TextStyle(
+    fontSize: 62,
+    fontWeight: FontWeight.w500,
+    letterSpacing: -2.4,
+    height: 0.98,
+    color: color ?? textHi,
+  ),
 );
-TextStyle kDisplay({Color? color}) => GoogleFonts.spaceGrotesk(
-  fontSize: 38,
-  fontWeight: FontWeight.w600,
-  letterSpacing: -1.2,
-  height: 1.02,
-  color: color ?? textHi,
+TextStyle kDisplay({Color? color}) => _appFontStyle(
+  TextStyle(
+    fontSize: 38,
+    fontWeight: FontWeight.w600,
+    letterSpacing: -1.2,
+    height: 1.02,
+    color: color ?? textHi,
+  ),
 );
-TextStyle kTitle({Color? color}) => GoogleFonts.spaceGrotesk(
-  fontSize: 23,
-  fontWeight: FontWeight.w600,
-  letterSpacing: -0.6,
-  color: color ?? textHi,
+TextStyle kTitle({Color? color}) => _appFontStyle(
+  TextStyle(
+    fontSize: 23,
+    fontWeight: FontWeight.w600,
+    letterSpacing: -0.6,
+    color: color ?? textHi,
+  ),
 );
-TextStyle kSection({Color? color}) => GoogleFonts.spaceGrotesk(
-  fontSize: 11.5,
-  fontWeight: FontWeight.w600,
-  letterSpacing: 1.8,
-  color: color ?? muted,
+TextStyle kSection({Color? color}) => _appFontStyle(
+  TextStyle(
+    fontSize: 11.5,
+    fontWeight: FontWeight.w600,
+    letterSpacing: 1.8,
+    color: color ?? muted,
+  ),
 );
-TextStyle kBody({Color? color}) => GoogleFonts.spaceGrotesk(
-  fontSize: 15,
-  fontWeight: FontWeight.w400,
-  height: 1.55,
-  color: color ?? muted,
+TextStyle kBody({Color? color}) => _appFontStyle(
+  TextStyle(
+    fontSize: 15,
+    fontWeight: FontWeight.w400,
+    height: 1.55,
+    color: color ?? muted,
+  ),
 );
 
 ThemeData buildTheme(Palette p) {
   final base = ThemeData(brightness: p.brightness, useMaterial3: true);
-  final text = GoogleFonts.spaceGroteskTextTheme(
-    base.textTheme,
-  ).apply(bodyColor: p.textHi, displayColor: p.textHi);
+  final family = activeFontFamily;
+  final text =
+      (ThemeController.instance.font.value == LumenFont.lumen
+              ? GoogleFonts.spaceGroteskTextTheme(base.textTheme)
+              : base.textTheme.apply(fontFamily: family))
+          .apply(bodyColor: p.textHi, displayColor: p.textHi);
   final raised = Color.alphaBlend(
     Colors.white.withValues(
       alpha: p.brightness == Brightness.dark ? .045 : .42,
@@ -277,11 +313,13 @@ ThemeData buildTheme(Palette p) {
       backgroundColor: Colors.transparent,
       elevation: 0,
       scrolledUnderElevation: 0,
-      titleTextStyle: GoogleFonts.spaceGrotesk(
-        fontSize: 22,
-        fontWeight: FontWeight.w600,
-        color: p.textHi,
-        letterSpacing: -0.5,
+      titleTextStyle: _appFontStyle(
+        TextStyle(
+          fontSize: 22,
+          fontWeight: FontWeight.w600,
+          color: p.textHi,
+          letterSpacing: -0.5,
+        ),
       ),
     ),
     iconTheme: IconThemeData(color: p.textHi),
@@ -389,12 +427,14 @@ class ThemeController {
   static const _key = 'lumen_theme_mode';
 
   static const _accentKey = 'lumen_accent_color';
+  static const _fontKey = 'lumen_font';
 
   final ValueNotifier<ThemeMode> mode = ValueNotifier(ThemeMode.dark);
   final ValueNotifier<Color> accent = ValueNotifier(defaultAccent);
+  final ValueNotifier<LumenFont> font = ValueNotifier(LumenFont.lumen);
 
-  /// Rebuild signal for both theme mode and accent changes.
-  Listenable get listenable => Listenable.merge([mode, accent]);
+  /// Rebuild signal for appearance changes.
+  Listenable get listenable => Listenable.merge([mode, accent, font]);
 
   Future<void> load() async {
     final p = await SharedPreferences.getInstance();
@@ -408,6 +448,13 @@ class ThemeController {
     }
     final c = p.getInt(_accentKey);
     if (c != null) accent.value = Color(c);
+    final savedFont = p.getString(_fontKey);
+    if (savedFont != null) {
+      font.value = LumenFont.values.firstWhere(
+        (option) => option.name == savedFont,
+        orElse: () => LumenFont.lumen,
+      );
+    }
   }
 
   Future<void> set(ThemeMode m) async {
@@ -420,6 +467,12 @@ class ThemeController {
     accent.value = c;
     final p = await SharedPreferences.getInstance();
     await p.setInt(_accentKey, c.toARGB32());
+  }
+
+  Future<void> setFont(LumenFont value) async {
+    font.value = value;
+    final p = await SharedPreferences.getInstance();
+    await p.setString(_fontKey, value.name);
   }
 }
 

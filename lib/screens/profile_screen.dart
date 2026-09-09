@@ -45,6 +45,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _pageScroll = ScrollController();
   final _entryFocus = FocusNode(debugLabel: 'Profile add account');
   final _themeEntryFocus = FocusNode(debugLabel: 'Dark appearance');
+  final _fontEntryFocus = FocusNode(debugLabel: 'Lumen font');
   final _accentEntryFocus = FocusNode(debugLabel: 'Signal lime accent');
   final _playbackModeFocus = FocusNode(debugLabel: 'Live playback mode');
   final _insightsFocus = FocusNode(debugLabel: 'Watch insights');
@@ -497,6 +498,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _pageScroll.dispose();
     _entryFocus.dispose();
     _themeEntryFocus.dispose();
+    _fontEntryFocus.dispose();
     _accentEntryFocus.dispose();
     _playbackModeFocus.dispose();
     _insightsFocus.dispose();
@@ -837,6 +839,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _ThemeSelector(
         entryFocusNode: _themeEntryFocus,
         upFocusNode: _lastProfileSwitchFocus ?? _entryFocusNode,
+        downFocusNode: _fontEntryFocus,
+        leftExitFocusNode: widget.shellRailFocusNode,
+      ),
+      const SizedBox(height: 20),
+      Text('FONT', style: kSection()),
+      const SizedBox(height: 10),
+      _FontSelector(
+        entryFocusNode: _fontEntryFocus,
+        upFocusNode: _themeEntryFocus,
         downFocusNode: _accentEntryFocus,
         leftExitFocusNode: widget.shellRailFocusNode,
       ),
@@ -845,7 +856,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       const SizedBox(height: 12),
       _AccentPicker(
         entryFocusNode: _accentEntryFocus,
-        upFocusNode: _themeEntryFocus,
+        upFocusNode: _fontEntryFocus,
         downFocusNode: _playbackModeFocus,
         leftExitFocusNode: widget.shellRailFocusNode,
       ),
@@ -1429,6 +1440,135 @@ class _AccountRemovalDialogState extends State<_AccountRemovalDialog> {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// App-wide, offline-safe type selector. Font files are bundled in the app so
+/// the setting behaves the same on TVs without network access.
+class _FontSelector extends StatefulWidget {
+  const _FontSelector({
+    required this.entryFocusNode,
+    required this.upFocusNode,
+    required this.downFocusNode,
+    this.leftExitFocusNode,
+  });
+
+  final FocusNode entryFocusNode;
+  final FocusNode upFocusNode;
+  final FocusNode downFocusNode;
+  final FocusNode? leftExitFocusNode;
+
+  @override
+  State<_FontSelector> createState() => _FontSelectorState();
+}
+
+class _FontSelectorState extends State<_FontSelector> {
+  late final List<FocusNode> _focusNodes = [
+    widget.entryFocusNode,
+    for (final option in LumenFont.values.skip(1))
+      FocusNode(debugLabel: '${option.label} font'),
+  ];
+
+  @override
+  void dispose() {
+    for (final node in _focusNodes.skip(1)) {
+      node.dispose();
+    }
+    super.dispose();
+  }
+
+  KeyEventResult _route(int index, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+      widget.upFocusNode.requestFocus();
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+      widget.downFocusNode.requestFocus();
+      return KeyEventResult.handled;
+    }
+    final delta = event.logicalKey == LogicalKeyboardKey.arrowLeft
+        ? -1
+        : event.logicalKey == LogicalKeyboardKey.arrowRight
+        ? 1
+        : 0;
+    if (delta == 0) return KeyEventResult.ignored;
+    final target = index + delta;
+    if (target >= 0 && target < _focusNodes.length) {
+      _focusNodes[target].requestFocus();
+    } else if (target < 0 &&
+        widget.leftExitFocusNode?.canRequestFocus == true) {
+      widget.leftExitFocusNode!.requestFocus();
+    }
+    return KeyEventResult.handled;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<LumenFont>(
+      valueListenable: ThemeController.instance.font,
+      builder: (context, current, _) => Row(
+        children: [
+          for (var index = 0; index < LumenFont.values.length; index++) ...[
+            if (index > 0) const SizedBox(width: 8),
+            Expanded(
+              child: RemoteTap(
+                focusNode: _focusNodes[index],
+                focusRadius: 14,
+                onKeyEvent: (_, event) => _route(index, event),
+                semanticLabel: '${LumenFont.values[index].label} font',
+                onTap: () =>
+                    ThemeController.instance.setFont(LumenFont.values[index]),
+                child: AnimatedContainer(
+                  key: ValueKey('profile-font-${LumenFont.values[index].name}'),
+                  duration: lumenMotion,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 13,
+                  ),
+                  decoration: BoxDecoration(
+                    color: current == LumenFont.values[index]
+                        ? accent.withValues(alpha: isDark ? .16 : .22)
+                        : surfaceHi.withValues(alpha: .55),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: current == LumenFont.values[index]
+                          ? accentInk
+                          : line,
+                      width: current == LumenFont.values[index] ? 1.5 : 1,
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        LumenFont.values[index].label,
+                        maxLines: 1,
+                        style: TextStyle(
+                          fontFamily: LumenFont.values[index].family,
+                          color: textHi,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        LumenFont.values[index].description,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: muted, fontSize: 10.5),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

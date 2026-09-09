@@ -891,12 +891,11 @@ class _FocusableTapState extends State<FocusableTap> {
             foregroundDecoration: widget.showFocusRing && _focus
                 ? BoxDecoration(
                     borderRadius: BorderRadius.circular(widget.focusRadius),
-                    border: Border.all(color: accentInk, width: 3),
+                    border: Border.all(color: accentInk, width: 1.5),
                     boxShadow: [
                       BoxShadow(
-                        color: accent.withValues(alpha: isDark ? .48 : .32),
-                        blurRadius: 20,
-                        spreadRadius: 1,
+                        color: accent.withValues(alpha: isDark ? .34 : .24),
+                        blurRadius: 12,
                       ),
                     ],
                   )
@@ -1079,12 +1078,11 @@ class _RemoteTapState extends State<RemoteTap> {
             foregroundDecoration: widget.showFocusRing && _focused
                 ? BoxDecoration(
                     borderRadius: BorderRadius.circular(widget.focusRadius),
-                    border: Border.all(color: focusColor, width: 3),
+                    border: Border.all(color: focusColor, width: 1.5),
                     boxShadow: [
                       BoxShadow(
-                        color: focusColor.withValues(alpha: isDark ? .48 : .32),
-                        blurRadius: 20,
-                        spreadRadius: 1,
+                        color: focusColor.withValues(alpha: isDark ? .34 : .24),
+                        blurRadius: 12,
                       ),
                     ],
                   )
@@ -2230,6 +2228,9 @@ class PosterCard extends StatelessWidget {
     final interactive = FocusableTap(
       autofocus: autofocus,
       focusNode: focusNode,
+      // The poster paints its own radius-matched hairline. A second generic
+      // ring around the scaled card makes rectangular art look pill-shaped.
+      showFocusRing: false,
       onKeyEvent: onKeyEvent,
       onFocusChange: onFocusChange,
       onTap: onTap,
@@ -2531,22 +2532,19 @@ class ChannelCard extends StatelessWidget {
                       animation: Library.instance,
                       builder: (_, _) {
                         final saved = Library.instance.isFav(favoriteRef!.key);
+                        if (!saved) return const SizedBox.shrink();
                         return Container(
-                          width: 28,
-                          height: 28,
+                          width: 25,
+                          height: 25,
                           decoration: BoxDecoration(
-                            color: Colors.black.withValues(
-                              alpha: saved ? 0.72 : 0.48,
-                            ),
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white24),
+                            color: const Color(0xD9141719),
+                            borderRadius: BorderRadius.circular(7),
+                            border: Border.all(color: Colors.white12),
                           ),
                           child: Icon(
-                            saved
-                                ? Icons.favorite_rounded
-                                : Icons.favorite_border_rounded,
-                            color: saved ? accentInk : Colors.white70,
-                            size: 16,
+                            Icons.bookmark_rounded,
+                            color: accentInk,
+                            size: 15,
                           ),
                         );
                       },

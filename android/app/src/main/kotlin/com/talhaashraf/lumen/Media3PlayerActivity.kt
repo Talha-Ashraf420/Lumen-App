@@ -148,6 +148,12 @@ class Media3PlayerActivity : Activity() {
     private var pendingBufferMessage = ""
     private var selectedResizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
     private var returningToEmbeddedEngine = false
+    private val selectedFontName: String by lazy {
+        getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+            .getString("flutter.lumen_font", "lumen") ?: "lumen"
+    }
+    private val regularTypeface: Typeface by lazy { loadAppTypeface(emphasized = false) }
+    private val mediumTypeface: Typeface by lazy { loadAppTypeface(emphasized = true) }
     private val isTelevisionDevice: Boolean
         get() = resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK ==
             Configuration.UI_MODE_TYPE_TELEVISION
@@ -464,13 +470,13 @@ class Media3PlayerActivity : Activity() {
         }
         titleText = TextView(this).apply {
             textSize = 22f
-            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+            typeface = mediumTypeface
             setTextColor(Color.WHITE)
             maxLines = 1
         }
         titleSubtitleText = TextView(this).apply {
             textSize = 13f
-            typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+            typeface = regularTypeface
             setTextColor(0xFFBCC3B9.toInt())
             maxLines = 1
             setPadding(0, dp(2), 0, 0)
@@ -481,7 +487,7 @@ class Media3PlayerActivity : Activity() {
             text = if (isLive) "●  LIVE" else "LUMEN"
             textSize = 12f
             letterSpacing = 0.14f
-            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+            typeface = mediumTypeface
             setTextColor(0xFFC5FF63.toInt())
             gravity = Gravity.CENTER
             setPadding(dp(13), 0, dp(13), 0)
@@ -544,8 +550,10 @@ class Media3PlayerActivity : Activity() {
         return LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
+            clipChildren = false
+            clipToPadding = false
             background = roundedRect(0x99111511.toInt(), 0x66596157, 1, 40)
-            setPadding(dp(8), dp(7), dp(8), dp(7))
+            setPadding(dp(8), dp(10), dp(8), dp(10))
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -562,7 +570,7 @@ class Media3PlayerActivity : Activity() {
     private fun buildBufferingBadge(): TextView = TextView(this).apply {
         text = Media3PlaybackPolicy.bufferingLabel(isLive, reconnecting = false)
         textSize = 13f
-        typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        typeface = mediumTypeface
         setTextColor(0xFFE6EAE3.toInt())
         gravity = Gravity.CENTER
         setPadding(dp(16), dp(8), dp(16), dp(8))
@@ -577,7 +585,7 @@ class Media3PlayerActivity : Activity() {
 
     private fun buildSeekFeedback(): TextView = TextView(this).apply {
         textSize = 19f
-        typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        typeface = mediumTypeface
         setTextColor(0xFFC5FF63.toInt())
         gravity = Gravity.CENTER
         setPadding(dp(20), dp(12), dp(20), dp(12))
@@ -794,7 +802,7 @@ class Media3PlayerActivity : Activity() {
 
     private fun playerTimeText(): TextView = TextView(this).apply {
         textSize = 15f
-        typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        typeface = mediumTypeface
         setTextColor(0xFFD8DDD5.toInt())
         gravity = Gravity.CENTER
         maxLines = 1
@@ -818,7 +826,7 @@ class Media3PlayerActivity : Activity() {
         text = label
         contentDescription = description
         textSize = if (prominent) 22f else 14f
-        typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        typeface = mediumTypeface
         gravity = Gravity.CENTER
         includeFontPadding = false
         isFocusable = true
@@ -850,8 +858,8 @@ class Media3PlayerActivity : Activity() {
                 scheduleControlsHide()
             }
             view.animate()
-                .scaleX(if (focused) 1.08f else 1f)
-                .scaleY(if (focused) 1.08f else 1f)
+                .scaleX(if (focused) 1.04f else 1f)
+                .scaleY(if (focused) 1.04f else 1f)
                 .setDuration(120L)
                 .start()
             view.elevation = if (focused) dp(10).toFloat() else 0f
@@ -904,8 +912,8 @@ class Media3PlayerActivity : Activity() {
                 scheduleControlsHide()
             }
             view.animate()
-                .scaleX(if (focused) 1.08f else 1f)
-                .scaleY(if (focused) 1.08f else 1f)
+                .scaleX(if (focused) 1.04f else 1f)
+                .scaleY(if (focused) 1.04f else 1f)
                 .setDuration(120L)
                 .start()
             view.elevation = if (focused) dp(10).toFloat() else 0f
@@ -938,11 +946,11 @@ class Media3PlayerActivity : Activity() {
         )
         addState(
             intArrayOf(android.R.attr.state_focused),
-            roundedRect(0xC2111511.toInt(), 0xFFC5FF63.toInt(), 2, 12)
+            roundedRect(0xC2111511.toInt(), 0xFFC5FF63.toInt(), 1, 12)
         )
         addState(
             intArrayOf(android.R.attr.state_pressed),
-            roundedRect(0xE6111511.toInt(), 0xFFE0FFAA.toInt(), 2, 12)
+            roundedRect(0xE6111511.toInt(), 0xFFE0FFAA.toInt(), 1, 12)
         )
         addState(
             intArrayOf(),
@@ -953,15 +961,15 @@ class Media3PlayerActivity : Activity() {
     private fun centerButtonBackground(): StateListDrawable = StateListDrawable().apply {
         addState(
             intArrayOf(android.R.attr.state_focused),
-            roundedRect(0xFFC5FF63.toInt(), Color.WHITE, 2, 40)
+            oval(0xFFC5FF63.toInt(), Color.WHITE, 1)
         )
         addState(
             intArrayOf(android.R.attr.state_pressed),
-            roundedRect(0xE6111511.toInt(), 0xFFE0FFAA.toInt(), 2, 40)
+            oval(0xE6111511.toInt(), 0xFFE0FFAA.toInt(), 1)
         )
         addState(
             intArrayOf(),
-            roundedRect(0x99111511.toInt(), 0xB3C5FF63.toInt(), 1, 40)
+            oval(0x99111511.toInt(), 0xB3C5FF63.toInt(), 1)
         )
     }
 
@@ -1004,30 +1012,33 @@ class Media3PlayerActivity : Activity() {
         round: Boolean = false
     ): StateListDrawable = StateListDrawable().apply {
         val radius = if (round) 40 else 14
+        fun shape(fill: Int, stroke: Int, width: Int) = if (round) {
+            oval(fill, stroke, width)
+        } else {
+            roundedRect(fill, stroke, width, radius)
+        }
         addState(
             intArrayOf(-android.R.attr.state_enabled),
-            roundedRect(0x55262B24, 0x334F554D, 1, radius)
+            shape(0x55262B24, 0x334F554D, 1)
         )
         addState(
             intArrayOf(android.R.attr.state_focused),
-            roundedRect(
+            shape(
                 if (prominent) 0xFFE0FFAA.toInt() else 0xFFC5FF63.toInt(),
                 Color.WHITE,
-                2,
-                radius
+                1
             )
         )
         addState(
             intArrayOf(android.R.attr.state_pressed),
-            roundedRect(0xFFE0FFAA.toInt(), Color.WHITE, 2, radius)
+            shape(0xFFE0FFAA.toInt(), Color.WHITE, 1)
         )
         addState(
             intArrayOf(),
-            roundedRect(
+            shape(
                 0xD9111511.toInt(),
                 if (prominent) 0x99C5FF63.toInt() else 0x99596157.toInt(),
-                1,
-                radius
+                1
             )
         )
     }
@@ -1044,6 +1055,44 @@ class Media3PlayerActivity : Activity() {
             setColor(fill)
             setStroke(dp(strokeWidth), stroke)
         }
+
+    private fun oval(fill: Int, stroke: Int, strokeWidth: Int): GradientDrawable =
+        GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(fill)
+            setStroke(dp(strokeWidth), stroke)
+        }
+
+    private fun loadAppTypeface(emphasized: Boolean): Typeface {
+        if (selectedFontName == "device") {
+            return Typeface.create(
+                if (emphasized) "sans-serif-medium" else "sans-serif",
+                Typeface.NORMAL
+            )
+        }
+        val assetPath = when (selectedFontName) {
+            "inter" -> "flutter_assets/assets/fonts/inter/Inter-Variable.ttf"
+            else -> if (emphasized) {
+                "flutter_assets/assets/fonts/SpaceGrotesk-SemiBold.ttf"
+            } else {
+                "flutter_assets/assets/fonts/SpaceGrotesk-Regular.ttf"
+            }
+        }
+        return runCatching {
+            val loaded = Typeface.createFromAsset(assets, assetPath)
+            if (selectedFontName == "inter" && emphasized) {
+                Typeface.create(loaded, Typeface.BOLD)
+            } else {
+                loaded
+            }
+        }
+            .getOrElse {
+                Typeface.create(
+                    if (emphasized) "sans-serif-medium" else "sans-serif",
+                    Typeface.NORMAL
+                )
+            }
+    }
 
     private fun topScrim(): GradientDrawable = GradientDrawable(
         GradientDrawable.Orientation.TOP_BOTTOM,

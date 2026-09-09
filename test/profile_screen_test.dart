@@ -40,6 +40,7 @@ void main() {
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     await CatalogStore.instance.disableForWidgetTests();
+    ThemeController.instance.font.value = LumenFont.lumen;
     activePalette = darkPalette;
   });
 
@@ -315,6 +316,18 @@ void main() {
       find.byKey(const ValueKey('profile-theme-system')),
     );
     expect((systemTile.decoration! as BoxDecoration).color, accent);
+
+    await tester.tap(find.text('Inter').first);
+    await tester.pumpAndSettle();
+    expect(ThemeController.instance.font.value, LumenFont.inter);
+    expect(
+      Theme.of(
+        tester.element(find.byType(ProfileScreen)),
+      ).textTheme.bodyMedium?.fontFamily,
+      'Inter',
+    );
+    final preferences = await SharedPreferences.getInstance();
+    expect(preferences.getString('lumen_font'), LumenFont.inter.name);
     expect(tester.takeException(), isNull);
   });
 
@@ -387,6 +400,9 @@ void main() {
     await move(LogicalKeyboardKey.arrowDown, 'Dark appearance');
     await move(LogicalKeyboardKey.arrowRight, 'Light appearance');
     await move(LogicalKeyboardKey.arrowRight, 'System appearance');
+    await move(LogicalKeyboardKey.arrowDown, 'Lumen font');
+    await move(LogicalKeyboardKey.arrowRight, 'Inter font');
+    await move(LogicalKeyboardKey.arrowRight, 'Device font');
     await move(
       LogicalKeyboardKey.arrowDown,
       '${accentSchemes.first.name} accent',
@@ -439,6 +455,7 @@ void main() {
       'Dark appearance',
       'Light appearance',
       'System appearance',
+      for (final option in LumenFont.values) '${option.label} font',
       for (final scheme in accentSchemes) '${scheme.name} accent',
       'Custom accent',
       'Live playback mode',
