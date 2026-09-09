@@ -8,8 +8,9 @@ A native, premium **IPTV player** for your own Xtream / X3U subscription — Liv
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-22CBA8.svg)](CONTRIBUTING.md)
 ![Platforms](https://img.shields.io/badge/platforms-Android%20·%20TV%20·%20iOS%20·%20macOS%20·%20Windows%20·%20Linux-3DDC84)
 [![Stars](https://img.shields.io/github/stars/Talha-Ashraf420/Lumen-App?style=social)](https://github.com/Talha-Ashraf420/Lumen-App/stargazers)
+[![Sponsor Lumen](https://img.shields.io/badge/Sponsor-Lumen-EA4AAA?style=flat&logo=githubsponsors&logoColor=white)](https://github.com/sponsors/Talha-Ashraf420)
 
-[**Visit the Lumen website**](https://lumen-launch.vercel.app/) · [**Join the Discord community**](https://discord.gg/n8dfzrDNQg) · [**View on Google Play**](https://play.google.com/store/apps/details?id=com.talhaashraf.lumen)
+[**Visit the Lumen website**](https://lumen-launch.vercel.app/) · [**Join the Discord community**](https://discord.gg/n8dfzrDNQg) · [**View on Google Play**](https://play.google.com/store/apps/details?id=com.talhaashraf.lumen) · [**Sponsor Lumen**](https://github.com/sponsors/Talha-Ashraf420)
 
 ---
 
@@ -30,19 +31,21 @@ Google Play edition and receive future Community APK updates.
 On Android TV, open the **Downloader** app and enter code **`4560142`**, or
 visit **[aftv.news/4560142](https://aftv.news/4560142)**.
 
-Desktop builds remain available from GitHub Releases:
+Desktop builds and an unsigned iOS package are available from GitHub Releases:
 
 [![Windows](https://img.shields.io/badge/Download-Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/Talha-Ashraf420/Lumen-App/releases/latest/download/Lumen-Windows.zip)
 [![macOS](https://img.shields.io/badge/Download-macOS-000000?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/Talha-Ashraf420/Lumen-App/releases/latest/download/Lumen-macOS.zip)
 [![Linux](https://img.shields.io/badge/Download-Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black)](https://github.com/Talha-Ashraf420/Lumen-App/releases/latest/download/Lumen-Linux-x64.tar.gz)
+[![Download unsigned iOS build](https://img.shields.io/badge/Download-iOS-000000?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/Talha-Ashraf420/Lumen-App/releases/latest/download/Lumen-iOS-unsigned.zip)
 
-➡️ Browse all published desktop builds on the **[Releases page](https://github.com/Talha-Ashraf420/Lumen-App/releases/latest)**.
+➡️ Browse all published packages on the **[Releases page](https://github.com/Talha-Ashraf420/Lumen-App/releases/latest)**.
 
 | Platform | File | Install |
 |----------|------|---------|
 | **Windows** | `Lumen-Windows.zip` | Unzip → run `Lumen.exe` |
 | **macOS** | `Lumen-macOS.zip` | Unzip → open `lumen_tv.app` *(right-click → Open the first time)* |
 | **Linux** | `Lumen-Linux-x64.tar.gz` | Extract → run the `lumen_tv` binary |
+| **iOS** | `Lumen-iOS-unsigned.zip` | Advanced users only: sign the included app with an Apple development certificate before installing |
 
 > The download links resolve once the first CI run finishes publishing the **latest** release.
 
@@ -112,7 +115,7 @@ Flutter • [media_kit](https://pub.dev/packages/media_kit) (libmpv) for native 
 
 ## 🤖 Builds
 
-Every push to `main` triggers [GitHub Actions](https://github.com/Talha-Ashraf420/Lumen-App/actions) for quality checks and platform builds. Official Android releases are delivered through Google Play; desktop artifacts are published on GitHub Releases.
+Every push to `main` triggers [GitHub Actions](https://github.com/Talha-Ashraf420/Lumen-App/actions) for quality checks and Android, Android TV, Windows, macOS, Linux and unsigned iOS builds. Official Android releases are delivered through Google Play; directly installable packages are published on GitHub Releases.
 
 Build locally:
 
@@ -124,6 +127,17 @@ flutter build macos --release     # macOS
 flutter build windows --release   # Windows (on Windows)
 flutter build linux --release     # Linux
 ```
+
+## 💖 Sponsor Lumen
+
+Lumen is independently built and maintained. Sponsorship helps fund test
+devices, hosting, metadata services, store fees and the time needed to keep
+playback reliable across Android TV, phones and desktop platforms.
+
+[**Become a GitHub Sponsor**](https://github.com/sponsors/Talha-Ashraf420)
+
+Sponsors support development but do not receive channels, playlists or IPTV
+subscriptions. Lumen remains a player for content that users obtain legally.
 
 ## 🤝 Contributing
 

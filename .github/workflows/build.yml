@@ -1,8 +1,7 @@
-name: Build Android and Android TV
+name: Build and release Lumen
 
-# Builds the Android package used by phones and Android TV, plus the private
-# Google Play bundle. Desktop and iOS jobs are retained below but temporarily
-# disabled while the Android TV experience is being stabilised.
+# Builds Android, Android TV, Windows, macOS, Linux and an unsigned iOS app.
+# The private Google Play bundle stays out of the public GitHub release.
 on:
   push:
     branches: [main, master]
@@ -147,8 +146,6 @@ jobs:
 
   windows:
     needs: quality
-    # Temporarily disabled: Android and Android TV are the active targets.
-    if: ${{ false }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -170,8 +167,6 @@ jobs:
 
   macos:
     needs: quality
-    # Temporarily disabled: Android and Android TV are the active targets.
-    if: ${{ false }}
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -196,8 +191,6 @@ jobs:
 
   linux:
     needs: quality
-    # Temporarily disabled: Android and Android TV are the active targets.
-    if: ${{ false }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -223,8 +216,6 @@ jobs:
 
   ios:
     needs: quality
-    # Temporarily disabled: Android and Android TV are the active targets.
-    if: ${{ false }}
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -245,11 +236,20 @@ jobs:
           path: Lumen-iOS-unsigned.zip
           if-no-files-found: error
 
-  # Publish the Android/Android TV package to the rolling "latest" release.
+  # Publish installable packages to the rolling "latest" release. The Google
+  # Play AAB remains a private Actions artifact and is intentionally omitted.
   release:
-    needs: [android, android-play]
-    # Publish after both Android variants have been built and verified.
-    if: ${{ always() }}
+    needs: [android, android-play, windows, macos, linux, ios]
+    if: >-
+      ${{
+        always() &&
+        needs.android.result == 'success' &&
+        needs.android-play.result == 'success' &&
+        needs.windows.result == 'success' &&
+        needs.macos.result == 'success' &&
+        needs.linux.result == 'success' &&
+        needs.ios.result == 'success'
+      }}
     runs-on: ubuntu-latest
     env:
       DISCORD_RELEASE_WEBHOOK: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
@@ -258,14 +258,38 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: Lumen-Android-apk
-          path: dist
-      # Desktop and iOS artifact downloads are intentionally disabled with
-      # their jobs above. Restore these steps when those targets are re-enabled.
+          path: dist/android
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Lumen-Windows
+          path: dist/windows
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Lumen-macOS
+          path: dist/macos
+      - name: Download Linux artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Lumen-Linux
+          path: dist/linux
+      - name: Download unsigned iOS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Lumen-iOS-unsigned
+          path: dist/ios
       - name: Stage release assets (stable names)
         run: |
           mkdir -p out
-          cp dist/app-release.apk out/Lumen-Android.apk || echo "skip android"
-          if [ -f out/Lumen-Android.apk ]; then sha256sum out/Lumen-Android.apk > out/Lumen-Android.apk.sha256; fi
+          cp dist/android/app-release.apk out/Lumen-Android.apk
+          cp dist/windows/Lumen-Windows.zip out/Lumen-Windows.zip
+          cp dist/macos/Lumen-macOS.zip out/Lumen-macOS.zip
+          cp dist/linux/Lumen-Linux-x64.tar.gz out/Lumen-Linux-x64.tar.gz
+          cp dist/ios/Lumen-iOS-unsigned.zip out/Lumen-iOS-unsigned.zip
+          for asset in out/*; do
+            sha256sum "$asset" > "$asset.sha256"
+          done
           ls -la out
       - name: Publish to "latest" release
         uses: softprops/action-gh-release@v2
@@ -276,9 +300,11 @@ jobs:
           body: |
             build: ${{ github.run_number }}
 
-            Lumen automatic build. Install links are below.
+            Lumen automatic build for Android, Android TV, Windows, macOS,
+            Linux and iOS. Install links are below.
             The Android asset is a signed Community build for direct installation
             and uses a separate package from the Google Play edition.
+            The iOS asset is unsigned and must be signed before installation.
           # Must NOT be a prerelease, or the /releases/latest/ download URLs 404.
           prerelease: false
           make_latest: true
