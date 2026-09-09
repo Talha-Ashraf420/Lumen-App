@@ -2,7 +2,10 @@ package com.talhaashraf.lumen
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ApplicationInfo
 import android.content.res.Configuration
 import android.content.res.ColorStateList
@@ -64,6 +67,7 @@ class Media3PlayerActivity : Activity() {
         const val EXTRA_TITLE = "title"
         const val EXTRA_IS_LIVE = "isLive"
         const val EXTRA_PLAYBACK_MODE = "playbackMode"
+        const val EXTRA_ACCENT_COLOR = "accentColor"
         const val EXTRA_HEADERS = "headers"
         const val EXTRA_PLAYLIST_URLS = "playlistUrls"
         const val EXTRA_PLAYLIST_ALTERNATE_URLS = "playlistAlternateUrls"
@@ -124,6 +128,7 @@ class Media3PlayerActivity : Activity() {
     private var url = ""
     private var isLive = false
     private var playbackMode = Media3PlaybackMode.BALANCED
+    private var accentColor = 0xFFC7F36B.toInt()
     private var playlistUrls = listOf<String>()
     private var playlistAlternateUrls = listOf<String>()
     private var playlistTitles = listOf<String>()
@@ -148,6 +153,16 @@ class Media3PlayerActivity : Activity() {
     private var pendingBufferMessage = ""
     private var selectedResizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
     private var returningToEmbeddedEngine = false
+    private var pausedForBackground = false
+    private var isInBackground = false
+    private var screenReceiverRegistered = false
+    private val screenStateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == Intent.ACTION_SCREEN_OFF) {
+                pauseForBackground()
+            }
+        }
+    }
     private val selectedFontName: String by lazy {
         getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
             .getString("flutter.lumen_font", "lumen") ?: "lumen"
@@ -178,6 +193,7 @@ class Media3PlayerActivity : Activity() {
         if (
             ::bufferingBadge.isInitialized &&
             !terminalError &&
+            !isInBackground &&
             ::player.isInitialized &&
             player.playbackState == Player.STATE_BUFFERING
         ) {
@@ -195,7 +211,12 @@ class Media3PlayerActivity : Activity() {
 
     private val watchdog = object : Runnable {
         override fun run() {
-            if (::player.isInitialized && !retryScheduled && !terminalError) {
+            if (
+                ::player.isInitialized &&
+                !isInBackground &&
+                !retryScheduled &&
+                !terminalError
+            ) {
                 val now = SystemClock.elapsedRealtime()
                 val position = player.currentPosition.coerceAtLeast(0L)
                 if (player.isPlaying && position > lastPositionMs) {
@@ -241,6 +262,7 @@ class Media3PlayerActivity : Activity() {
         playbackMode = Media3PlaybackMode.from(
             intent.getStringExtra(EXTRA_PLAYBACK_MODE)
         )
+        accentColor = intent.getIntExtra(EXTRA_ACCENT_COLOR, accentColor)
         playlistUrls = intent.getStringArrayListExtra(EXTRA_PLAYLIST_URLS)
             ?.filter { it.isNotBlank() }
             .orEmpty()
@@ -300,10 +322,9 @@ class Media3PlayerActivity : Activity() {
         root.addView(playerView)
         titleBar = buildTitleBar().apply { visibility = View.GONE }
         root.addView(titleBar)
+        centerTransport = buildCenterTransport()
         controlsBar = buildControlsBar().apply { visibility = View.GONE }
         root.addView(controlsBar)
-        centerTransport = buildCenterTransport().apply { visibility = View.GONE }
-        root.addView(centerTransport)
         bufferingBadge = buildBufferingBadge()
         root.addView(bufferingBadge)
         seekFeedback = buildSeekFeedback()
@@ -312,11 +333,15 @@ class Media3PlayerActivity : Activity() {
         root.addView(errorPanel)
         setContentView(root)
 
+        registerReceiver(screenStateReceiver, IntentFilter(Intent.ACTION_SCREEN_OFF))
+        screenReceiverRegistered = true
+
         player = buildPlayer()
         playerView.player = player
         player.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 updateTransportUi()
+                if (isInBackground) return
                 when (state) {
                     Player.STATE_BUFFERING -> showBufferingStatus(
                         if (isLive) "Building live buffer…" else "Buffering…"
@@ -337,11 +362,16 @@ class Media3PlayerActivity : Activity() {
             }
 
             override fun onPlayerError(error: PlaybackException) {
+                if (isInBackground) return
                 scheduleRetry(friendlyError(error))
             }
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 updateTransportUi()
+                if (isInBackground && isPlaying) {
+                    pauseForBackground()
+                    return
+                }
                 if (isPlaying) {
                     markProgress(
                         SystemClock.elapsedRealtime(),
@@ -380,6 +410,31 @@ class Media3PlayerActivity : Activity() {
         handler.post(watchdog)
         handler.post(progressUpdater)
         playerView.requestFocus()
+    }
+
+    override fun onStop() {
+        pauseForBackground()
+        super.onStop()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        isInBackground = false
+        if (pausedForBackground && ::player.isInitialized) {
+            pausedForBackground = false
+            showControls(requestTransportFocus = true)
+        }
+    }
+
+    private fun pauseForBackground() {
+        isInBackground = true
+        if (!::player.isInitialized) return
+        val wasExpectedToPlay = player.playWhenReady || player.isPlaying
+        player.playWhenReady = false
+        player.pause()
+        handler.removeCallbacks(hideControls)
+        updateTransportUi()
+        if (wasExpectedToPlay) pausedForBackground = true
     }
 
     private fun buildPlayer(): ExoPlayer {
@@ -488,7 +543,7 @@ class Media3PlayerActivity : Activity() {
             textSize = 12f
             letterSpacing = 0.14f
             typeface = mediumTypeface
-            setTextColor(0xFFC5FF63.toInt())
+            setTextColor(accentColor)
             gravity = Gravity.CENTER
             setPadding(dp(13), 0, dp(13), 0)
             background = roundedRect(0x73111511, 0x667F877D, 1, 18)
@@ -552,18 +607,13 @@ class Media3PlayerActivity : Activity() {
             gravity = Gravity.CENTER
             clipChildren = false
             clipToPadding = false
-            background = roundedRect(0x99111511.toInt(), 0x66596157, 1, 40)
-            setPadding(dp(8), dp(10), dp(8), dp(10))
-            layoutParams = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.CENTER
-            )
-            addView(previousButton, transportParams(dp(52), dp(52)))
-            addView(rewindButton, transportParams(dp(52), dp(52)))
-            addView(playPauseButton, transportParams(dp(68), dp(68)))
-            addView(forwardButton, transportParams(dp(52), dp(52)))
-            addView(nextButton, transportParams(dp(52), dp(52)))
+            background = roundedRect(0x73111511, withAlpha(accentColor, 0x4D), 1, 18)
+            setPadding(dp(5), dp(5), dp(5), dp(5))
+            addView(previousButton, transportParams(dp(46), dp(46), margin = 3))
+            addView(rewindButton, transportParams(dp(46), dp(46), margin = 3))
+            addView(playPauseButton, transportParams(dp(50), dp(50), margin = 3))
+            addView(forwardButton, transportParams(dp(46), dp(46), margin = 3))
+            addView(nextButton, transportParams(dp(46), dp(46), margin = 3))
         }
     }
 
@@ -574,7 +624,7 @@ class Media3PlayerActivity : Activity() {
         setTextColor(0xFFE6EAE3.toInt())
         gravity = Gravity.CENTER
         setPadding(dp(16), dp(8), dp(16), dp(8))
-        background = roundedRect(0xD9111511.toInt(), 0x4DC5FF63, 1, 18)
+        background = roundedRect(0xD9111511.toInt(), withAlpha(accentColor, 0x4D), 1, 18)
         visibility = View.GONE
         layoutParams = FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -586,10 +636,15 @@ class Media3PlayerActivity : Activity() {
     private fun buildSeekFeedback(): TextView = TextView(this).apply {
         textSize = 19f
         typeface = mediumTypeface
-        setTextColor(0xFFC5FF63.toInt())
+        setTextColor(accentColor)
         gravity = Gravity.CENTER
         setPadding(dp(20), dp(12), dp(20), dp(12))
-        background = roundedRect(0xE6111511.toInt(), 0x99C5FF63.toInt(), 1, 24)
+        background = roundedRect(
+            0xE6111511.toInt(),
+            withAlpha(accentColor, 0x99),
+            1,
+            24
+        )
         alpha = 0f
         visibility = View.GONE
         layoutParams = FrameLayout.LayoutParams(
@@ -672,7 +727,7 @@ class Media3PlayerActivity : Activity() {
         }
         positionText = playerTimeText().apply {
             text = if (isLive) "● LIVE" else "0:00"
-            if (isLive) setTextColor(0xFFC5FF63.toInt())
+            if (isLive) setTextColor(accentColor)
         }
         progressBar = SeekBar(this).apply {
             id = View.generateViewId()
@@ -761,11 +816,31 @@ class Media3PlayerActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
         }
-        tools.addView(playlistButton, transportParams(dp(104), dp(62)))
-        tools.addView(subtitleButton, transportParams(dp(104), dp(62)))
-        tools.addView(audioButton, transportParams(dp(104), dp(62)))
-        tools.addView(qualityButton, transportParams(dp(104), dp(62)))
-        tools.addView(moreButton, transportParams(dp(104), dp(62)))
+        tools.addView(playlistButton, transportParams(dp(92), dp(56), margin = 3))
+        tools.addView(subtitleButton, transportParams(dp(92), dp(56), margin = 3))
+        tools.addView(audioButton, transportParams(dp(92), dp(56), margin = 3))
+        tools.addView(qualityButton, transportParams(dp(92), dp(56), margin = 3))
+        tools.addView(moreButton, transportParams(dp(92), dp(56), margin = 3))
+        val actions = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            clipChildren = false
+            clipToPadding = false
+            addView(
+                centerTransport,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    dp(60)
+                ).apply { marginEnd = dp(10) }
+            )
+            addView(
+                tools,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    dp(60)
+                )
+            )
+        }
         panel.addView(
             progressRow,
             LinearLayout.LayoutParams(
@@ -774,10 +849,10 @@ class Media3PlayerActivity : Activity() {
             )
         )
         panel.addView(
-            tools,
+            actions,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-                dp(66)
+                dp(64)
             )
         )
         return panel
@@ -808,10 +883,14 @@ class Media3PlayerActivity : Activity() {
         maxLines = 1
     }
 
-    private fun transportParams(width: Int, height: Int): LinearLayout.LayoutParams =
+    private fun transportParams(
+        width: Int,
+        height: Int,
+        margin: Int = 5
+    ): LinearLayout.LayoutParams =
         LinearLayout.LayoutParams(width, height).apply {
-            marginStart = dp(5)
-            marginEnd = dp(5)
+            marginStart = dp(margin)
+            marginEnd = dp(margin)
         }
 
     private fun themedButton(
@@ -843,9 +922,9 @@ class Media3PlayerActivity : Activity() {
                 ),
                 intArrayOf(
                     0x667F877D,
-                    0xFF0B0D0B.toInt(),
-                    0xFF0B0D0B.toInt(),
-                    if (prominent) 0xFFC5FF63.toInt() else Color.WHITE
+                    onAccentColor(),
+                    onAccentColor(),
+                    if (prominent) accentColor else Color.WHITE
                 )
             )
         )
@@ -880,7 +959,7 @@ class Media3PlayerActivity : Activity() {
         contentDescription = description
         setImageResource(icon)
         scaleType = ImageView.ScaleType.CENTER_INSIDE
-        val inset = dp(if (prominent) 19 else 15)
+        val inset = dp(if (prominent) 13 else 12)
         setPadding(inset, inset, inset, inset)
         background = if (prominent) {
             centerButtonBackground()
@@ -896,9 +975,9 @@ class Media3PlayerActivity : Activity() {
             ),
             intArrayOf(
                 0x667F877D,
-                0xFF0B0D0B.toInt(),
-                0xFF0B0D0B.toInt(),
-                if (prominent) 0xFFC5FF63.toInt() else Color.WHITE
+                onAccentColor(),
+                onAccentColor(),
+                if (prominent) accentColor else Color.WHITE
             )
         )
         isFocusable = true
@@ -933,8 +1012,8 @@ class Media3PlayerActivity : Activity() {
         ),
         intArrayOf(
             0x667F877D,
-            0xFFC5FF63.toInt(),
-            0xFFC5FF63.toInt(),
+            accentColor,
+            accentColor,
             Color.WHITE
         )
     )
@@ -946,11 +1025,11 @@ class Media3PlayerActivity : Activity() {
         )
         addState(
             intArrayOf(android.R.attr.state_focused),
-            roundedRect(0xC2111511.toInt(), 0xFFC5FF63.toInt(), 1, 12)
+            roundedRect(0xC2111511.toInt(), accentColor, 1, 12)
         )
         addState(
             intArrayOf(android.R.attr.state_pressed),
-            roundedRect(0xE6111511.toInt(), 0xFFE0FFAA.toInt(), 1, 12)
+            roundedRect(0xE6111511.toInt(), accentColor, 1, 12)
         )
         addState(
             intArrayOf(),
@@ -961,15 +1040,15 @@ class Media3PlayerActivity : Activity() {
     private fun centerButtonBackground(): StateListDrawable = StateListDrawable().apply {
         addState(
             intArrayOf(android.R.attr.state_focused),
-            oval(0xFFC5FF63.toInt(), Color.WHITE, 1)
+            oval(accentColor, Color.WHITE, 1)
         )
         addState(
             intArrayOf(android.R.attr.state_pressed),
-            oval(0xE6111511.toInt(), 0xFFE0FFAA.toInt(), 1)
+            oval(withAlpha(accentColor, 0xE6), Color.WHITE, 1)
         )
         addState(
             intArrayOf(),
-            oval(0x99111511.toInt(), 0xB3C5FF63.toInt(), 1)
+            oval(0x99111511.toInt(), withAlpha(accentColor, 0xB3), 1)
         )
     }
 
@@ -981,7 +1060,7 @@ class Media3PlayerActivity : Activity() {
             ClipDrawable.HORIZONTAL
         )
         val playedTrack = ClipDrawable(
-            roundedRect(0xFFC5FF63.toInt(), Color.TRANSPARENT, 0, 2),
+            roundedRect(accentColor, Color.TRANSPARENT, 0, 2),
             Gravity.START,
             ClipDrawable.HORIZONTAL
         )
@@ -998,7 +1077,7 @@ class Media3PlayerActivity : Activity() {
 
     private fun seekThumb(focused: Boolean): GradientDrawable = GradientDrawable().apply {
         shape = GradientDrawable.OVAL
-        setColor(0xFFC5FF63.toInt())
+        setColor(accentColor)
         setStroke(
             dp(if (focused) 2 else 1),
             if (focused) Color.WHITE else 0xCC0B0D0B.toInt()
@@ -1024,20 +1103,20 @@ class Media3PlayerActivity : Activity() {
         addState(
             intArrayOf(android.R.attr.state_focused),
             shape(
-                if (prominent) 0xFFE0FFAA.toInt() else 0xFFC5FF63.toInt(),
+                accentColor,
                 Color.WHITE,
                 1
             )
         )
         addState(
             intArrayOf(android.R.attr.state_pressed),
-            shape(0xFFE0FFAA.toInt(), Color.WHITE, 1)
+            shape(withAlpha(accentColor, 0xE6), Color.WHITE, 1)
         )
         addState(
             intArrayOf(),
             shape(
                 0xD9111511.toInt(),
-                if (prominent) 0x99C5FF63.toInt() else 0x99596157.toInt(),
+                if (prominent) withAlpha(accentColor, 0x99) else 0x99596157.toInt(),
                 1
             )
         )
@@ -1062,6 +1141,22 @@ class Media3PlayerActivity : Activity() {
             setColor(fill)
             setStroke(dp(strokeWidth), stroke)
         }
+
+    private fun withAlpha(color: Int, alpha: Int): Int = Color.argb(
+        alpha.coerceIn(0, 255),
+        Color.red(color),
+        Color.green(color),
+        Color.blue(color)
+    )
+
+    private fun onAccentColor(): Int {
+        val perceivedBrightness = (
+            Color.red(accentColor) * 299 +
+                Color.green(accentColor) * 587 +
+                Color.blue(accentColor) * 114
+            ) / 1_000
+        return if (perceivedBrightness >= 150) 0xFF080A0B.toInt() else Color.WHITE
+    }
 
     private fun loadAppTypeface(emphasized: Boolean): Typeface {
         if (selectedFontName == "device") {
@@ -1139,16 +1234,6 @@ class Media3PlayerActivity : Activity() {
         ).filter {
             it.visibility == View.VISIBLE && it.isEnabled
         }
-        tools.forEachIndexed { index, button ->
-            button.nextFocusLeftId = tools.getOrNull(index - 1)?.id ?: button.id
-            button.nextFocusRightId = tools.getOrNull(index + 1)?.id ?: button.id
-            button.nextFocusUpId = if (progressBar.visibility == View.VISIBLE) {
-                progressBar.id
-            } else {
-                playPauseButton.id
-            }
-            button.nextFocusDownId = button.id
-        }
         val transportControls = listOf(
             previousButton,
             rewindButton,
@@ -1158,26 +1243,26 @@ class Media3PlayerActivity : Activity() {
         ).filter {
             it.visibility == View.VISIBLE && it.isEnabled
         }
-        val transportDownId = if (progressBar.visibility == View.VISIBLE) {
-            progressBar.id
-        } else {
-            tools.firstOrNull()?.id ?: playPauseButton.id
-        }
-        transportControls.forEachIndexed { index, button ->
-            button.nextFocusLeftId = transportControls.getOrNull(index - 1)?.id
+        val actionControls = transportControls + tools
+        actionControls.forEachIndexed { index, button ->
+            button.nextFocusLeftId = actionControls.getOrNull(index - 1)?.id
                 ?: button.id
-            button.nextFocusRightId = transportControls.getOrNull(index + 1)?.id
+            button.nextFocusRightId = actionControls.getOrNull(index + 1)?.id
                 ?: button.id
-            button.nextFocusUpId = backButton.id
-            button.nextFocusDownId = transportDownId
+            button.nextFocusUpId = if (progressBar.visibility == View.VISIBLE) {
+                progressBar.id
+            } else {
+                backButton.id
+            }
+            button.nextFocusDownId = button.id
         }
         backButton.nextFocusLeftId = backButton.id
         backButton.nextFocusRightId = backButton.id
         backButton.nextFocusUpId = backButton.id
         backButton.nextFocusDownId = playPauseButton.id
         if (progressBar.visibility == View.VISIBLE) {
-            progressBar.nextFocusUpId = playPauseButton.id
-            progressBar.nextFocusDownId = tools.firstOrNull()?.id ?: progressBar.id
+            progressBar.nextFocusUpId = backButton.id
+            progressBar.nextFocusDownId = playPauseButton.id
         }
         playerView.nextFocusUpId = backButton.id
         playerView.nextFocusDownId = playPauseButton.id
@@ -1837,7 +1922,12 @@ class Media3PlayerActivity : Activity() {
             gravity = Gravity.CENTER
             visibility = View.GONE
             setPadding(dp(24), dp(18), dp(24), dp(18))
-            background = roundedRect(0xEB111315.toInt(), 0x66C5FF63, 1, 18)
+            background = roundedRect(
+                0xEB111315.toInt(),
+                withAlpha(accentColor, 0x66),
+                1,
+                18
+            )
             layoutParams = FrameLayout.LayoutParams(
                 dp(520),
                 ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -1942,6 +2032,7 @@ class Media3PlayerActivity : Activity() {
     }
 
     private fun open() {
+        if (isInBackground) return
         terminalError = false
         openedAtMs = SystemClock.elapsedRealtime()
         lastProgressAtMs = openedAtMs
@@ -1972,6 +2063,7 @@ class Media3PlayerActivity : Activity() {
     }
 
     private fun scheduleRetry(message: String) {
+        if (isInBackground) return
         if (retryScheduled) return
         if (
             Media3PlaybackPolicy.shouldTryAlternate(
@@ -1989,7 +2081,7 @@ class Media3PlayerActivity : Activity() {
             showBufferingStatus("Trying compatible live stream…")
             handler.postDelayed({
                 retryScheduled = false
-                open()
+                if (!isInBackground) open()
             }, 500L)
             return
         }
@@ -2010,7 +2102,7 @@ class Media3PlayerActivity : Activity() {
         )
         handler.postDelayed({
             retryScheduled = false
-            open()
+            if (!isInBackground) open()
         }, delay)
     }
 
@@ -2247,6 +2339,10 @@ class Media3PlayerActivity : Activity() {
 
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
+        if (screenReceiverRegistered) {
+            unregisterReceiver(screenStateReceiver)
+            screenReceiverRegistered = false
+        }
         if (::player.isInitialized) {
             playerView.player = null
             player.release()

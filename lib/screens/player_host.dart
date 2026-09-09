@@ -28,6 +28,8 @@ PlayerBackAction playerBackActionFor({required bool panelOpen}) =>
 
 enum PlayerKeyboardCommand {
   togglePlayPause,
+  previousItem,
+  nextItem,
   seekBackward,
   seekForward,
   volumeUp,
@@ -92,6 +94,16 @@ PlayerKeyboardCommand? playerKeyboardCommandFor(
 }) {
   if (key == LogicalKeyboardKey.space || key == LogicalKeyboardKey.keyK) {
     return PlayerKeyboardCommand.togglePlayPause;
+  }
+  if (key == LogicalKeyboardKey.keyP ||
+      key == LogicalKeyboardKey.mediaTrackPrevious ||
+      key == LogicalKeyboardKey.channelDown) {
+    return PlayerKeyboardCommand.previousItem;
+  }
+  if (key == LogicalKeyboardKey.keyN ||
+      key == LogicalKeyboardKey.mediaTrackNext ||
+      key == LogicalKeyboardKey.channelUp) {
+    return PlayerKeyboardCommand.nextItem;
   }
   if (key == LogicalKeyboardKey.keyJ ||
       (!isTelevision && key == LogicalKeyboardKey.arrowLeft)) {
@@ -1288,6 +1300,10 @@ class _PlayerHostState extends State<PlayerHost> {
           pc.togglePlayPause();
           setState(() => _controls = true);
           _scheduleHide();
+        case PlayerKeyboardCommand.previousItem:
+          if (_hasPrev) _go(pc.index - 1);
+        case PlayerKeyboardCommand.nextItem:
+          if (_hasNext) _go(pc.index + 1);
         case PlayerKeyboardCommand.seekBackward:
           if (!_isLive) {
             _seekFromHeldKey(-1, e);
@@ -2024,6 +2040,11 @@ class _PlayerHostState extends State<PlayerHost> {
   Widget _overlay() {
     // The overlay is always over (dark) video, so force white text/icons
     // regardless of the app's light/dark theme; explicit colours still win.
+    final showTransport = PlaybackPolicy.showCenterTransport(
+      reconnectStatus: pc.reconnectStatus,
+      retryExhausted: pc.retryExhausted,
+    );
+    final dockTransport = DeviceProfile.isTelevision && showTransport;
     return DefaultTextStyle.merge(
       style: const TextStyle(color: Colors.white),
       child: IconTheme.merge(
@@ -2032,15 +2053,12 @@ class _PlayerHostState extends State<PlayerHost> {
           children: [
             _topBar(),
             const Spacer(),
-            if (PlaybackPolicy.showCenterTransport(
-              reconnectStatus: pc.reconnectStatus,
-              retryExhausted: pc.retryExhausted,
-            ))
+            if (showTransport && !dockTransport)
               _centerControls()
             else
               const SizedBox(height: 74),
             const Spacer(),
-            _bottomBar(),
+            _bottomBar(showTransport: dockTransport),
           ],
         ),
       ),
@@ -2197,8 +2215,8 @@ class _PlayerHostState extends State<PlayerHost> {
                     _scheduleHide();
                   },
                   child: Container(
-                    width: television ? 64 : 58,
-                    height: television ? 64 : 58,
+                    width: television ? 54 : 58,
+                    height: television ? 54 : 58,
                     decoration: BoxDecoration(
                       color: television
                           ? Colors.black.withValues(alpha: 0.72)
@@ -2212,7 +2230,7 @@ class _PlayerHostState extends State<PlayerHost> {
                     child: Icon(
                       playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
                       color: television ? accent : onAccent,
-                      size: television ? 36 : 32,
+                      size: television ? 30 : 32,
                     ),
                   ),
                 ),
@@ -2312,7 +2330,7 @@ class _PlayerHostState extends State<PlayerHost> {
         ),
       );
 
-  Widget _bottomBar() {
+  Widget _bottomBar({bool showTransport = false}) {
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
@@ -2326,6 +2344,10 @@ class _PlayerHostState extends State<PlayerHost> {
         minimum: const EdgeInsets.fromLTRB(12, 30, 12, 12),
         child: Column(
           children: [
+            if (showTransport) ...[
+              _centerControls(),
+              const SizedBox(height: 8),
+            ],
             if (!_isLive) _seekBar(),
             LayoutBuilder(
               builder: (context, constraints) {

@@ -116,6 +116,11 @@ class MainActivity : FlutterActivity() {
                             Media3PlayerActivity.EXTRA_PLAYBACK_MODE,
                             args["playbackMode"] as? String ?: "balanced"
                         )
+                        putExtra(
+                            Media3PlayerActivity.EXTRA_ACCENT_COLOR,
+                            (args["accentColor"] as? Number)?.toLong()?.toInt()
+                                ?: 0xFFC7F36B.toInt()
+                        )
                         putExtra(Media3PlayerActivity.EXTRA_HEADERS, headers)
                         putStringArrayListExtra(
                             Media3PlayerActivity.EXTRA_PLAYLIST_URLS,

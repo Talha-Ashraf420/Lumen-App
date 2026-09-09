@@ -74,6 +74,13 @@ class HomeShell extends StatefulWidget {
   State<HomeShell> createState() => _HomeShellState();
 }
 
+bool shouldPauseTelevisionPlayback(
+  AppLifecycleState state, {
+  required bool isTelevision,
+}) =>
+    isTelevision &&
+    (state == AppLifecycleState.hidden || state == AppLifecycleState.paused);
+
 class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   int _index = 0;
   late _CatalogCapabilities _capabilities;
@@ -242,6 +249,16 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     if (state == AppLifecycleState.hidden ||
         state == AppLifecycleState.paused) {
       _backgroundedAt ??= DateTime.now();
+      // A television entering standby must never leave an embedded fallback
+      // stream audible behind the powered-off display. Phones are excluded so
+      // their picture-in-picture playback remains uninterrupted.
+      if (shouldPauseTelevisionPlayback(
+        state,
+        isTelevision: DeviceProfile.isTelevision,
+      )) {
+        PlaybackController.instance.pause();
+        SplitController.instance.player?.pause();
+      }
       return;
     }
     if (state != AppLifecycleState.resumed) return;

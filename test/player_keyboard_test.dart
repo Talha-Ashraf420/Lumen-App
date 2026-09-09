@@ -97,6 +97,28 @@ void main() {
       playerKeyboardCommandFor(LogicalKeyboardKey.keyS, isTelevision: false),
       PlayerKeyboardCommand.stop,
     );
+    expect(
+      playerKeyboardCommandFor(LogicalKeyboardKey.keyP, isTelevision: false),
+      PlayerKeyboardCommand.previousItem,
+    );
+    expect(
+      playerKeyboardCommandFor(LogicalKeyboardKey.keyN, isTelevision: false),
+      PlayerKeyboardCommand.nextItem,
+    );
+    expect(
+      playerKeyboardCommandFor(
+        LogicalKeyboardKey.mediaTrackPrevious,
+        isTelevision: false,
+      ),
+      PlayerKeyboardCommand.previousItem,
+    );
+    expect(
+      playerKeyboardCommandFor(
+        LogicalKeyboardKey.mediaTrackNext,
+        isTelevision: false,
+      ),
+      PlayerKeyboardCommand.nextItem,
+    );
   });
 
   test('TV arrows remain available to D-pad focus traversal', () {

@@ -92,6 +92,8 @@ The complete 1920×1080 Android TV upload set and specifications are available i
 | Key | Action |
 | --- | --- |
 | `Space` or `K` | Play / pause |
+| `P` or Previous-media key | Previous channel / episode |
+| `N` or Next-media key | Next channel / episode |
 | `Left` or `J` | Seek backward 10 seconds |
 | `Right` or `L` | Seek forward 10 seconds |
 | `Up` / `Down` | Volume up / down |

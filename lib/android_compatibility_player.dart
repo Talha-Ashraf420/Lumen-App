@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import 'library.dart';
 import 'playback_mode.dart';
+import 'theme.dart';
 
 class AndroidCompatibilityPlaylistItem {
   const AndroidCompatibilityPlaylistItem({
@@ -63,6 +64,7 @@ class AndroidCompatibilityPlayer {
         'title': title,
         'isLive': isLive,
         'playbackMode': PlaybackModeController.instance.mode.value.name,
+        'accentColor': ThemeController.instance.accent.value.toARGB32(),
         'headers': headers,
         'playlist': [
           for (final item in window)
