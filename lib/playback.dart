@@ -64,9 +64,10 @@ class PlaybackPolicy {
   static Duration stallTimeout(bool live) =>
       live ? liveStallTimeout : vodStallTimeout;
 
-  /// Startup/recovery owns the centre of the player. mpv reports "playing"
-  /// optimistically while opening, so its transport must not cover that state.
-  static bool showCenterTransport({
+  /// Startup/recovery owns the player status area. mpv reports "playing"
+  /// optimistically while opening, so transport stays hidden until playback
+  /// is ready or recovery has completed.
+  static bool showTransport({
     required String? reconnectStatus,
     required bool retryExhausted,
   }) => reconnectStatus == null && !retryExhausted;

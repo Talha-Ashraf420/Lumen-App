@@ -43,6 +43,32 @@ enum PlayerRecoveryFocusTarget { none, retryAction, player }
 
 enum PlayerHudPlacement { left, center, right }
 
+enum PlayerTransientStatus { none, buffering, connecting }
+
+/// Chooses a single transient playback message. Connection recovery always
+/// wins over ordinary buffering, while the terminal recovery panel owns the
+/// UI after automatic retries are exhausted.
+PlayerTransientStatus playerTransientStatusFor({
+  required bool buffering,
+  required String? reconnectStatus,
+  required bool retryExhausted,
+}) {
+  if (retryExhausted) return PlayerTransientStatus.none;
+  if (reconnectStatus != null) return PlayerTransientStatus.connecting;
+  return buffering
+      ? PlayerTransientStatus.buffering
+      : PlayerTransientStatus.none;
+}
+
+/// Keeps the terminal recovery panel above the complete bottom control stack.
+double playerRecoveryBottomInsetFor({
+  required bool controlsVisible,
+  required bool isLive,
+}) {
+  if (!controlsVisible) return 12;
+  return isLive ? 96 : 144;
+}
+
 bool playerSubtitleViewVisibleFor({
   required bool minimized,
   required bool subtitlesDisabled,
@@ -1087,12 +1113,11 @@ class _PlayerHostState extends State<PlayerHost> {
                   child: IgnorePointer(ignoring: !_controls, child: _overlay()),
                 ),
               ),
-              // Healthy buffering is informational, not a competing centre
-              // action. Keep it in a compact lane below the title bar.
-              _bufferingPill(),
-              // Recovery owns the centre stage and paints above transport
-              // chrome, so status text and Retry can never be obscured.
-              _reconnectOverlay(),
+              // Connecting, reconnecting, and ordinary buffering share one
+              // status lane. Only one transient message can be visible.
+              _playbackStatusPill(),
+              // Terminal recovery stays above the complete bottom stack.
+              _recoveryOverlay(),
               // Skip-intro / Up-next prompts (shown regardless of control chrome).
               _autoOverlays(),
               if (_panelKind != null) _panel(),
@@ -1103,14 +1128,15 @@ class _PlayerHostState extends State<PlayerHost> {
     );
   }
 
-  Widget _bufferingPill() => StreamBuilder<bool>(
+  Widget _playbackStatusPill() => StreamBuilder<bool>(
     stream: pc.player!.stream.buffering,
     initialData: pc.player!.state.buffering,
     builder: (_, snapshot) {
-      final visible =
-          (snapshot.data ?? false) &&
-          pc.reconnectStatus == null &&
-          !pc.retryExhausted;
+      final presentation = playerTransientStatusFor(
+        buffering: snapshot.data ?? false,
+        reconnectStatus: pc.reconnectStatus,
+        retryExhausted: pc.retryExhausted,
+      );
       return Positioned(
         top: 88,
         left: 16,
@@ -1118,10 +1144,13 @@ class _PlayerHostState extends State<PlayerHost> {
         child: IgnorePointer(
           child: AnimatedSwitcher(
             duration: const Duration(milliseconds: 180),
-            child: visible
+            child: presentation != PlayerTransientStatus.none
                 ? Center(
-                    key: const ValueKey('player-buffering-pill'),
+                    // Keep one key while visible so buffering -> connecting
+                    // updates in place instead of cross-fading two labels.
+                    key: const ValueKey('player-playback-status-pill'),
                     child: Container(
+                      constraints: const BoxConstraints(maxWidth: 520),
                       padding: const EdgeInsets.symmetric(
                         horizontal: 14,
                         vertical: 9,
@@ -1146,14 +1175,61 @@ class _PlayerHostState extends State<PlayerHost> {
                             ),
                           ),
                           const SizedBox(width: 9),
-                          Text(
-                            _isLive ? 'Catching up to live' : 'Buffering',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w700,
+                          Flexible(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  presentation ==
+                                          PlayerTransientStatus.connecting
+                                      ? pc.reconnectStatus!
+                                      : (_isLive
+                                            ? 'Catching up to live'
+                                            : 'Buffering'),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                if (presentation ==
+                                    PlayerTransientStatus.connecting) ...[
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    pc.reconnectAttempt > 0
+                                        ? 'Restoring the stream automatically'
+                                        : (_isLive
+                                              ? 'Tuning the live feed'
+                                              : 'Preparing playback'),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Colors.white60,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ],
+                              ],
                             ),
                           ),
+                          if (presentation ==
+                                  PlayerTransientStatus.connecting &&
+                              pc.reconnectAttempt > 0) ...[
+                            const SizedBox(width: 9),
+                            IconButton(
+                              tooltip: 'Stop automatic retry',
+                              visualDensity: VisualDensity.compact,
+                              style: IconButton.styleFrom(
+                                foregroundColor: Colors.white70,
+                                backgroundColor: Colors.white10,
+                              ),
+                              onPressed: pc.cancelRecovery,
+                              icon: const Icon(Icons.stop_rounded, size: 18),
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -1559,14 +1635,12 @@ class _PlayerHostState extends State<PlayerHost> {
     );
   }
 
-  /// A low-profile recovery dock. It stays clear of the transport controls and
-  /// avoids covering the picture with a modal card when a source is slow.
-  Widget _reconnectOverlay() {
-    final status = pc.reconnectStatus;
-    final exhausted = pc.retryExhausted;
-
-    // Nothing to show while connected and not retrying.
-    if (status == null && !exhausted) return const SizedBox.shrink();
+  /// A low-profile terminal recovery dock. Transient connection and buffering
+  /// messages use the shared top status lane instead.
+  Widget _recoveryOverlay() {
+    if (!pc.retryExhausted) {
+      return const SizedBox.shrink();
+    }
 
     final television = DeviceProfile.isTelevision;
     return SafeArea(
@@ -1577,11 +1651,14 @@ class _PlayerHostState extends State<PlayerHost> {
           duration: const Duration(milliseconds: 220),
           curve: Curves.easeOutCubic,
           padding: EdgeInsets.only(
-            bottom: _controls ? (television ? 88 : 72) : 12,
+            bottom: playerRecoveryBottomInsetFor(
+              controlsVisible: _controls,
+              isLive: _isLive,
+            ),
           ),
           child: Semantics(
             liveRegion: true,
-            label: status ?? pc.playbackError ?? 'Stream unavailable',
+            label: pc.playbackError ?? 'Stream unavailable',
             child: Container(
               constraints: BoxConstraints(maxWidth: television ? 760 : 520),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
@@ -1597,73 +1674,13 @@ class _PlayerHostState extends State<PlayerHost> {
                   ),
                 ],
               ),
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 220),
-                child: status != null
-                    ? _openingState(status)
-                    : _unavailableState(),
-              ),
+              child: _unavailableState(),
             ),
           ),
         ),
       ),
     );
   }
-
-  Widget _openingState(String status) => Row(
-    key: ValueKey('opening:${pc.reconnectAttempt}'),
-    mainAxisSize: MainAxisSize.min,
-    crossAxisAlignment: CrossAxisAlignment.center,
-    children: [
-      SizedBox(
-        width: 26,
-        height: 26,
-        child: CircularProgressIndicator(
-          color: accent,
-          backgroundColor: Colors.white10,
-          strokeWidth: 2.4,
-        ),
-      ),
-      const SizedBox(width: 13),
-      Expanded(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              status,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              pc.reconnectAttempt > 0
-                  ? 'Restoring the stream automatically'
-                  : (_isLive ? 'Tuning the live feed' : 'Preparing playback'),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: Colors.white60, fontSize: 11.5),
-            ),
-          ],
-        ),
-      ),
-      if (pc.reconnectAttempt > 0)
-        IconButton(
-          tooltip: 'Stop automatic retry',
-          style: IconButton.styleFrom(
-            foregroundColor: Colors.white70,
-            backgroundColor: Colors.white10,
-          ),
-          onPressed: pc.cancelRecovery,
-          icon: const Icon(Icons.stop_rounded, size: 20),
-        ),
-    ],
-  );
 
   Widget _unavailableState() => LayoutBuilder(
     key: const ValueKey('stream-unavailable'),
@@ -2040,11 +2057,10 @@ class _PlayerHostState extends State<PlayerHost> {
   Widget _overlay() {
     // The overlay is always over (dark) video, so force white text/icons
     // regardless of the app's light/dark theme; explicit colours still win.
-    final showTransport = PlaybackPolicy.showCenterTransport(
+    final showTransport = PlaybackPolicy.showTransport(
       reconnectStatus: pc.reconnectStatus,
       retryExhausted: pc.retryExhausted,
     );
-    final dockTransport = DeviceProfile.isTelevision && showTransport;
     return DefaultTextStyle.merge(
       style: const TextStyle(color: Colors.white),
       child: IconTheme.merge(
@@ -2053,12 +2069,11 @@ class _PlayerHostState extends State<PlayerHost> {
           children: [
             _topBar(),
             const Spacer(),
-            if (showTransport && !dockTransport)
-              _centerControls()
-            else
-              const SizedBox(height: 74),
-            const Spacer(),
-            _bottomBar(showTransport: dockTransport),
+            // Keep transport in the same bottom control stack as the timeline.
+            // A floating centre cluster collided with seek/volume feedback and
+            // obscured the picture on desktop. The bottom bar lays the controls
+            // out in a stable order: transport, progress, then utility actions.
+            _bottomBar(showTransport: showTransport),
           ],
         ),
       ),
@@ -2159,7 +2174,7 @@ class _PlayerHostState extends State<PlayerHost> {
     );
   }
 
-  Widget _centerControls() {
+  Widget _transportControls() {
     final television = DeviceProfile.isTelevision;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -2345,7 +2360,7 @@ class _PlayerHostState extends State<PlayerHost> {
         child: Column(
           children: [
             if (showTransport) ...[
-              _centerControls(),
+              _transportControls(),
               const SizedBox(height: 8),
             ],
             if (!_isLive) _seekBar(),

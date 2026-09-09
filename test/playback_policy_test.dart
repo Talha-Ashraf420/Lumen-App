@@ -52,21 +52,18 @@ void main() {
     expect(PlaybackPolicy.stallTimeout(false), const Duration(seconds: 35));
     expect(const ReconnectConfig().liveOnly, isFalse);
     expect(
-      PlaybackPolicy.showCenterTransport(
+      PlaybackPolicy.showTransport(
         reconnectStatus: 'Opening live channel…',
         retryExhausted: false,
       ),
       isFalse,
     );
     expect(
-      PlaybackPolicy.showCenterTransport(
-        reconnectStatus: null,
-        retryExhausted: true,
-      ),
+      PlaybackPolicy.showTransport(reconnectStatus: null, retryExhausted: true),
       isFalse,
     );
     expect(
-      PlaybackPolicy.showCenterTransport(
+      PlaybackPolicy.showTransport(
         reconnectStatus: null,
         retryExhausted: false,
       ),

@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen_tv/screens/player_host.dart';
 
 void main() {
-  test('TV seek feedback stays clear of the center transport', () {
+  test('TV seek feedback uses side lanes away from transport', () {
     expect(
       playerSeekHudPlacementFor(isTelevision: true, seconds: -10),
       PlayerHudPlacement.left,
@@ -71,6 +71,48 @@ void main() {
         minimized: true,
       ),
       PlayerRecoveryFocusTarget.none,
+    );
+  });
+
+  test('player presents only one transient playback status', () {
+    expect(
+      playerTransientStatusFor(
+        buffering: true,
+        reconnectStatus: null,
+        retryExhausted: false,
+      ),
+      PlayerTransientStatus.buffering,
+    );
+    expect(
+      playerTransientStatusFor(
+        buffering: true,
+        reconnectStatus: 'Connecting to live stream…',
+        retryExhausted: false,
+      ),
+      PlayerTransientStatus.connecting,
+    );
+    expect(
+      playerTransientStatusFor(
+        buffering: true,
+        reconnectStatus: 'Reconnecting to live stream…',
+        retryExhausted: true,
+      ),
+      PlayerTransientStatus.none,
+    );
+  });
+
+  test('terminal recovery clears the complete bottom control stack', () {
+    expect(
+      playerRecoveryBottomInsetFor(controlsVisible: false, isLive: false),
+      12,
+    );
+    expect(
+      playerRecoveryBottomInsetFor(controlsVisible: true, isLive: true),
+      96,
+    );
+    expect(
+      playerRecoveryBottomInsetFor(controlsVisible: true, isLive: false),
+      144,
     );
   });
 

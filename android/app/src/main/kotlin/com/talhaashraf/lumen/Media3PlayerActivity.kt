@@ -629,8 +629,8 @@ class Media3PlayerActivity : Activity() {
         layoutParams = FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
-            Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-        ).apply { bottomMargin = dp(142) }
+            Gravity.TOP or Gravity.CENTER_HORIZONTAL
+        ).apply { topMargin = dp(96) }
     }
 
     private fun buildSeekFeedback(): TextView = TextView(this).apply {
@@ -712,7 +712,7 @@ class Media3PlayerActivity : Activity() {
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(dp(52), dp(54), dp(52), dp(22))
+            setPadding(dp(52), dp(30), dp(52), dp(18))
             background = bottomScrim()
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -821,26 +821,16 @@ class Media3PlayerActivity : Activity() {
         tools.addView(audioButton, transportParams(dp(92), dp(56), margin = 3))
         tools.addView(qualityButton, transportParams(dp(92), dp(56), margin = 3))
         tools.addView(moreButton, transportParams(dp(92), dp(56), margin = 3))
-        val actions = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            clipChildren = false
-            clipToPadding = false
-            addView(
-                centerTransport,
-                LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    dp(60)
-                ).apply { marginEnd = dp(10) }
-            )
-            addView(
-                tools,
-                LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    dp(60)
-                )
-            )
-        }
+        // Match the shared Flutter player: transport owns a clear row above
+        // the timeline, while secondary tools remain below it. Keeping these
+        // bands separate prevents focus scaling and time labels from colliding.
+        panel.addView(
+            centerTransport,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                dp(60)
+            ).apply { bottomMargin = dp(4) }
+        )
         panel.addView(
             progressRow,
             LinearLayout.LayoutParams(
@@ -849,11 +839,11 @@ class Media3PlayerActivity : Activity() {
             )
         )
         panel.addView(
-            actions,
+            tools,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-                dp(64)
-            )
+                dp(60)
+            ).apply { topMargin = dp(2) }
         )
         return panel
     }
@@ -1243,16 +1233,24 @@ class Media3PlayerActivity : Activity() {
         ).filter {
             it.visibility == View.VISIBLE && it.isEnabled
         }
-        val actionControls = transportControls + tools
-        actionControls.forEachIndexed { index, button ->
-            button.nextFocusLeftId = actionControls.getOrNull(index - 1)?.id
+        val middleTool = tools.getOrNull(tools.size / 2)
+        transportControls.forEachIndexed { index, button ->
+            button.nextFocusLeftId = transportControls.getOrNull(index - 1)?.id
                 ?: button.id
-            button.nextFocusRightId = actionControls.getOrNull(index + 1)?.id
+            button.nextFocusRightId = transportControls.getOrNull(index + 1)?.id
                 ?: button.id
+            button.nextFocusUpId = backButton.id
+            button.nextFocusDownId = if (progressBar.visibility == View.VISIBLE) {
+                progressBar.id
+            } else middleTool?.id ?: button.id
+        }
+        tools.forEachIndexed { index, button ->
+            button.nextFocusLeftId = tools.getOrNull(index - 1)?.id ?: button.id
+            button.nextFocusRightId = tools.getOrNull(index + 1)?.id ?: button.id
             button.nextFocusUpId = if (progressBar.visibility == View.VISIBLE) {
                 progressBar.id
             } else {
-                backButton.id
+                playPauseButton.id
             }
             button.nextFocusDownId = button.id
         }
@@ -1261,8 +1259,8 @@ class Media3PlayerActivity : Activity() {
         backButton.nextFocusUpId = backButton.id
         backButton.nextFocusDownId = playPauseButton.id
         if (progressBar.visibility == View.VISIBLE) {
-            progressBar.nextFocusUpId = backButton.id
-            progressBar.nextFocusDownId = playPauseButton.id
+            progressBar.nextFocusUpId = playPauseButton.id
+            progressBar.nextFocusDownId = middleTool?.id ?: playPauseButton.id
         }
         playerView.nextFocusUpId = backButton.id
         playerView.nextFocusDownId = playPauseButton.id
