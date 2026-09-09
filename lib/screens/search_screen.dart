@@ -126,6 +126,8 @@ class SearchScreenState extends State<SearchScreen>
   final Set<String> _inFlight = {};
   final Map<String, bool> _hasMore = {};
   final Map<String, String> _cacheSignatures = {};
+  final Set<String> _stalePages = {};
+  int _categoryLoadGeneration = 0;
   int _resultGeneration = 0;
   static const _pageSize = 48;
 
@@ -165,20 +167,26 @@ class SearchScreenState extends State<SearchScreen>
   void _loadCats() {
     final c = widget.client;
     final wanted = widget.initialSection;
+    final generation = ++_categoryLoadGeneration;
+    void store(String section, List<Category> categories) {
+      if (generation != _categoryLoadGeneration) return;
+      _storeCategories(section, categories);
+    }
+
     if (wanted == null || wanted == 'movie') {
       CatalogCache.instance
           .vod(c, priority: true)
-          .then((categories) => _storeCategories('movie', categories));
+          .then((categories) => store('movie', categories));
     }
     if (wanted == null || wanted == 'series') {
       CatalogCache.instance
           .series(c, priority: true)
-          .then((categories) => _storeCategories('series', categories));
+          .then((categories) => store('series', categories));
     }
     if (wanted == null || wanted == 'live') {
       CatalogCache.instance
           .live(c, priority: true)
-          .then((categories) => _storeCategories('live', categories));
+          .then((categories) => store('live', categories));
     }
   }
 
@@ -211,11 +219,7 @@ class SearchScreenState extends State<SearchScreen>
   void _onRefresh() {
     if (!mounted) return;
     setState(() {
-      _clearResults();
-      _movieCatsReady = false;
-      _seriesCatsReady = false;
-      _liveCatsReady = false;
-      _cat = widget.initialCategory ?? 'all';
+      _invalidateResultsKeepingVisible();
     });
     _loadCats();
   }
@@ -790,7 +794,10 @@ class SearchScreenState extends State<SearchScreen>
 
   void _onCatalogRevision() {
     if (!mounted) return;
-    setState(_clearResults);
+    // A catalog revision is a background upgrade (including late channel-logo
+    // enrichment), not a reason to blank every mounted browse page. Keep the
+    // last good rows on screen while the current page is re-queried.
+    setState(_invalidateResultsKeepingVisible);
     _loadCats();
   }
 
@@ -816,24 +823,38 @@ class SearchScreenState extends State<SearchScreen>
   String get _resultSignature => '${_q.trim()}\u0000$_sort';
 
   bool _has(String section, String cat) {
+    final pageKey = _pageKey(section, cat);
     final contains = switch (section) {
       'movie' => _movieByCat.containsKey(cat),
       'series' => _seriesByCat.containsKey(cat),
       _ => _liveByCat.containsKey(cat),
     };
     return contains &&
-        _cacheSignatures[_pageKey(section, cat)] == _resultSignature;
+        !_stalePages.contains(pageKey) &&
+        _cacheSignatures[pageKey] == _resultSignature;
+  }
+
+  bool _canShowStale(String section, String cat) {
+    final pageKey = _pageKey(section, cat);
+    if (!_stalePages.contains(pageKey) ||
+        _cacheSignatures[pageKey] != _resultSignature) {
+      return false;
+    }
+    return switch (section) {
+      'movie' => _movieByCat[cat]?.isNotEmpty ?? false,
+      'series' => _seriesByCat[cat]?.isNotEmpty ?? false,
+      _ => _liveByCat[cat]?.isNotEmpty ?? false,
+    };
   }
 
   String _pageKey(String section, String cat) => '$section:$cat';
 
-  void _clearResults() {
+  void _invalidateResultsKeepingVisible() {
     _resultGeneration++;
-    _movieByCat.clear();
-    _seriesByCat.clear();
-    _liveByCat.clear();
+    _stalePages
+      ..clear()
+      ..addAll(_cacheSignatures.keys);
     _hasMore.clear();
-    _cacheSignatures.clear();
     _inFlight.clear();
   }
 
@@ -994,25 +1015,38 @@ class SearchScreenState extends State<SearchScreen>
   ) {
     if (!mounted || generation != _resultGeneration) return;
     setState(() {
+      final pageKey = _pageKey(section, cat);
+      // A refresh may coincide with a brief provider/API outage or a database
+      // read failure. An empty refresh must not replace a catalog that was
+      // already usable; keep it visible and allow the next refresh to retry.
+      final keepPrevious =
+          offset == 0 && values.isEmpty && _canShowStale(section, cat);
       switch (section) {
         case 'movie':
-          _movieByCat[cat] = [
-            if (offset > 0) ...?_movieByCat[cat],
-            ...values.cast<VodStream>(),
-          ];
+          if (!keepPrevious) {
+            _movieByCat[cat] = [
+              if (offset > 0) ...?_movieByCat[cat],
+              ...values.cast<VodStream>(),
+            ];
+          }
         case 'series':
-          _seriesByCat[cat] = [
-            if (offset > 0) ...?_seriesByCat[cat],
-            ...values.cast<Series>(),
-          ];
+          if (!keepPrevious) {
+            _seriesByCat[cat] = [
+              if (offset > 0) ...?_seriesByCat[cat],
+              ...values.cast<Series>(),
+            ];
+          }
         default:
-          _liveByCat[cat] = [
-            if (offset > 0) ...?_liveByCat[cat],
-            ...values.cast<LiveStream>(),
-          ];
+          if (!keepPrevious) {
+            _liveByCat[cat] = [
+              if (offset > 0) ...?_liveByCat[cat],
+              ...values.cast<LiveStream>(),
+            ];
+          }
       }
-      _hasMore[_pageKey(section, cat)] = hasMore;
-      _cacheSignatures[_pageKey(section, cat)] = signature;
+      _hasMore[pageKey] = keepPrevious ? false : hasMore;
+      _cacheSignatures[pageKey] = signature;
+      _stalePages.remove(pageKey);
     });
   }
 
@@ -1668,13 +1702,19 @@ class SearchScreenState extends State<SearchScreen>
       // title the user is waiting for. Secondary types begin as soon as the
       // first movie page settles and do not block its rendering.
       _ensure('movie', 'all');
-      final movies = _has('movie', 'all') ? _movieByCat['all'] : null;
+      final movies = _has('movie', 'all') || _canShowStale('movie', 'all')
+          ? _movieByCat['all']
+          : null;
       if (movies != null) {
         _ensure('series', 'all');
         _ensure('live', 'all');
       }
-      final series = _has('series', 'all') ? _seriesByCat['all'] : null;
-      final live = _has('live', 'all') ? _liveByCat['all'] : null;
+      final series = _has('series', 'all') || _canShowStale('series', 'all')
+          ? _seriesByCat['all']
+          : null;
+      final live = _has('live', 'all') || _canShowStale('live', 'all')
+          ? _liveByCat['all']
+          : null;
       final loading = movies == null || series == null || live == null;
       final mr = (movies ?? []).take(18).map(_movie).toList();
       final sr = (series ?? []).take(18).map(_ser).toList();
@@ -1736,6 +1776,7 @@ class SearchScreenState extends State<SearchScreen>
     final catId = _cat;
     _ensure(_section, catId);
     final loaded = _has(_section, catId);
+    final showingStale = _canShowStale(_section, catId);
     final pageKey = _pageKey(_section, catId);
     List<_Res> items;
     if (_section == 'movie') {
@@ -1764,7 +1805,7 @@ class SearchScreenState extends State<SearchScreen>
           .toList();
     }
 
-    if (!loaded) return GridLoading(channel: live);
+    if (!loaded && !showingStale) return GridLoading(channel: live);
     if (items.isEmpty) {
       return _empty(q.isEmpty ? 'Nothing here.' : 'No results for “$_q”.');
     }

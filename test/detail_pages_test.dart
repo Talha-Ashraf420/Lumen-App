@@ -8,6 +8,7 @@ import 'package:lumen_tv/catalog_store.dart';
 import 'package:lumen_tv/device_profile.dart';
 import 'package:lumen_tv/models.dart';
 import 'package:lumen_tv/playback.dart';
+import 'package:lumen_tv/refresh.dart';
 import 'package:lumen_tv/screens/home_screen.dart';
 import 'package:lumen_tv/screens/movie_detail_screen.dart';
 import 'package:lumen_tv/screens/search_screen.dart';
@@ -132,6 +133,41 @@ class _HomeClient extends XtreamClient {
 
   @override
   Future<List<LiveStream>> liveStreams(String? categoryId) async => const [];
+}
+
+class _LongSessionRefreshClient extends XtreamClient {
+  _LongSessionRefreshClient()
+    : super(
+        const XtreamCredentials(
+          baseUrl: 'https://long-session.example',
+          username: 'viewer',
+          password: 'test-only',
+        ),
+      );
+
+  bool stall = false;
+  final _stalledCategories = Completer<List<Category>>();
+  final _stalledMovies = Completer<List<VodStream>>();
+
+  @override
+  Future<List<Category>> vodCategories() => stall
+      ? _stalledCategories.future
+      : Future.value([Category('movie', 'Movies')]);
+
+  @override
+  Future<List<VodStream>> vodStreams(String? categoryId) => stall
+      ? _stalledMovies.future
+      : Future.value([
+          VodStream(
+            901,
+            'Long Session Movie',
+            '',
+            categoryId ?? 'movie',
+            'mp4',
+            8.1,
+            '1720000000',
+          ),
+        ]);
 }
 
 class _StaggeredSearchClient extends XtreamClient {
@@ -665,6 +701,35 @@ void main() {
 
     await disposeUi(tester);
   });
+
+  testWidgets(
+    'resume refresh keeps the last good catalog visible while provider stalls',
+    (tester) async {
+      final client = _LongSessionRefreshClient();
+      addTearDown(client.close);
+
+      await pumpAt(
+        tester,
+        SearchScreen(client: client, initialSection: 'movie'),
+        const Size(1280, 800),
+      );
+      await waitFor(
+        tester,
+        () => find.text('Long Session Movie').evaluate().isNotEmpty,
+      );
+
+      client.stall = true;
+      refreshContent();
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 2));
+
+      expect(find.text('Long Session Movie'), findsOneWidget);
+      expect(find.byType(GridLoading), findsNothing);
+      expect(tester.takeException(), isNull);
+
+      await disposeUi(tester);
+    },
+  );
 
   testWidgets('catalog D-pad reaches Sort and returns to the content grid', (
     tester,

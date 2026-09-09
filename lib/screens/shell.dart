@@ -25,6 +25,18 @@ enum HomeBackAction { navigateBack, confirmExit }
 HomeBackAction homeBackActionFor(int page) =>
     page == 0 ? HomeBackAction.confirmExit : HomeBackAction.navigateBack;
 
+const catalogResumeRefreshGrace = Duration(seconds: 2);
+
+/// Ignore lifecycle flicker from system overlays, but refresh after Lumen has
+/// genuinely been left and reopened. A cold process launch already performs a
+/// cached-first provider revalidation through [CatalogCache].
+bool shouldRefreshCatalogAfterResume(
+  DateTime? backgroundedAt,
+  DateTime resumedAt,
+) =>
+    backgroundedAt != null &&
+    resumedAt.difference(backgroundedAt) >= catalogResumeRefreshGrace;
+
 Future<bool> showHomeExitConfirmation(BuildContext context) async =>
     await showDialog<bool>(
       context: context,
@@ -76,6 +88,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   // Auto-refresh the catalog when the app returns to the foreground (throttled),
   // so recently-added movies surface without a manual Refresh.
   DateTime _lastRefresh = DateTime.now();
+  DateTime? _backgroundedAt;
   // Tabs initialise only once first opened to avoid a startup request burst.
   final Set<int> _visited = {0};
   final List<int> _navigationHistory = <int>[];
@@ -226,12 +239,20 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       } catch (_) {}
       return;
     }
+    if (state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.paused) {
+      _backgroundedAt ??= DateTime.now();
+      return;
+    }
     if (state != AppLifecycleState.resumed) return;
     final now = DateTime.now();
-    // Keep the warm in-memory catalog when briefly switching apps. Providers
-    // can expose tens of thousands of entries, so a three-minute expiry made
-    // returning to Lumen needlessly repeat all of that work.
-    if (now.difference(_lastRefresh) > const Duration(minutes: 30)) {
+    final backgroundedAt = _backgroundedAt;
+    _backgroundedAt = null;
+    // Provider catalogs can be very large, so ignore only momentary
+    // lifecycle flicker. Every genuine foreground return revalidates in the
+    // background while SearchScreen keeps its last good rows mounted.
+    if (shouldRefreshCatalogAfterResume(backgroundedAt, now) ||
+        now.difference(_lastRefresh) > const Duration(minutes: 30)) {
       _lastRefresh = now;
       refreshContent();
     }

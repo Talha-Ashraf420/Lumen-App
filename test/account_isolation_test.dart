@@ -101,6 +101,32 @@ void main() {
     },
   );
 
+  test('catalog refreshes after a genuine app background and resume', () {
+    final backgroundedAt = DateTime(2026, 9, 9, 12);
+
+    expect(
+      shouldRefreshCatalogAfterResume(
+        null,
+        backgroundedAt.add(const Duration(minutes: 5)),
+      ),
+      isFalse,
+    );
+    expect(
+      shouldRefreshCatalogAfterResume(
+        backgroundedAt,
+        backgroundedAt.add(const Duration(seconds: 1)),
+      ),
+      isFalse,
+    );
+    expect(
+      shouldRefreshCatalogAfterResume(
+        backgroundedAt,
+        backgroundedAt.add(catalogResumeRefreshGrace),
+      ),
+      isTrue,
+    );
+  });
+
   test(
     'logout clears the active session but keeps the saved account',
     () async {
