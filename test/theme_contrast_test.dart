@@ -60,6 +60,17 @@ void main() {
           reason:
               'Accent ink ${palette.accentInk} must be readable on ${palette.surfaceHi}.',
         );
+        activePalette = palette;
+        expect(
+          contrastRatio(warningInk, warningSurface),
+          greaterThanOrEqualTo(4.5),
+          reason: 'Warning copy must remain readable in ${palette.brightness}.',
+        );
+        expect(
+          contrastRatio(dangerInk, dangerSurface),
+          greaterThanOrEqualTo(4.5),
+          reason: 'Error copy must remain readable in ${palette.brightness}.',
+        );
       }
     }
   });

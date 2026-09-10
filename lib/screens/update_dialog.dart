@@ -3,7 +3,7 @@ import '../theme.dart';
 import '../updater.dart';
 import '../widgets.dart';
 
-/// Shows the desktop update notice and opens the project's release page.
+/// Shows the update notice and routes to the correct signed distribution.
 Future<void> showUpdateFlow(BuildContext context, UpdateInfo info) async {
   await showDialog<void>(
     context: context,
@@ -29,7 +29,8 @@ class _UpdateDialogState extends State<_UpdateDialog> {
       _error = null;
     });
     try {
-      await Updater.instance.openReleasePage(info);
+      final opened = await Updater.instance.openUpdate(info);
+      if (!opened) throw StateError('No app can open the update download.');
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
       setState(() {
@@ -78,7 +79,10 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                         Text('A brighter Lumen is ready', style: kTitle()),
                         const SizedBox(height: 4),
                         Text(
-                          'Open the release page to get the newest build.',
+                          Updater.instance.distribution ==
+                                  AppDistribution.community
+                              ? 'Download the signed Community APK directly.'
+                              : 'Open the release download for this device.',
                           style: TextStyle(color: muted, fontSize: 12.5),
                         ),
                       ],
@@ -132,15 +136,13 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                   width: double.infinity,
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: const Color(0x18FF6B88),
+                    color: dangerSurface,
                     borderRadius: BorderRadius.circular(13),
+                    border: Border.all(color: dangerLine),
                   ),
                   child: Text(
                     _error!,
-                    style: const TextStyle(
-                      color: Color(0xFFFF9CB0),
-                      fontSize: 12.5,
-                    ),
+                    style: TextStyle(color: dangerInk, fontSize: 12.5),
                   ),
                 ),
               ],
@@ -186,7 +188,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                               ),
                             )
                           : const Icon(Icons.open_in_new_rounded, size: 18),
-                      label: const Text('Get update'),
+                      label: Text(Updater.instance.updateActionLabel),
                     ),
                   ),
                 ],

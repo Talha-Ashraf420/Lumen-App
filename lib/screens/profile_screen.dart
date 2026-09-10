@@ -272,6 +272,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void initState() {
     super.initState();
+    Updater.instance.initialize().then((_) {
+      if (mounted) setState(() {});
+    });
     _entryFocusNode.onKeyEvent = (_, event) => _moveVertically(
       event,
       down: _firstProfileSwitchFocus ?? _themeEntryFocus,
@@ -451,6 +454,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _checkForUpdates() async {
     if (_checkingUpdate) return;
     setState(() => _checkingUpdate = true);
+    await Updater.instance.initialize();
+    if (Updater.instance.distribution == AppDistribution.playStore) {
+      final opened = await Updater.instance.openStorePage();
+      if (!mounted) return;
+      setState(() => _checkingUpdate = false);
+      if (!opened) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(
+              content: Text('Could not open Lumen in Google Play.'),
+              duration: Duration(seconds: 3),
+            ),
+          );
+      }
+      return;
+    }
     final result = await Updater.instance.check();
     if (!mounted) return;
     setState(() => _checkingUpdate = false);
@@ -1049,10 +1069,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
           onKeyEvent: (_, event) =>
               _moveVertically(event, up: _legalFocus, down: _signOutFocus),
           icon: Icons.system_update_rounded,
-          title: 'Check for updates',
+          title: 'App version & updates',
           subtitle: _checkingUpdate
               ? 'Checking…'
-              : 'Installed ${Updater.instance.currentLabel}',
+              : '${Updater.instance.currentLabel} · '
+                    '${Updater.instance.distributionLabel}',
           onTap: _checkingUpdate ? null : _checkForUpdates,
           trailing: _checkingUpdate
               ? SizedBox(

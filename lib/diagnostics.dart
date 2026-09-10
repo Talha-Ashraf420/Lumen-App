@@ -8,6 +8,7 @@ import 'package:share_plus/share_plus.dart';
 
 import 'device_profile.dart';
 import 'models.dart';
+import 'network_path.dart';
 import 'playback.dart';
 
 /// One short, in-memory application event suitable for a support report.
@@ -88,6 +89,7 @@ class AppDiagnostics {
       'Model: ${device.model}',
       'OS: ${device.operatingSystem}',
       'Physical device: ${device.isPhysicalDevice}',
+      'Active network: ${NetworkPathMonitor.instance.current.label}',
       '',
       'LIBRARY',
       'Source type: ${sourceLabel(credentials)}',

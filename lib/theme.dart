@@ -199,6 +199,16 @@ Color get gold => activePalette.gold;
 Color get onAccent => foregroundFor(accent);
 Color get dangerInk =>
     isDark ? const Color(0xFFFF7A9A) : const Color(0xFFA5193C);
+Color get dangerSurface =>
+    isDark ? const Color(0xFF2B171D) : const Color(0xFFFCE8EE);
+Color get dangerLine =>
+    isDark ? const Color(0xFF713044) : const Color(0xFFB84B69);
+Color get warningInk =>
+    isDark ? const Color(0xFFFFCB72) : const Color(0xFF6B3F00);
+Color get warningSurface =>
+    isDark ? const Color(0xFF2E2415) : const Color(0xFFFFF1D2);
+Color get warningLine =>
+    isDark ? const Color(0xFF76551B) : const Color(0xFFB66C00);
 Color get surfaceRaised => Color.alphaBlend(
   (isDark ? Colors.white : Colors.white).withValues(
     alpha: isDark ? 0.045 : 0.42,
@@ -306,6 +316,18 @@ ThemeData buildTheme(Palette p) {
       surfaceContainerHighest: p.surfaceHi,
       outline: p.line,
       outlineVariant: p.line,
+      error: p.brightness == Brightness.dark
+          ? const Color(0xFFFF7A9A)
+          : const Color(0xFFA5193C),
+      onError: p.brightness == Brightness.dark
+          ? const Color(0xFF1B050C)
+          : Colors.white,
+      errorContainer: p.brightness == Brightness.dark
+          ? const Color(0xFF2B171D)
+          : const Color(0xFFFCE8EE),
+      onErrorContainer: p.brightness == Brightness.dark
+          ? const Color(0xFFFFA2B6)
+          : const Color(0xFF7B0F2A),
       brightness: p.brightness,
     ),
     textTheme: text,
@@ -328,6 +350,12 @@ ThemeData buildTheme(Palette p) {
       fillColor: p.surfaceHi.withValues(alpha: 0.7),
       hintStyle: TextStyle(color: p.subtle),
       labelStyle: TextStyle(color: p.muted),
+      errorStyle: TextStyle(
+        color: p.brightness == Brightness.dark
+            ? const Color(0xFFFF7A9A)
+            : const Color(0xFFA5193C),
+        fontWeight: FontWeight.w600,
+      ),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
         borderSide: BorderSide.none,
@@ -339,6 +367,23 @@ ThemeData buildTheme(Palette p) {
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
         borderSide: BorderSide(color: p.accentInk),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(
+          color: p.brightness == Brightness.dark
+              ? const Color(0xFF713044)
+              : const Color(0xFFB84B69),
+        ),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(
+          color: p.brightness == Brightness.dark
+              ? const Color(0xFFFF7A9A)
+              : const Color(0xFFA5193C),
+          width: 1.5,
+        ),
       ),
     ),
     dividerTheme: DividerThemeData(color: p.line, thickness: 1),

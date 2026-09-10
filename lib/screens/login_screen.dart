@@ -404,10 +404,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   padding: const EdgeInsets.only(top: 10),
                   child: Text(
                     err!,
-                    style: const TextStyle(
-                      color: Color(0xFFFFB4B4),
-                      fontSize: 13,
-                    ),
+                    style: TextStyle(color: dangerInk, fontSize: 13),
                   ),
                 ),
             ],
@@ -420,7 +417,7 @@ class _LoginScreenState extends State<LoginScreen> {
             FilledButton(
               style: FilledButton.styleFrom(
                 backgroundColor: accent,
-                foregroundColor: bg,
+                foregroundColor: onAccent,
               ),
               onPressed: () {
                 final raw = urlCtrl.text.trim();
@@ -627,27 +624,21 @@ class _LoginScreenState extends State<LoginScreen> {
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
-              color: const Color(0xFFFFB84D).withValues(alpha: 0.10),
+              color: warningSurface,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: const Color(0xFFFFB84D).withValues(alpha: 0.24),
-              ),
+              border: Border.all(color: warningLine),
             ),
-            child: const Row(
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(
-                  Icons.warning_amber_rounded,
-                  color: Color(0xFFFFC66B),
-                  size: 18,
-                ),
-                SizedBox(width: 8),
+                Icon(Icons.warning_amber_rounded, color: warningInk, size: 18),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     'Legacy HTTP is supported, but it does not encrypt your '
                     'provider credentials or viewing traffic.',
                     style: TextStyle(
-                      color: Color(0xFFFFD9A0),
+                      color: warningInk,
                       fontSize: 11.5,
                       height: 1.35,
                     ),
@@ -663,12 +654,13 @@ class _LoginScreenState extends State<LoginScreen> {
             width: double.infinity,
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Colors.red.withValues(alpha: 0.12),
+              color: dangerSurface,
               borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: dangerLine),
             ),
             child: Text(
               _error!,
-              style: const TextStyle(color: Color(0xFFFFB4B4), fontSize: 12.5),
+              style: TextStyle(color: dangerInk, fontSize: 12.5),
             ),
           ),
         ],

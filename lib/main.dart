@@ -12,6 +12,7 @@ import 'device_profile.dart';
 import 'diagnostics.dart';
 import 'home_config.dart';
 import 'models.dart';
+import 'network_path.dart';
 import 'playback.dart';
 import 'playback_mode.dart';
 import 'responsive.dart';
@@ -22,6 +23,7 @@ import 'store.dart';
 import 'library.dart';
 import 'legal.dart';
 import 'theme.dart';
+import 'updater.dart';
 import 'widgets.dart';
 import 'xtream.dart';
 import 'screens/login_screen.dart';
@@ -53,6 +55,8 @@ Future<void> main() async {
     return previousPlatformError?.call(error, stack) ?? false;
   };
   await DeviceProfile.detect();
+  await Updater.instance.initialize();
+  await NetworkPathMonitor.instance.initialize();
   AppDiagnostics.instance.record(
     'App',
     DeviceProfile.isTelevision ? 'Started on television' : 'Started',
@@ -86,7 +90,7 @@ Future<void> main() async {
     child: Text(
       details.exceptionAsString(),
       textAlign: TextAlign.center,
-      style: const TextStyle(color: Color(0xFFFF8FA3), fontSize: 13),
+      style: TextStyle(color: dangerInk, fontSize: 13),
     ),
   );
 

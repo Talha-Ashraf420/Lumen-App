@@ -96,6 +96,7 @@ void main() {
       500,
       scrollable: find.byType(Scrollable).first,
     );
+    expect(find.text('App version & updates'), findsOneWidget);
     expect(find.text('Sign out of Lumen'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

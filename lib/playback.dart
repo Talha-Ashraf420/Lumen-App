@@ -6,6 +6,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'android_compatibility_player.dart';
 import 'device_profile.dart';
 import 'library.dart';
+import 'network_path.dart';
 import 'playback_mode.dart';
 import 'stats.dart';
 
@@ -312,6 +313,7 @@ PlayerItem? playbackItemAt(List<PlayerItem> items, int index) {
 enum PlaybackFailureKind {
   invalidAddress,
   authorization,
+  rateLimited,
   notFound,
   timeout,
   secureConnection,
@@ -382,6 +384,16 @@ PlaybackFailure classifyPlaybackFailure(
       retryable: false,
     );
   }
+  if (value.contains('429') || value.contains('too many requests')) {
+    return const PlaybackFailure(
+      kind: PlaybackFailureKind.rateLimited,
+      code: 'RATE_LIMIT',
+      message: 'The provider is temporarily limiting connection attempts.',
+      suggestion:
+          'Wait a moment before trying again so the provider can reset.',
+      retryable: false,
+    );
+  }
   if (value.contains('404') || value.contains('not found')) {
     return const PlaybackFailure(
       kind: PlaybackFailureKind.notFound,
@@ -445,6 +457,28 @@ PlaybackFailure classifyPlaybackFailure(
     retryable: true,
   );
 }
+
+PlaybackFailure? playbackFailureForProviderPath(
+  ProviderPathCheck check, {
+  required String networkLabel,
+}) => switch (check.state) {
+  ProviderPathState.dnsFailure => PlaybackFailure(
+    kind: PlaybackFailureKind.network,
+    code: 'DNS',
+    message: 'The provider hostname could not be resolved on $networkLabel.',
+    suggestion: 'Check Private DNS, router filtering, or try another network.',
+    retryable: true,
+  ),
+  ProviderPathState.routeFailure => PlaybackFailure(
+    kind: PlaybackFailureKind.network,
+    code: 'ROUTE',
+    message: 'The provider is not reachable through $networkLabel.',
+    suggestion:
+        'The ISP, router, provider IP policy, or IPv6 route may be blocking it.',
+    retryable: true,
+  ),
+  ProviderPathState.reachable || ProviderPathState.unsupported => null,
+};
 
 /// Safe source URLs for Xtream-style paths. The provider-supplied extension is
 /// tried first, then Lumen can fall back between HLS and MPEG-TS. Preserving the
@@ -522,6 +556,7 @@ class PlaybackController extends ChangeNotifier {
   StreamSubscription<Duration>? _posSub;
   StreamSubscription<bool>? _completedSub;
   StreamSubscription<String>? _errorSub;
+  StreamSubscription<NetworkPathSnapshot>? _networkSub;
   Timer? _statsTimer;
   Timer? _watchdog; // startup/stall detector (drives bounded recovery)
   Duration _lastPos = Duration.zero;
@@ -538,6 +573,11 @@ class PlaybackController extends ChangeNotifier {
   int _sourceIndex = 0;
   Duration? _resumeAfterRecovery;
   final List<PlaybackDiagnosticEvent> _diagnosticEvents = [];
+  Future<void>? _pathProbe;
+  String _networkSignature = '';
+  Timer? _networkRecoveryTimer;
+  int _lastNetworkRecoveryMs = 0;
+  bool _networkWasOffline = false;
 
   // ---- auto-reconnect state ----
   /// Active reconnect configuration (can be overridden by the user).
@@ -632,6 +672,8 @@ class PlaybackController extends ChangeNotifier {
       if (done && !isLive && hasNext && autoAdvance) go(index + 1);
     });
     _errorSub = player!.stream.error.listen(_onPlayerError);
+    _networkSignature = NetworkPathMonitor.instance.current.signature;
+    _networkSub = NetworkPathMonitor.instance.changes.listen(_onNetworkChanged);
     _statsTimer = Timer.periodic(
       const Duration(seconds: 15),
       (_) => _tickStats(),
@@ -715,6 +757,8 @@ class PlaybackController extends ChangeNotifier {
   void _openCurrent() {
     _resumed = false;
     autoAdvance = true;
+    _networkRecoveryTimer?.cancel();
+    _networkRecoveryTimer = null;
     _cancelReconnect();
     playbackError = null;
     failure = null;
@@ -729,6 +773,7 @@ class PlaybackController extends ChangeNotifier {
     _sourceIndex = 0;
     _resumeAfterRecovery = null;
     _diagnosticEvents.clear();
+    _pathProbe = null;
     reconnectStatus = PlaybackPolicy.openingStatus(
       live: isLive,
       reconnectAttempt: reconnectAttempt,
@@ -903,6 +948,7 @@ class PlaybackController extends ChangeNotifier {
       _finishUnavailable(failure!.message);
       return;
     }
+    _startProviderPathCheck();
     if (reconnectAttempt >= retryLimit) {
       _finishUnavailable(
         playbackError ?? 'The stream is currently unavailable.',
@@ -910,6 +956,113 @@ class PlaybackController extends ChangeNotifier {
       return;
     }
     _scheduleReconnect();
+  }
+
+  void _startProviderPathCheck() {
+    if (_pathProbe != null || !hasMedia) return;
+    final source = activeSourceUrl;
+    final future = _checkProviderPath(source);
+    _pathProbe = future;
+    unawaited(
+      future.whenComplete(() {
+        if (identical(_pathProbe, future)) _pathProbe = null;
+      }),
+    );
+  }
+
+  Future<void> _checkProviderPath(String source) async {
+    final result = await checkProviderPath(source);
+    if (!hasMedia || activeSourceUrl != source) return;
+    final network = NetworkPathMonitor.instance.current.label;
+    _recordDiagnostic('Network path', '$network · ${result.safeSummary}');
+    final pathFailure = playbackFailureForProviderPath(
+      result,
+      networkLabel: network,
+    );
+    if (pathFailure != null) {
+      _setFailure(pathFailure, record: false);
+      notifyListeners();
+    }
+  }
+
+  void _onNetworkChanged(NetworkPathSnapshot next) {
+    final previous = _networkSignature;
+    _networkSignature = next.signature;
+    if (previous.isEmpty || previous == next.signature || !hasMedia) return;
+    _recordDiagnostic('Network changed', next.label);
+    _pathProbe = null;
+    _networkRecoveryTimer?.cancel();
+    _networkRecoveryTimer = null;
+    if (!next.hasNetwork) {
+      if (_networkWasOffline) return;
+      _networkWasOffline = true;
+      _reconnectTimer?.cancel();
+      _reconnectTimer = null;
+      if (!_wantsPlayback) return;
+      reconnectStatus = 'Waiting for a network…';
+      _setFailure(
+        const PlaybackFailure(
+          kind: PlaybackFailureKind.network,
+          code: 'OFFLINE',
+          message: 'This device is offline.',
+          suggestion: 'Playback will retry when a network becomes available.',
+          retryable: true,
+        ),
+        record: false,
+      );
+      notifyListeners();
+      return;
+    }
+    final recoveringFromOffline = _networkWasOffline;
+    _networkWasOffline = false;
+    if (!_wantsPlayback && (!_retryExhausted || failure?.code == 'PAUSED')) {
+      return;
+    }
+
+    // Android can report several route changes while Wi-Fi, mobile data, VPN,
+    // and validated internet settle. Coalesce those callbacks and reopen only
+    // once. A healthy route change is intentionally silent; the normal delayed
+    // buffering indicator appears only if reopening actually takes long enough.
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final cooldownRemaining =
+        const Duration(seconds: 3).inMilliseconds -
+        (now - _lastNetworkRecoveryMs);
+    final delay = Duration(
+      milliseconds: cooldownRemaining > 750 ? cooldownRemaining : 750,
+    );
+    final expectedSignature = next.signature;
+    _networkRecoveryTimer = Timer(delay, () {
+      _networkRecoveryTimer = null;
+      if (!hasMedia ||
+          _networkSignature != expectedSignature ||
+          (!NetworkPathMonitor.instance.current.hasNetwork) ||
+          (!_wantsPlayback &&
+              (!_retryExhausted || failure?.code == 'PAUSED'))) {
+        return;
+      }
+      _recoverAfterNetworkChange(announce: recoveringFromOffline);
+    });
+  }
+
+  void _recoverAfterNetworkChange({required bool announce}) {
+    // Existing HTTP sockets belong to the old default route. Reopening once is
+    // faster and more reliable than waiting for a stale socket to exhaust the
+    // normal stall watchdog. Do not surface generic connected/restored popups.
+    _lastNetworkRecoveryMs = DateTime.now().millisecondsSinceEpoch;
+    _cancelReconnect();
+    _wantsPlayback = true;
+    _retryExhausted = false;
+    playbackError = null;
+    failure = null;
+    _openedAtMs = DateTime.now().millisecondsSinceEpoch;
+    _lastProgressMs = _openedAtMs;
+    _lastPos = Duration.zero;
+    _startedCurrent = false;
+    reconnectStatus = announce ? 'Reconnecting to the stream…' : null;
+    final current = item;
+    final token = ++_openToken;
+    notifyListeners();
+    unawaited(_openMedia(current, token));
   }
 
   void _finishUnavailable(String message) {
@@ -990,6 +1143,8 @@ class PlaybackController extends ChangeNotifier {
 
   /// Call this from the UI when the user taps "Retry" after all attempts fail.
   void retryNow() {
+    _networkRecoveryTimer?.cancel();
+    _networkRecoveryTimer = null;
     _cancelReconnect();
     if (player == null || items.isEmpty) return;
     _rememberRecoveryPosition();
@@ -1025,6 +1180,8 @@ class PlaybackController extends ChangeNotifier {
   /// later manual retry.
   void cancelRecovery() {
     if (player == null || items.isEmpty) return;
+    _networkRecoveryTimer?.cancel();
+    _networkRecoveryTimer = null;
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
     _openToken++;
@@ -1062,6 +1219,8 @@ class PlaybackController extends ChangeNotifier {
 
   void pause() {
     _wantsPlayback = false;
+    _networkRecoveryTimer?.cancel();
+    _networkRecoveryTimer = null;
     _cancelReconnect();
     player?.pause();
     notifyListeners();
@@ -1163,6 +1322,8 @@ class PlaybackController extends ChangeNotifier {
 
   void stop() {
     persistProgress();
+    _networkRecoveryTimer?.cancel();
+    _networkRecoveryTimer = null;
     _cancelReconnect();
     _posSub?.cancel();
     _posSub = null;
@@ -1170,6 +1331,8 @@ class PlaybackController extends ChangeNotifier {
     _completedSub = null;
     _errorSub?.cancel();
     _errorSub = null;
+    _networkSub?.cancel();
+    _networkSub = null;
     _statsTimer?.cancel();
     _statsTimer = null;
     _watchdog?.cancel();
@@ -1189,6 +1352,9 @@ class PlaybackController extends ChangeNotifier {
     _sourceIndex = 0;
     _resumeAfterRecovery = null;
     _diagnosticEvents.clear();
+    _pathProbe = null;
+    _networkWasOffline = false;
+    _lastNetworkRecoveryMs = 0;
     index = 0;
     minimized = false;
     notifyListeners();

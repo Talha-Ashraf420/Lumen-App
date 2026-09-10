@@ -155,7 +155,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     CatalogCache.instance.revision.addListener(_loadCapabilities);
     WidgetsBinding.instance.addObserver(this);
     // Quietly check for a newer build once per launch (skip dev builds).
-    if (Updater.instance.isEnabled && kBuildNumber > 0) {
+    if (Updater.instance.supportsReleaseCheck && kBuildNumber > 0) {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         final result = await Updater.instance.check();
         if (result.status == UpdateCheckStatus.available && mounted) {

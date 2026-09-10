@@ -1,5 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
 
     <!-- Android TV / Google TV: declare leanback support, and mark touchscreen
          optional so the app is installable on TVs (which have no touchscreen). -->

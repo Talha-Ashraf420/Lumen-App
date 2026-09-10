@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen_tv/models.dart';
+import 'package:lumen_tv/network_path.dart';
 import 'package:lumen_tv/playback.dart';
 import 'package:lumen_tv/playback_mode.dart';
 import 'package:lumen_tv/xtream.dart';
@@ -119,6 +120,14 @@ void main() {
   test('playback failures are classified into actionable safe codes', () {
     expect(classifyPlaybackFailure('HTTP 403 forbidden').code, 'ACCESS');
     expect(classifyPlaybackFailure('HTTP 403 forbidden').retryable, isFalse);
+    expect(
+      classifyPlaybackFailure('HTTP 429 too many requests').code,
+      'RATE_LIMIT',
+    );
+    expect(
+      classifyPlaybackFailure('HTTP 429 too many requests').retryable,
+      isFalse,
+    );
     expect(classifyPlaybackFailure('404 not found').code, 'SOURCE');
     expect(classifyPlaybackFailure('network timeout').code, 'TIMEOUT');
     expect(classifyPlaybackFailure('TLS certificate error').code, 'TLS');
@@ -129,6 +138,42 @@ void main() {
     );
     expect(classifyPlaybackFailure('', stalled: true).code, 'STALL');
     expect(classifyPlaybackFailure('', invalidAddress: true).code, 'ADDRESS');
+  });
+
+  test('provider path failures become network-specific playback guidance', () {
+    final dns = playbackFailureForProviderPath(
+      const ProviderPathCheck(
+        state: ProviderPathState.dnsFailure,
+        hasIpv4: false,
+        hasIpv6: false,
+      ),
+      networkLabel: 'Wi-Fi',
+    );
+    expect(dns?.code, 'DNS');
+    expect(dns?.message, contains('Wi-Fi'));
+
+    final route = playbackFailureForProviderPath(
+      const ProviderPathCheck(
+        state: ProviderPathState.routeFailure,
+        hasIpv4: true,
+        hasIpv6: true,
+      ),
+      networkLabel: 'Cellular',
+    );
+    expect(route?.code, 'ROUTE');
+    expect(route?.message, contains('Cellular'));
+
+    expect(
+      playbackFailureForProviderPath(
+        const ProviderPathCheck(
+          state: ProviderPathState.reachable,
+          hasIpv4: true,
+          hasIpv6: false,
+        ),
+        networkLabel: 'Wi-Fi',
+      ),
+      isNull,
+    );
   });
 
   test(

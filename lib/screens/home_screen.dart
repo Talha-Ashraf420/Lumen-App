@@ -265,7 +265,7 @@ class _HomeScreenState extends State<HomeScreen>
               child: Text(
                 '${snap.error ?? "Couldn't load."}',
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: Color(0xFFFF8FA3)),
+                style: TextStyle(color: dangerInk),
               ),
             ),
           );
@@ -839,7 +839,7 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
                       children: [
                         Container(width: 28, height: 2, color: accent),
                         const SizedBox(width: 10),
-                        Text('NOW IN FOCUS', style: kSection(color: accent)),
+                        Text('NOW IN FOCUS', style: kSection(color: accentInk)),
                         const SizedBox(width: 12),
                         Text(
                           '${(_index + 1).toString().padLeft(2, '0')} / ${_items.length.toString().padLeft(2, '0')}',

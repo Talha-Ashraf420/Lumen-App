@@ -16,6 +16,9 @@ import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.LayerDrawable
 import android.graphics.drawable.StateListDrawable
 import android.net.Uri
+import android.net.ConnectivityManager
+import android.net.Network
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -156,6 +159,52 @@ class Media3PlayerActivity : Activity() {
     private var pausedForBackground = false
     private var isInBackground = false
     private var screenReceiverRegistered = false
+    private var networkCallbackRegistered = false
+    private var activeDefaultNetwork: Network? = null
+    private var pendingDefaultNetwork: Network? = null
+    private var lastNetworkRecoveryAtMs = 0L
+    private val recoverAfterNetworkChange = object : Runnable {
+        override fun run() {
+            if (!::player.isInitialized || isInBackground) return
+            if (!player.playWhenReady) return
+            val pending = pendingDefaultNetwork ?: return
+            if (pending != activeDefaultNetwork) return
+            val now = SystemClock.elapsedRealtime()
+            val cooldownRemaining = 3_000L - (now - lastNetworkRecoveryAtMs)
+            if (cooldownRemaining > 0L) {
+                handler.postDelayed(this, cooldownRemaining)
+                return
+            }
+            pendingDefaultNetwork = null
+            lastNetworkRecoveryAtMs = now
+            retryAttempt = 0
+            retryScheduled = false
+            terminalError = false
+            // Rebuild sockets once after Android's route has settled. open()
+            // uses the normal delayed buffering badge, so quick recoveries stay
+            // silent and users never see repeated connected/restored notices.
+            open()
+            handler.post(watchdog)
+            handler.post(progressUpdater)
+        }
+    }
+    private val defaultNetworkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            handler.post {
+                val previous = activeDefaultNetwork
+                activeDefaultNetwork = network
+                if (
+                    previous == null ||
+                    previous == network ||
+                    !::player.isInitialized ||
+                    isInBackground
+                ) return@post
+                pendingDefaultNetwork = network
+                handler.removeCallbacks(recoverAfterNetworkChange)
+                handler.postDelayed(recoverAfterNetworkChange, 750L)
+            }
+        }
+    }
     private val screenStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == Intent.ACTION_SCREEN_OFF) {
@@ -336,6 +385,13 @@ class Media3PlayerActivity : Activity() {
         registerReceiver(screenStateReceiver, IntentFilter(Intent.ACTION_SCREEN_OFF))
         screenReceiverRegistered = true
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            val connectivity = getSystemService(Context.CONNECTIVITY_SERVICE)
+                as ConnectivityManager
+            connectivity.registerDefaultNetworkCallback(defaultNetworkCallback)
+            networkCallbackRegistered = true
+        }
+
         player = buildPlayer()
         playerView.player = player
         player.addListener(object : Player.Listener {
@@ -363,7 +419,11 @@ class Media3PlayerActivity : Activity() {
 
             override fun onPlayerError(error: PlaybackException) {
                 if (isInBackground) return
-                scheduleRetry(friendlyError(error))
+                if (responseCode(error) == 429) {
+                    showError(friendlyError(error), allowEngineFallback = false)
+                } else {
+                    scheduleRetry(friendlyError(error))
+                }
             }
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -1268,6 +1328,8 @@ class Media3PlayerActivity : Activity() {
 
     private fun openPlaylistItem(index: Int, navigationDirection: Int = 0) {
         if (index !in playlistUrls.indices || index == playlistIndex) return
+        handler.removeCallbacks(recoverAfterNetworkChange)
+        pendingDefaultNetwork = null
         retryAttempt = 0
         retryScheduled = false
         terminalError = false
@@ -2110,12 +2172,13 @@ class Media3PlayerActivity : Activity() {
         usingAlternateSource = false
     }
 
-    private fun showError(message: String) {
+    private fun showError(message: String, allowEngineFallback: Boolean = true) {
         // Media3 is the preferred Android TV engine because it owns a native
         // SurfaceView. If its bounded source and decoder recovery is exhausted,
         // return control to Flutter so the already bundled mpv engine can try
         // the same item automatically instead of stranding the viewer.
-        if (intent.getBooleanExtra(EXTRA_IS_LIVE, false) || hasStarted) {
+        if (allowEngineFallback &&
+            (intent.getBooleanExtra(EXTRA_IS_LIVE, false) || hasStarted)) {
             hideControls(force = true)
             terminalError = true
             errorPanel.visibility = View.GONE
@@ -2163,6 +2226,8 @@ class Media3PlayerActivity : Activity() {
         return when {
         status == 401 || status == 403 ->
             "The provider rejected this stream. Check the account or device limit."
+        status == 429 ->
+            "The provider is limiting connection attempts. Wait a moment before retrying."
         status == 404 ->
             "The provider no longer has this stream."
         error.errorCodeName.contains("HTTP", ignoreCase = true) ->
@@ -2336,10 +2401,17 @@ class Media3PlayerActivity : Activity() {
     }
 
     override fun onDestroy() {
+        handler.removeCallbacks(recoverAfterNetworkChange)
         handler.removeCallbacksAndMessages(null)
         if (screenReceiverRegistered) {
             unregisterReceiver(screenStateReceiver)
             screenReceiverRegistered = false
+        }
+        if (networkCallbackRegistered) {
+            val connectivity = getSystemService(Context.CONNECTIVITY_SERVICE)
+                as ConnectivityManager
+            connectivity.unregisterNetworkCallback(defaultNetworkCallback)
+            networkCallbackRegistered = false
         }
         if (::player.isInitialized) {
             playerView.player = null

@@ -29,6 +29,15 @@ class _SuccessfulLoginClient extends XtreamClient {
   Future<Map<String, dynamic>> authenticate() async => {'auth': 1};
 }
 
+class _RateLimitedLoginClient extends XtreamClient {
+  _RateLimitedLoginClient(super.credentials);
+
+  @override
+  Future<Map<String, dynamic>> authenticate() async => throw XtreamException(
+    'The provider is limiting login attempts. Wait a minute before trying again.',
+  );
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -45,14 +54,17 @@ void main() {
     LoginCredentialSaver? credentialSaver,
     Duration connectionTimeout = const Duration(milliseconds: 100),
     Duration storageTimeout = const Duration(milliseconds: 100),
+    Palette? palette,
   }) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(1280, 900);
     addTearDown(tester.view.resetDevicePixelRatio);
     addTearDown(tester.view.resetPhysicalSize);
+    final resolvedPalette = palette ?? darkPalette;
+    activePalette = resolvedPalette;
     await tester.pumpWidget(
       MaterialApp(
-        theme: buildTheme(darkPalette),
+        theme: buildTheme(resolvedPalette),
         home: LoginScreen(
           onLogin: onLogin ?? (_) {},
           clientFactory: clientFactory,
@@ -89,6 +101,47 @@ void main() {
     expect(find.textContaining('did not respond within 1 second'), findsOne);
     expect(find.text('Enter Lumen'), findsOneWidget);
     expect(find.text('Cancel connection'), findsNothing);
+  });
+
+  testWidgets('light theme keeps HTTP warnings and provider errors readable', (
+    tester,
+  ) async {
+    final solar = lightPaletteFor(const Color(0xFFFFB84D));
+    await pumpLogin(
+      tester,
+      clientFactory: _RateLimitedLoginClient.new,
+      palette: solar,
+    );
+    await tester.enterText(
+      find.byType(TextField).first,
+      'http://legacy-provider.example:8080',
+    );
+    await tester.pump();
+
+    final warningFinder = find.textContaining('Legacy HTTP is supported');
+    final warningText = tester.widget<Text>(warningFinder);
+    final warningBox = tester
+        .element(warningFinder)
+        .findAncestorWidgetOfExactType<Container>()!;
+    final warningDecoration = warningBox.decoration! as BoxDecoration;
+    expect(
+      contrastRatio(warningText.style!.color!, warningDecoration.color!),
+      greaterThanOrEqualTo(4.5),
+    );
+
+    await tester.tap(find.text('Enter Lumen'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    final errorFinder = find.textContaining('limiting login attempts');
+    final errorText = tester.widget<Text>(errorFinder);
+    final errorBox = tester
+        .element(errorFinder)
+        .findAncestorWidgetOfExactType<Container>()!;
+    final errorDecoration = errorBox.decoration! as BoxDecoration;
+    expect(
+      contrastRatio(errorText.style!.color!, errorDecoration.color!),
+      greaterThanOrEqualTo(4.5),
+    );
   });
 
   testWidgets('a pending login can be cancelled immediately', (tester) async {

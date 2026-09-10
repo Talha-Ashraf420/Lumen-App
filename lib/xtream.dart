@@ -389,6 +389,12 @@ class XtreamClient {
         'server address.',
       );
     }
+    if (res.statusCode == 429) {
+      throw XtreamException(
+        'The provider is limiting login attempts. Wait a minute before trying '
+        'again; repeated attempts can extend the cooldown.',
+      );
+    }
     if (res.statusCode >= 500) {
       throw XtreamException(
         'The provider is temporarily unavailable (${res.statusCode}). '
