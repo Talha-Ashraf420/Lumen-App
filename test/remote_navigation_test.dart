@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lumen_tv/device_profile.dart';
 import 'package:lumen_tv/downloads.dart';
 import 'package:lumen_tv/library.dart';
 import 'package:lumen_tv/models.dart';
@@ -808,5 +809,40 @@ void main() {
 
     await tester.pumpWidget(const SizedBox.shrink());
     focusNode.dispose();
+  });
+
+  testWidgets('desktop search does not consume a physical keyboard Space', (
+    tester,
+  ) async {
+    DeviceProfile.isTelevision = false;
+    final focusNode = FocusNode();
+    var spaceReachedTextInput = false;
+    addTearDown(focusNode.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Focus(
+            onKeyEvent: (_, event) {
+              if (event is KeyDownEvent &&
+                  event.logicalKey == LogicalKeyboardKey.space) {
+                spaceReachedTextInput = true;
+                return KeyEventResult.handled;
+              }
+              return KeyEventResult.ignored;
+            },
+            child: SearchField(hint: 'Search library', focusNode: focusNode),
+          ),
+        ),
+      ),
+    );
+
+    focusNode.requestFocus();
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.space);
+    await tester.pump();
+
+    expect(spaceReachedTextInput, isTrue);
+    expect(focusNode.hasFocus, isTrue);
   });
 }

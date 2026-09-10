@@ -174,12 +174,15 @@ class _RemoteFocusVisibilityState extends State<RemoteFocusVisibility> {
   Widget build(BuildContext context) => widget.child;
 }
 
-bool _isRemoteTextActivation(KeyEvent event) {
+bool _isRemoteTextActivation(KeyEvent event, {required bool isTelevision}) {
   if (event is! KeyDownEvent) return false;
   return event.logicalKey == LogicalKeyboardKey.select ||
       event.logicalKey == LogicalKeyboardKey.enter ||
       event.logicalKey == LogicalKeyboardKey.numpadEnter ||
-      event.logicalKey == LogicalKeyboardKey.space ||
+      // Some TV remotes report their centre/OK button as Space. A physical
+      // keyboard uses Space as text input, so consuming it on desktop, phone,
+      // or tablet prevents users from entering multi-word searches.
+      (isTelevision && event.logicalKey == LogicalKeyboardKey.space) ||
       event.logicalKey == LogicalKeyboardKey.gameButtonA;
 }
 
@@ -316,7 +319,10 @@ class _RemoteTextInputState extends State<RemoteTextInput> {
     canRequestFocus: false,
     skipTraversal: true,
     onKeyEvent: (_, event) {
-      if (_isRemoteTextActivation(event)) {
+      if (_isRemoteTextActivation(
+        event,
+        isTelevision: DeviceProfile.isTelevision,
+      )) {
         _requestKeyboard();
         return KeyEventResult.handled;
       }
