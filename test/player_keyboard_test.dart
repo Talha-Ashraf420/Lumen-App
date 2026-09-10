@@ -116,6 +116,76 @@ void main() {
     );
   });
 
+  test('split pane close follows the visible role after swapping', () {
+    expect(
+      splitCloseNeedsPromotion(
+        persistentPlayerIsPrimary: true,
+        closingPrimaryPane: true,
+      ),
+      isTrue,
+    );
+    expect(
+      splitCloseNeedsPromotion(
+        persistentPlayerIsPrimary: true,
+        closingPrimaryPane: false,
+      ),
+      isFalse,
+    );
+    expect(
+      splitCloseNeedsPromotion(
+        persistentPlayerIsPrimary: false,
+        closingPrimaryPane: true,
+      ),
+      isFalse,
+    );
+    expect(
+      splitCloseNeedsPromotion(
+        persistentPlayerIsPrimary: false,
+        closingPrimaryPane: false,
+      ),
+      isTrue,
+    );
+  });
+
+  test('split promotion preserves fullscreen during controller handoff', () {
+    expect(
+      playerShouldExitFullscreenOnMediaLoss(
+        hadMedia: true,
+        promotingSplitItem: true,
+      ),
+      isFalse,
+    );
+    expect(
+      playerShouldExitFullscreenOnMediaLoss(
+        hadMedia: true,
+        promotingSplitItem: false,
+      ),
+      isTrue,
+    );
+    expect(
+      playerShouldExitFullscreenOnMediaLoss(
+        hadMedia: false,
+        promotingSplitItem: false,
+      ),
+      isFalse,
+    );
+  });
+
+  test('split chrome auto-hides on pointer devices and within TV player', () {
+    expect(
+      playerControlsCanAutoHide(isTelevision: false, focusWithinPlayer: false),
+      isTrue,
+    );
+    expect(
+      playerControlsCanAutoHide(isTelevision: true, focusWithinPlayer: true),
+      isTrue,
+    );
+    expect(
+      playerControlsCanAutoHide(isTelevision: true, focusWithinPlayer: false),
+      isFalse,
+    );
+  });
+
   test('desktop player maps standard transport shortcuts', () {
     expect(
       playerKeyboardCommandFor(LogicalKeyboardKey.space, isTelevision: false),

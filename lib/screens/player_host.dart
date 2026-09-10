@@ -45,6 +45,29 @@ enum PlayerHudPlacement { left, center, right }
 
 enum PlayerTransientStatus { none, buffering, connecting }
 
+/// Returns true when the pane being closed is backed by the app's persistent
+/// playback controller. In that case the split controller must be promoted so
+/// the surviving stream can remain on screen.
+bool splitCloseNeedsPromotion({
+  required bool persistentPlayerIsPrimary,
+  required bool closingPrimaryPane,
+}) => persistentPlayerIsPrimary == closingPrimaryPane;
+
+/// A temporary controller handoff is not a real player dismissal, so it must
+/// not rotate a phone out of fullscreen while the surviving pane is reopened.
+bool playerShouldExitFullscreenOnMediaLoss({
+  required bool hadMedia,
+  required bool promotingSplitItem,
+}) => hadMedia && !promotingSplitItem;
+
+/// Pointer-driven players should always clear transient chrome after playback
+/// resumes. Television controls stay visible only when focus has genuinely
+/// left the player (for example, for an open side panel).
+bool playerControlsCanAutoHide({
+  required bool isTelevision,
+  required bool focusWithinPlayer,
+}) => !isTelevision || focusWithinPlayer;
+
 /// Chooses a single transient playback message. Connection recovery always
 /// wins over ordinary buffering, while the terminal recovery panel owns the
 /// UI after automatic retries are exhausted.
@@ -206,6 +229,8 @@ class _PlayerHostState extends State<PlayerHost> {
   // split-screen: whether the MAIN (big, audio) slot is the primary player (pc).
   // Swapping flips this — audio + big size follow the main slot.
   bool _splitMainIsPc = true;
+  bool _closingSplitPane = false;
+  bool _promotingSplitItem = false;
   SplitController get sc => SplitController.instance;
 
   // gesture state
@@ -350,7 +375,10 @@ class _PlayerHostState extends State<PlayerHost> {
   /// Tap the small screen → it becomes the primary (big + audio) and plays.
   void _focusSmall() {
     final small = _splitMainIsPc ? sc.player! : pc.player!;
-    setState(() => _splitMainIsPc = !_splitMainIsPc);
+    setState(() {
+      _splitMainIsPc = !_splitMainIsPc;
+      _controls = true;
+    });
     _applySplitAudio();
     if (!small.state.playing) small.play();
     _scheduleHide();
@@ -378,6 +406,73 @@ class _PlayerHostState extends State<PlayerHost> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _closeSplitPane({required bool primary}) async {
+    if (!sc.active || _closingSplitPane) return;
+    _closingSplitPane = true;
+    final promoteSplitPlayer = splitCloseNeedsPromotion(
+      persistentPlayerIsPrimary: _splitMainIsPc,
+      closingPrimaryPane: primary,
+    );
+    try {
+      if (!promoteSplitPlayer) {
+        await _exitSplit();
+        return;
+      }
+
+      // The surviving picture currently belongs to SplitController. Move its
+      // item back to the persistent app player, which is the only controller
+      // the normal single-player layout owns. Keep fullscreen intact during
+      // the handoff and resume VOD from its current position.
+      final survivor = sc.item;
+      final resumeAt = sc.player?.state.position ?? Duration.zero;
+      if (survivor == null) {
+        await _exitSplit();
+        return;
+      }
+      await _pcPlaySub?.cancel();
+      await _scPlaySub?.cancel();
+      _pcPlaySub = _scPlaySub = null;
+      _promotingSplitItem = true;
+      await sc.close();
+      pc.stop();
+      _splitMainIsPc = true;
+      pc.open([survivor], 0);
+      pc.player?.setVolume(_muted ? 0 : _curVol);
+      if (!survivor.isLive && resumeAt > Duration.zero) {
+        unawaited(_resumePromotedSplitItem(survivor, resumeAt));
+      }
+    } finally {
+      _promotingSplitItem = false;
+      _closingSplitPane = false;
+    }
+  }
+
+  Future<void> _resumePromotedSplitItem(
+    PlayerItem expected,
+    Duration position,
+  ) async {
+    final player = pc.player;
+    if (player == null) return;
+    try {
+      await player.stream.duration
+          .firstWhere((duration) => duration > Duration.zero)
+          .timeout(const Duration(seconds: 8));
+      if (!mounted || !pc.hasMedia || !identical(pc.item, expected)) return;
+      await player.seek(position);
+    } catch (_) {
+      // If the provider does not expose a duration, normal playback still
+      // continues from the beginning instead of losing the surviving pane.
+    }
+  }
+
+  void _closeSplitPrimary() {
+    unawaited(_closeSplitPane(primary: true));
+  }
+
+  void _closeSplitSecondary() {
+    unawaited(_closeSplitPane(primary: false));
+  }
+
   void _openSplitPicker() {
     _hideTimer?.cancel();
     setState(() {
@@ -392,10 +487,15 @@ class _PlayerHostState extends State<PlayerHost> {
     });
   }
 
-  Widget _splitSmallBtn(IconData icon, VoidCallback onTap) => MouseRegion(
+  Widget _splitSmallBtn(
+    IconData icon,
+    String semanticLabel,
+    VoidCallback onTap,
+  ) => MouseRegion(
     cursor: SystemMouseCursors.click,
     child: RemoteTap(
       onTap: onTap,
+      semanticLabel: semanticLabel,
       child: Container(
         padding: const EdgeInsets.all(7),
         decoration: BoxDecoration(
@@ -514,56 +614,72 @@ class _PlayerHostState extends State<PlayerHost> {
     child: Stack(
       fit: StackFit.expand,
       children: [
-        const Center(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: Colors.black45,
-              shape: BoxShape.circle,
-            ),
-            child: Padding(
-              padding: EdgeInsets.all(11),
-              child: Icon(
-                Icons.open_in_full_rounded,
-                color: Colors.white,
-                size: 22,
-              ),
-            ),
-          ),
-        ),
-        Positioned(
-          top: 0,
-          left: 0,
-          right: 0,
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(10, 6, 4, 8),
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Color(0xCC000000), Colors.transparent],
-              ),
-            ),
-            child: Row(
+        AnimatedOpacity(
+          opacity: _controls ? 1 : 0,
+          duration: const Duration(milliseconds: 220),
+          child: IgnorePointer(
+            ignoring: !_controls,
+            child: Stack(
+              fit: StackFit.expand,
               children: [
-                Expanded(
-                  child: Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w700,
+                const Center(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Colors.black45,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Padding(
+                      padding: EdgeInsets.all(11),
+                      child: Icon(
+                        Icons.open_in_full_rounded,
+                        color: Colors.white,
+                        size: 22,
+                      ),
                     ),
                   ),
                 ),
-                const Icon(
-                  Icons.volume_off_rounded,
-                  color: Colors.white54,
-                  size: 16,
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: Container(
+                    padding: const EdgeInsets.fromLTRB(10, 6, 4, 8),
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [Color(0xCC000000), Colors.transparent],
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        const Icon(
+                          Icons.volume_off_rounded,
+                          color: Colors.white54,
+                          size: 16,
+                        ),
+                        const SizedBox(width: 4),
+                        _splitSmallBtn(
+                          Icons.close_rounded,
+                          'Close smaller pane',
+                          _closeSplitSecondary,
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-                const SizedBox(width: 4),
-                _splitSmallBtn(Icons.close_rounded, _exitSplit),
               ],
             ),
           ),
@@ -604,6 +720,7 @@ class _PlayerHostState extends State<PlayerHost> {
                   children: [
                     IconButton(
                       onPressed: _minimize,
+                      tooltip: 'Minimize player',
                       icon: const Icon(
                         Icons.keyboard_arrow_down_rounded,
                         color: Colors.white,
@@ -619,7 +736,8 @@ class _PlayerHostState extends State<PlayerHost> {
                       ),
                     ),
                     IconButton(
-                      onPressed: _close,
+                      onPressed: _closeSplitPrimary,
+                      tooltip: 'Close larger pane',
                       icon: const Icon(
                         Icons.close_rounded,
                         color: Colors.white,
@@ -708,22 +826,6 @@ class _PlayerHostState extends State<PlayerHost> {
                         ),
                       ),
                     ),
-                    const SizedBox(width: 4),
-                    TextButton.icon(
-                      onPressed: _exitSplit,
-                      icon: Icon(
-                        Icons.close_fullscreen_rounded,
-                        color: accent,
-                        size: 18,
-                      ),
-                      label: Text(
-                        'Exit split',
-                        style: TextStyle(
-                          color: accent,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
                     const Spacer(),
                     IconButton(
                       onPressed: _toggleFullscreen,
@@ -766,7 +868,11 @@ class _PlayerHostState extends State<PlayerHost> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && pc.hasMedia && !pc.minimized) _focus.requestFocus();
       });
-    } else if (!has && _hadMedia) {
+    } else if (!has &&
+        playerShouldExitFullscreenOnMediaLoss(
+          hadMedia: _hadMedia,
+          promotingSplitItem: _promotingSplitItem,
+        )) {
       _exitFullscreen();
       _restoreBrightness();
       if (sc.active) sc.close();
@@ -893,7 +999,10 @@ class _PlayerHostState extends State<PlayerHost> {
     _hideTimer = Timer(const Duration(seconds: 4), () {
       if (mounted &&
           !pc.minimized &&
-          _focus.hasPrimaryFocus &&
+          playerControlsCanAutoHide(
+            isTelevision: DeviceProfile.isTelevision,
+            focusWithinPlayer: _playerFocusScope.hasFocus,
+          ) &&
           _panelKind == null &&
           (pc.player?.state.playing ?? false)) {
         setState(() => _controls = false);
