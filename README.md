@@ -1,16 +1,42 @@
-# Lumen
+<p align="center">
+  <img src="docs/play-store/feature-graphic.png" alt="Lumen — Your media, one player" width="100%">
+</p>
 
-A native, premium **IPTV player** for your own Xtream / X3U subscription — Live TV, Movies and Series with a cinematic UI, on **iOS, Android, Android TV, macOS, Windows and Linux**.
+<h1 align="center">Lumen</h1>
 
-> Bring your own provider. Lumen plays the IPTV service **you already pay for** — it ships with no channels or content of its own.
+<p align="center">
+  A cinematic, cross-platform IPTV player for the legal Xtream or M3U service you already use.
+</p>
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-22CBA8.svg)](LICENSE)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-22CBA8.svg)](CONTRIBUTING.md)
-![Platforms](https://img.shields.io/badge/platforms-Android%20·%20TV%20·%20iOS%20·%20macOS%20·%20Windows%20·%20Linux-3DDC84)
-[![Stars](https://img.shields.io/github/stars/Talha-Ashraf420/Lumen-App?style=social)](https://github.com/Talha-Ashraf420/Lumen-App/stargazers)
-[![Sponsor Lumen](https://img.shields.io/badge/Sponsor-Lumen-EA4AAA?style=flat&logo=githubsponsors&logoColor=white)](https://github.com/sponsors/Talha-Ashraf420)
+<p align="center">
+  <a href="https://lumen-launch.vercel.app/"><strong>Website</strong></a> ·
+  <a href="https://play.google.com/store/apps/details?id=com.talhaashraf.lumen"><strong>Google Play</strong></a> ·
+  <a href="https://github.com/Talha-Ashraf420/Lumen-App/releases/latest"><strong>Downloads</strong></a> ·
+  <a href="https://discord.gg/n8dfzrDNQg"><strong>Discord</strong></a> ·
+  <a href="https://github.com/sponsors/Talha-Ashraf420"><strong>Sponsor</strong></a>
+</p>
 
-[**Visit the Lumen website**](https://lumen-launch.vercel.app/) · [**Join the Discord community**](https://discord.gg/n8dfzrDNQg) · [**View on Google Play**](https://play.google.com/store/apps/details?id=com.talhaashraf.lumen) · [**Sponsor Lumen**](https://github.com/sponsors/Talha-Ashraf420)
+<p align="center">
+  <a href="https://github.com/Talha-Ashraf420/Lumen-App/actions/workflows/build.yml"><img alt="Build status" src="https://github.com/Talha-Ashraf420/Lumen-App/actions/workflows/build.yml/badge.svg"></a>
+  <a href="https://github.com/Talha-Ashraf420/Lumen-App/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/Talha-Ashraf420/Lumen-App?color=BCFF3C"></a>
+  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/License-MIT-22CBA8.svg"></a>
+  <a href="CONTRIBUTING.md"><img alt="Pull requests welcome" src="https://img.shields.io/badge/PRs-welcome-22CBA8.svg"></a>
+  <a href="https://github.com/Talha-Ashraf420/Lumen-App/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/Talha-Ashraf420/Lumen-App?style=social"></a>
+</p>
+
+> **Bring your own provider.** Lumen includes no channels, subscriptions or copyrighted media. It plays sources that users obtain legally.
+
+## Why Lumen?
+
+- **One polished library** for Live TV, movies and series
+- **Built for the couch** with dependable Android TV remote and D-pad navigation
+- **Continue anywhere** with favorites, watch history, multiple profiles and split-screen Live TV
+- **Runs nearly everywhere** — Android, Android TV, iOS, macOS, Windows and Linux
+- **Open and inspectable** — built in Flutter and released under the MIT license
+
+<p align="center">
+  <a href="assets/demo/lumen_demo_preview.mp4"><strong>▶ Watch the 12-second demo</strong></a>
+</p>
 
 ---
 
