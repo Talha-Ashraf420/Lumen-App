@@ -340,6 +340,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       shellRailFocusNode: _dockFocusNodes[8],
       shellTopFocusNode: _commandSearchFocus,
       entryFocusNode: _guideEntryFocus,
+      onExit: () => _handleBack(false),
     ),
   };
 
@@ -715,35 +716,36 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
             right: 16,
             child: SafeArea(bottom: false, child: _mobileUtilityButton()),
           ),
-        Align(
-          alignment: Alignment.bottomCenter,
-          child: SafeArea(
-            top: false,
-            // Draw the page edge-to-edge, but keep every navigation target
-            // above Android's gesture handle or three-button navigation bar.
-            minimum: const EdgeInsets.fromLTRB(16, 0, 16, 22),
-            child:
-                Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 7,
-                        vertical: 7,
-                      ),
-                      decoration: BoxDecoration(
-                        color: surface.withValues(alpha: 0.96),
-                        borderRadius: BorderRadius.circular(24),
-                        border: Border.all(color: line),
-                        boxShadow: glow(Colors.black, blur: 26, y: 12),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [for (final nav in _mobileDock) _item(nav)],
-                      ),
-                    )
-                    .animate()
-                    .fadeIn(delay: 150.ms)
-                    .slideY(begin: 0.6, end: 0, curve: Curves.easeOutBack),
+        if (_index != 8)
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: SafeArea(
+              top: false,
+              // Draw the page edge-to-edge, but keep every navigation target
+              // above Android's gesture handle or three-button navigation bar.
+              minimum: const EdgeInsets.fromLTRB(16, 0, 16, 22),
+              child:
+                  Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 7,
+                        ),
+                        decoration: BoxDecoration(
+                          color: surface.withValues(alpha: 0.96),
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(color: line),
+                          boxShadow: glow(Colors.black, blur: 26, y: 12),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [for (final nav in _mobileDock) _item(nav)],
+                        ),
+                      )
+                      .animate()
+                      .fadeIn(delay: 150.ms)
+                      .slideY(begin: 0.6, end: 0, curve: Curves.easeOutBack),
+            ),
           ),
-        ),
       ],
     );
   }
@@ -822,41 +824,47 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
 
   Widget _item(_Nav nav) {
     final sel = nav.page == _index;
-    return RemoteTap(
-      focusNode: _dockFocusNodes[nav.page],
-      onFocusChange: (focused) {
-        if (focused && !sel) _select(nav.page);
-      },
-      behavior: HitTestBehavior.opaque,
-      onTap: () => _select(nav.page),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 280),
-        curve: Curves.easeOut,
-        margin: const EdgeInsets.symmetric(horizontal: 2),
-        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
-        decoration: BoxDecoration(
-          color: sel ? accentInk.withValues(alpha: isDark ? 0.12 : 0.09) : null,
-          borderRadius: BorderRadius.circular(17),
-          border: sel
-              ? Border.all(
-                  color: accentInk.withValues(alpha: isDark ? 0.28 : 0.42),
-                )
-              : null,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(nav.icon, size: 20, color: sel ? accentInk : muted),
-            const SizedBox(height: 3),
-            Text(
-              nav.label,
-              style: TextStyle(
-                fontWeight: sel ? FontWeight.w700 : FontWeight.w500,
-                color: sel ? textHi : subtle,
-                fontSize: 9.5,
+    return Tooltip(
+      message: nav.label,
+      child: RemoteTap(
+        focusNode: _dockFocusNodes[nav.page],
+        semanticLabel: nav.label,
+        onFocusChange: (focused) {
+          if (focused && !sel) _select(nav.page);
+        },
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _select(nav.page),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 280),
+          curve: Curves.easeOut,
+          margin: const EdgeInsets.symmetric(horizontal: 2),
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+          decoration: BoxDecoration(
+            color: sel
+                ? accentInk.withValues(alpha: isDark ? 0.12 : 0.09)
+                : null,
+            borderRadius: BorderRadius.circular(17),
+            border: sel
+                ? Border.all(
+                    color: accentInk.withValues(alpha: isDark ? 0.28 : 0.42),
+                  )
+                : null,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(nav.icon, size: 20, color: sel ? accentInk : muted),
+              const SizedBox(height: 3),
+              Text(
+                nav.label,
+                style: TextStyle(
+                  fontWeight: sel ? FontWeight.w700 : FontWeight.w500,
+                  color: sel ? textHi : subtle,
+                  fontSize: 9.5,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

@@ -974,11 +974,23 @@ void main() {
     expect(find.text('Movies'), findsOneWidget);
     expect(find.text('Series'), findsOneWidget);
     expect(find.text('Live'), findsOneWidget);
+    expect(find.text('Guide'), findsOneWidget);
     expect(find.text('Search'), findsOneWidget);
     expect(find.text('My List'), findsNothing);
     expect(find.text('Profile'), findsNothing);
     expect(find.text('Discover'), findsNothing);
     expect(tester.takeException(), isNull);
+
+    await tester.tap(find.byTooltip('Guide'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.byTooltip('Guide'), findsNothing);
+    expect(find.byTooltip('Back from guide'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Back from guide'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byTooltip('Guide'), findsOneWidget);
 
     final utilityRect = tester.getRect(find.byTooltip('You & library'));
     expect(utilityRect.top, lessThan(100));

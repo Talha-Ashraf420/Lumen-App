@@ -24,12 +24,14 @@ class GuideTabScreen extends StatefulWidget {
     this.shellRailFocusNode,
     this.shellTopFocusNode,
     this.entryFocusNode,
+    this.onExit,
   });
 
   final XtreamClient client;
   final FocusNode? shellRailFocusNode;
   final FocusNode? shellTopFocusNode;
   final FocusNode? entryFocusNode;
+  final VoidCallback? onExit;
 
   @override
   State<GuideTabScreen> createState() => _GuideTabScreenState();
@@ -189,19 +191,23 @@ class _GuideTabScreenState extends State<GuideTabScreen>
       body: SafeArea(
         top: false,
         bottom: false,
-        child: _loadingCategories
-            ? _loadingCategoryState()
-            : wide
-            ? Row(
-                children: [
-                  _categoryRail(),
-                  Expanded(child: _guide()),
-                ],
-              )
+        child: wide
+            ? _loadingCategories
+                  ? _loadingCategoryState()
+                  : Row(
+                      children: [
+                        _categoryRail(),
+                        Expanded(child: _guide()),
+                      ],
+                    )
             : Column(
                 children: [
                   _mobileCategoryPicker(),
-                  Expanded(child: _guide()),
+                  Expanded(
+                    child: _loadingCategories
+                        ? const GridLoading(channel: true)
+                        : _guide(),
+                  ),
                 ],
               ),
       ),
@@ -302,44 +308,58 @@ class _GuideTabScreenState extends State<GuideTabScreen>
 
   Widget _mobileCategoryPicker() => Padding(
     padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
-    child: PopupMenuButton<String>(
-      tooltip: 'Choose channel group',
-      initialValue: _selectedId,
-      onSelected: (id) {
-        final category = _categories.firstWhere((item) => item.id == id);
-        unawaited(_selectCategory(category));
-      },
-      itemBuilder: (_) => [
-        for (final category in _categories)
-          PopupMenuItem(value: category.id, child: Text(category.name)),
-      ],
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-        decoration: BoxDecoration(
-          color: surface,
-          borderRadius: BorderRadius.circular(13),
-          border: Border.all(color: line),
-        ),
-        child: Row(
-          children: [
-            Icon(Icons.live_tv_rounded, color: accentInk, size: 19),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                _selectedName,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: textHi,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                ),
+    child: Row(
+      children: [
+        if (widget.onExit != null) ...[
+          IconButton.outlined(
+            tooltip: 'Back from guide',
+            onPressed: widget.onExit,
+            icon: const Icon(Icons.arrow_back_rounded, size: 19),
+          ),
+          const SizedBox(width: 8),
+        ],
+        Expanded(
+          child: PopupMenuButton<String>(
+            tooltip: 'Choose channel group',
+            initialValue: _selectedId,
+            onSelected: (id) {
+              final category = _categories.firstWhere((item) => item.id == id);
+              unawaited(_selectCategory(category));
+            },
+            itemBuilder: (_) => [
+              for (final category in _categories)
+                PopupMenuItem(value: category.id, child: Text(category.name)),
+            ],
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+              decoration: BoxDecoration(
+                color: surface,
+                borderRadius: BorderRadius.circular(13),
+                border: Border.all(color: line),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.live_tv_rounded, color: accentInk, size: 19),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      _selectedName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: textHi,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  Icon(Icons.expand_more_rounded, color: muted),
+                ],
               ),
             ),
-            Icon(Icons.expand_more_rounded, color: muted),
-          ],
+          ),
         ),
-      ),
+      ],
     ),
   );
 
