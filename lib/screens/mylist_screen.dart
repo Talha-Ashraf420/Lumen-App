@@ -350,7 +350,7 @@ class _MyListScreenState extends State<MyListScreen> {
     padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
     decoration: BoxDecoration(
       color: surfaceHi.withValues(alpha: 0.65),
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(lumenCorner(14)),
       border: Border.all(color: line),
     ),
     child: Row(

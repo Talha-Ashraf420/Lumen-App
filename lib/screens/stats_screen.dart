@@ -83,7 +83,9 @@ class _StatsScreenState extends State<StatsScreen> {
                                 ),
                                 decoration: BoxDecoration(
                                   color: surfaceHi.withValues(alpha: 0.7),
-                                  borderRadius: BorderRadius.circular(13),
+                                  borderRadius: BorderRadius.circular(
+                                    lumenCorner(13),
+                                  ),
                                   border: Border.all(color: line),
                                 ),
                                 child: Text(
@@ -183,7 +185,7 @@ class _StatsScreenState extends State<StatsScreen> {
               height: 36,
               decoration: BoxDecoration(
                 color: accent,
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(lumenCorner(12)),
               ),
               child: Icon(Icons.play_arrow_rounded, color: onAccent),
             ),
@@ -261,7 +263,7 @@ class _StatsScreenState extends State<StatsScreen> {
                             color: days[i].day == now.day
                                 ? accent
                                 : accent.withValues(alpha: 0.45),
-                            borderRadius: BorderRadius.circular(6),
+                            borderRadius: BorderRadius.circular(lumenCorner(6)),
                           ),
                         ),
                         const SizedBox(height: 6),
@@ -313,7 +315,7 @@ class _StatsScreenState extends State<StatsScreen> {
           ),
           const SizedBox(height: 16),
           ClipRRect(
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(lumenCorner(8)),
             child: SizedBox(
               height: 9,
               child: Row(
@@ -408,7 +410,7 @@ class _StatsScreenState extends State<StatsScreen> {
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 10),
                         child: ClipRRect(
-                          borderRadius: BorderRadius.circular(3),
+                          borderRadius: BorderRadius.circular(lumenCorner(3)),
                           child: LinearProgressIndicator(
                             value: e.value / maxV,
                             minHeight: 6,

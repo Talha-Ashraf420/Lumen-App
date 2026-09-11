@@ -179,7 +179,7 @@ class _SplitPickerState extends State<SplitPicker> {
             height: 4,
             decoration: BoxDecoration(
               color: Colors.white54,
-              borderRadius: BorderRadius.circular(2),
+              borderRadius: BorderRadius.circular(lumenCorner(2)),
             ),
           ),
         ),
@@ -238,7 +238,7 @@ class _SplitPickerState extends State<SplitPicker> {
                           color: _section == s.$1
                               ? accent
                               : Colors.white.withValues(alpha: 0.14),
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(lumenCorner(12)),
                         ),
                         child: Text(
                           s.$2,
@@ -391,7 +391,7 @@ class _SplitPickerState extends State<SplitPicker> {
       padding: const EdgeInsets.fromLTRB(9, 8, 12, 8),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.075),
-        borderRadius: BorderRadius.circular(15),
+        borderRadius: BorderRadius.circular(lumenCorner(15)),
         border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
       ),
       child: Row(
@@ -425,7 +425,7 @@ class _SplitPickerState extends State<SplitPicker> {
   );
 
   Widget _thumb(String url, IconData fallback) => ClipRRect(
-    borderRadius: BorderRadius.circular(8),
+    borderRadius: BorderRadius.circular(lumenCorner(8)),
     child: Container(
       width: 44,
       height: 44,

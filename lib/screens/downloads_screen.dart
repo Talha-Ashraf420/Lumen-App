@@ -313,7 +313,9 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                             ),
                             decoration: BoxDecoration(
                               color: surfaceHi.withValues(alpha: 0.7),
-                              borderRadius: BorderRadius.circular(14),
+                              borderRadius: BorderRadius.circular(
+                                lumenCorner(14),
+                              ),
                               border: Border.all(color: line),
                             ),
                             child: Row(
@@ -475,13 +477,13 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
           color: surfaceHi.withValues(alpha: 0.48),
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(lumenCorner(18)),
           border: Border.all(color: line),
         ),
         child: Row(
           children: [
             ClipRRect(
-              borderRadius: BorderRadius.circular(11),
+              borderRadius: BorderRadius.circular(lumenCorner(11)),
               child: SizedBox(
                 width: 96,
                 height: 60,
@@ -576,7 +578,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                     ),
                     const SizedBox(height: 6),
                     ClipRRect(
-                      borderRadius: BorderRadius.circular(2),
+                      borderRadius: BorderRadius.circular(lumenCorner(2)),
                       child: LinearProgressIndicator(
                         value: d.total > 0 ? d.progress : null,
                         minHeight: 3,

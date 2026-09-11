@@ -50,7 +50,9 @@ class _CategorySheetState extends State<_CategorySheet> {
         return Container(
           decoration: BoxDecoration(
             color: surface,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+            borderRadius: BorderRadius.vertical(
+              top: Radius.circular(lumenCorner(28)),
+            ),
             border: Border(top: BorderSide(color: line)),
           ),
           child: Column(
@@ -61,7 +63,7 @@ class _CategorySheetState extends State<_CategorySheet> {
                 height: 4,
                 decoration: BoxDecoration(
                   color: subtle,
-                  borderRadius: BorderRadius.circular(2),
+                  borderRadius: BorderRadius.circular(lumenCorner(2)),
                 ),
               ),
               Padding(
@@ -75,7 +77,7 @@ class _CategorySheetState extends State<_CategorySheet> {
                         color: accentInk.withValues(
                           alpha: isDark ? 0.13 : 0.09,
                         ),
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(lumenCorner(12)),
                       ),
                       child: Icon(
                         Icons.category_outlined,
@@ -110,7 +112,7 @@ class _CategorySheetState extends State<_CategorySheet> {
                       ),
                       decoration: BoxDecoration(
                         color: surfaceHi,
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(lumenCorner(10)),
                       ),
                       child: Text(
                         '${widget.categories.length}',
@@ -188,7 +190,7 @@ class _CategorySheetState extends State<_CategorySheet> {
           color: sel
               ? accent.withValues(alpha: 0.15)
               : surfaceHi.withValues(alpha: 0.45),
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(lumenCorner(14)),
           border: Border.all(
             color: sel ? accent.withValues(alpha: 0.48) : line,
           ),
@@ -200,7 +202,7 @@ class _CategorySheetState extends State<_CategorySheet> {
               height: 30,
               decoration: BoxDecoration(
                 color: sel ? accent : surface,
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(lumenCorner(10)),
               ),
               child: Icon(
                 id == 'all' ? Icons.apps_rounded : Icons.folder_outlined,

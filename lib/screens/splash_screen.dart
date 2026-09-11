@@ -180,7 +180,7 @@ class _LaunchSplashState extends State<LaunchSplash>
                                         decoration: BoxDecoration(
                                           color: const Color(0xFF0E1210),
                                           borderRadius: BorderRadius.circular(
-                                            markSize * .28,
+                                            lumenCorner(markSize * .28),
                                           ),
                                           border: Border.all(
                                             color: defaultAccent.withValues(
@@ -229,7 +229,7 @@ class _LaunchSplashState extends State<LaunchSplash>
                                       decoration: BoxDecoration(
                                         color: defaultAccent,
                                         borderRadius: BorderRadius.circular(
-                                          brandSize * .15,
+                                          lumenCorner(brandSize * .15),
                                         ),
                                       ),
                                       child: Text(
@@ -293,7 +293,9 @@ class _LaunchSplashState extends State<LaunchSplash>
                                 child: Column(
                                   children: [
                                     ClipRRect(
-                                      borderRadius: BorderRadius.circular(20),
+                                      borderRadius: BorderRadius.circular(
+                                        lumenCorner(20),
+                                      ),
                                       child: SizedBox(
                                         height: 3,
                                         child: Stack(
@@ -378,7 +380,9 @@ class SessionLoading extends StatelessWidget {
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: const Color(0xFF0E1210),
-                    borderRadius: BorderRadius.circular(markSize * .34),
+                    borderRadius: BorderRadius.circular(
+                      lumenCorner(markSize * .34),
+                    ),
                     border: Border.all(
                       color: defaultAccent.withValues(alpha: .6),
                     ),

@@ -282,7 +282,7 @@ class _GuideTabScreenState extends State<GuideTabScreen>
                       color: selected
                           ? accentInk.withValues(alpha: isDark ? .14 : .09)
                           : Colors.transparent,
-                      borderRadius: BorderRadius.circular(11),
+                      borderRadius: BorderRadius.circular(lumenCorner(11)),
                     ),
                     child: Text(
                       category.name,
@@ -334,7 +334,7 @@ class _GuideTabScreenState extends State<GuideTabScreen>
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
               decoration: BoxDecoration(
                 color: surface,
-                borderRadius: BorderRadius.circular(13),
+                borderRadius: BorderRadius.circular(lumenCorner(13)),
                 border: Border.all(color: line),
               ),
               child: Row(

@@ -41,6 +41,8 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     await CatalogStore.instance.disableForWidgetTests();
     ThemeController.instance.font.value = LumenFont.lumen;
+    ThemeController.instance.corners.value = LumenCornerStyle.balanced;
+    ThemeController.instance.focus.value = LumenFocusStyle.lift;
     activePalette = darkPalette;
   });
 
@@ -329,6 +331,27 @@ void main() {
     );
     final preferences = await SharedPreferences.getInstance();
     expect(preferences.getString('lumen_font'), LumenFont.inter.name);
+
+    await tester.scrollUntilVisible(
+      find.text('Soft'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.text('Soft'));
+    await tester.pumpAndSettle();
+    expect(ThemeController.instance.corners.value, LumenCornerStyle.soft);
+    expect(
+      preferences.getString('lumen_corner_style'),
+      LumenCornerStyle.soft.name,
+    );
+
+    await tester.tap(find.text('Glow'));
+    await tester.pumpAndSettle();
+    expect(ThemeController.instance.focus.value, LumenFocusStyle.glow);
+    expect(
+      preferences.getString('lumen_focus_style'),
+      LumenFocusStyle.glow.name,
+    );
     expect(tester.takeException(), isNull);
   });
 
@@ -404,6 +427,12 @@ void main() {
     await move(LogicalKeyboardKey.arrowDown, 'Lumen font');
     await move(LogicalKeyboardKey.arrowRight, 'Inter font');
     await move(LogicalKeyboardKey.arrowRight, 'Device font');
+    await move(LogicalKeyboardKey.arrowDown, 'Crisp corners');
+    await move(LogicalKeyboardKey.arrowRight, 'Balanced corners');
+    await move(LogicalKeyboardKey.arrowRight, 'Soft corners');
+    await move(LogicalKeyboardKey.arrowDown, 'Outline focus');
+    await move(LogicalKeyboardKey.arrowRight, 'Lift focus');
+    await move(LogicalKeyboardKey.arrowRight, 'Glow focus');
     await move(
       LogicalKeyboardKey.arrowDown,
       '${accentSchemes.first.name} accent',
@@ -457,6 +486,8 @@ void main() {
       'Light appearance',
       'System appearance',
       for (final option in LumenFont.values) '${option.label} font',
+      for (final option in LumenCornerStyle.values) '${option.label} corners',
+      for (final option in LumenFocusStyle.values) '${option.label} focus',
       for (final scheme in accentSchemes) '${scheme.name} accent',
       'Custom accent',
       'Live playback mode',
@@ -509,6 +540,55 @@ void main() {
       containsAll(expected),
       reason: 'Unreachable: ${expected.difference(reached)}',
     );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('corner and focus preferences change shared interaction tokens', (
+    tester,
+  ) async {
+    final node = FocusNode(debugLabel: 'Token preview');
+    addTearDown(node.dispose);
+    ThemeController.instance.corners.value = LumenCornerStyle.soft;
+    ThemeController.instance.focus.value = LumenFocusStyle.glow;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildTheme(darkPalette),
+        home: Scaffold(
+          body: Center(
+            child: RemoteTap(
+              focusNode: node,
+              focusRadius: 16,
+              onTap: () {},
+              child: const SizedBox(width: 120, height: 48),
+            ),
+          ),
+        ),
+      ),
+    );
+    node.requestFocus();
+    await tester.pumpAndSettle();
+
+    final scale = tester.widget<AnimatedScale>(
+      find.descendant(
+        of: find.byType(RemoteTap),
+        matching: find.byType(AnimatedScale),
+      ),
+    );
+    expect(scale.scale, LumenFocusStyle.glow.scale);
+
+    final container = tester.widget<AnimatedContainer>(
+      find
+          .descendant(
+            of: find.byType(RemoteTap),
+            matching: find.byType(AnimatedContainer),
+          )
+          .first,
+    );
+    final decoration = container.foregroundDecoration! as BoxDecoration;
+    expect(decoration.border!.top.width, LumenFocusStyle.glow.ringWidth);
+    expect(decoration.borderRadius, BorderRadius.circular(lumenCorner(16)));
+    expect(decoration.boxShadow, isNotEmpty);
     expect(tester.takeException(), isNull);
   });
 

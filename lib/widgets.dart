@@ -543,7 +543,7 @@ class _TvKeyboardDialogState extends State<_TvKeyboardDialog> {
       backgroundColor: surface,
       insetPadding: const EdgeInsets.all(28),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(lumenCorner(24)),
         side: BorderSide(color: lineStrong),
       ),
       child: ConstrainedBox(
@@ -562,7 +562,7 @@ class _TvKeyboardDialogState extends State<_TvKeyboardDialog> {
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 decoration: BoxDecoration(
                   color: bg,
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(lumenCorner(14)),
                   border: Border.all(color: line),
                 ),
                 child: Text(
@@ -603,10 +603,10 @@ class _TvKeyboardDialogState extends State<_TvKeyboardDialog> {
                             : active
                             ? surfaceRaised
                             : surfaceHi,
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(lumenCorner(10)),
                         border: Border.all(
                           color: active ? accentInk : line,
-                          width: active ? 2 : 1,
+                          width: active ? activeFocusStyle.ringWidth : 1,
                         ),
                       ),
                       child: Text(
@@ -865,6 +865,7 @@ class _FocusableTapState extends State<FocusableTap> {
   @override
   Widget build(BuildContext context) {
     Theme.of(context);
+    final focusStyle = activeFocusStyle;
     final detector = FocusableActionDetector(
       focusNode: _effectiveFocusNode,
       autofocus: widget.autofocus,
@@ -892,21 +893,30 @@ class _FocusableTapState extends State<FocusableTap> {
           behavior: HitTestBehavior.opaque,
           onTap: widget.onTap,
           onLongPress: widget.onLongPress,
-          child: AnimatedContainer(
+          child: AnimatedScale(
+            scale: _focus
+                ? focusStyle.scale
+                : _hover
+                ? 1.015
+                : 1,
             duration: lumenMotionFast,
-            foregroundDecoration: widget.showFocusRing && _focus
-                ? BoxDecoration(
-                    borderRadius: BorderRadius.circular(widget.focusRadius),
-                    border: Border.all(color: accentInk, width: 1.5),
-                    boxShadow: [
-                      BoxShadow(
-                        color: accent.withValues(alpha: isDark ? .34 : .24),
-                        blurRadius: 12,
+            curve: Curves.easeOut,
+            child: AnimatedContainer(
+              duration: lumenMotionFast,
+              foregroundDecoration: widget.showFocusRing && _focus
+                  ? BoxDecoration(
+                      borderRadius: BorderRadius.circular(
+                        lumenCorner(widget.focusRadius),
                       ),
-                    ],
-                  )
-                : null,
-            child: widget.builder(context, _hover || _focus),
+                      border: Border.all(
+                        color: accentInk,
+                        width: focusStyle.ringWidth,
+                      ),
+                      boxShadow: lumenFocusShadows(accent),
+                    )
+                  : null,
+              child: widget.builder(context, _hover || _focus),
+            ),
           ),
         ),
       ),
@@ -985,7 +995,7 @@ class LumenBackButton extends StatelessWidget {
       height: 46,
       decoration: BoxDecoration(
         color: Colors.black.withValues(alpha: .46),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(lumenCorner(14)),
         border: Border.all(color: Colors.white24),
       ),
       alignment: Alignment.center,
@@ -1051,8 +1061,8 @@ class _RemoteTapState extends State<RemoteTap> {
   @override
   Widget build(BuildContext context) {
     Theme.of(context);
+    final focusStyle = activeFocusStyle;
     final enabled = widget.onTap != null;
-    final active = enabled && (_focused || _hovered);
     final focusColor = widget.focusRingColor ?? accentInk;
     final detector = FocusableActionDetector(
       enabled: enabled,
@@ -1076,21 +1086,25 @@ class _RemoteTapState extends State<RemoteTap> {
         label: widget.semanticLabel,
         onTap: widget.onTap,
         child: AnimatedScale(
-          scale: active ? 1.025 : 1,
+          scale: _focused
+              ? focusStyle.scale
+              : _hovered
+              ? 1.015
+              : 1,
           duration: lumenMotionFast,
           curve: Curves.easeOut,
           child: AnimatedContainer(
             duration: lumenMotionFast,
             foregroundDecoration: widget.showFocusRing && _focused
                 ? BoxDecoration(
-                    borderRadius: BorderRadius.circular(widget.focusRadius),
-                    border: Border.all(color: focusColor, width: 1.5),
-                    boxShadow: [
-                      BoxShadow(
-                        color: focusColor.withValues(alpha: isDark ? .34 : .24),
-                        blurRadius: 12,
-                      ),
-                    ],
+                    borderRadius: BorderRadius.circular(
+                      lumenCorner(widget.focusRadius),
+                    ),
+                    border: Border.all(
+                      color: focusColor,
+                      width: focusStyle.ringWidth,
+                    ),
+                    boxShadow: lumenFocusShadows(focusColor),
                   )
                 : null,
             child: GestureDetector(
@@ -1152,7 +1166,9 @@ class Wordmark extends StatelessWidget {
                   ),
                   decoration: BoxDecoration(
                     color: accent,
-                    borderRadius: BorderRadius.circular(size * 0.16),
+                    borderRadius: BorderRadius.circular(
+                      lumenCorner(size * 0.16),
+                    ),
                   ),
                   child: Text(
                     'TV',
@@ -1220,7 +1236,7 @@ class _LumenMarkPainter extends CustomPainter {
       ..isAntiAlias = true;
     final w = size.width;
     final h = size.height;
-    final r = Radius.circular(w * 0.055);
+    final r = Radius.circular(lumenCorner(w * 0.055));
 
     canvas.drawRRect(
       RRect.fromLTRBR(w * .20, h * .215, w * .31, h * .79, r),
@@ -1326,7 +1342,7 @@ class Glass extends StatelessWidget {
             tintColor.withValues(alpha: tintAlpha),
           ],
         ),
-        borderRadius: BorderRadius.circular(radius),
+        borderRadius: BorderRadius.circular(lumenCorner(radius)),
         border: Border.all(color: lineStrong),
       ),
       child: child,
@@ -1336,7 +1352,7 @@ class Glass extends StatelessWidget {
     // chipsets and makes remote focus feel delayed. Keep the same surface and
     // border on televisions without the live blur pass.
     return ClipRRect(
-      borderRadius: BorderRadius.circular(radius),
+      borderRadius: BorderRadius.circular(lumenCorner(radius)),
       child: DeviceProfile.isTelevision
           ? content
           : BackdropFilter(
@@ -1387,7 +1403,7 @@ class EditorialPageHeader extends StatelessWidget {
               height: 42,
               decoration: BoxDecoration(
                 color: surfaceHi.withValues(alpha: 0.72),
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(lumenCorner(14)),
                 border: Border.all(color: line),
               ),
               child: Icon(Icons.arrow_back_rounded, color: textHi, size: 20),
@@ -1407,7 +1423,7 @@ class EditorialPageHeader extends StatelessWidget {
                 accentInk.withValues(alpha: isDark ? 0.08 : 0.06),
               ],
             ),
-            borderRadius: BorderRadius.circular(lumenRadiusMd),
+            borderRadius: BorderRadius.circular(lumenCorner(lumenRadiusMd)),
             border: Border.all(
               color: accentInk.withValues(alpha: isDark ? 0.24 : 0.38),
             ),
@@ -1499,7 +1515,7 @@ class LumenEmptyState extends StatelessWidget {
                         color: accentInk.withValues(
                           alpha: isDark ? 0.14 : 0.09,
                         ),
-                        borderRadius: BorderRadius.circular(20),
+                        borderRadius: BorderRadius.circular(lumenCorner(20)),
                       ),
                       child: Icon(icon, color: accentInk, size: 29),
                     ),
@@ -1547,7 +1563,7 @@ class LumenEmptyState extends StatelessWidget {
                       ),
                       decoration: BoxDecoration(
                         color: accent,
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius: BorderRadius.circular(lumenCorner(14)),
                       ),
                       child: Text(
                         actionLabel!,
@@ -1604,7 +1620,7 @@ class LumenFilterPill extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
       decoration: BoxDecoration(
         color: selected ? accent : surfaceHi.withValues(alpha: 0.65),
-        borderRadius: BorderRadius.circular(13),
+        borderRadius: BorderRadius.circular(lumenCorner(13)),
         border: Border.all(color: selected ? accent : line),
       ),
       child: Row(
@@ -1700,13 +1716,13 @@ class _SearchFieldState extends State<SearchField> {
         color: focused
             ? surfaceHi.withValues(alpha: 0.92)
             : surface.withValues(alpha: 0.92),
-        borderRadius: BorderRadius.circular(25),
+        borderRadius: BorderRadius.circular(lumenCorner(25)),
         border: Border.all(
           color: focused ? accentInk : line,
-          width: focused ? 3 : 1,
+          width: focused ? activeFocusStyle.ringWidth : 1,
         ),
         boxShadow: focused && DeviceProfile.isTelevision
-            ? glow(accent, blur: 18, a: .45)
+            ? lumenFocusShadows(accentInk)
             : null,
       ),
       child: Row(
@@ -1761,7 +1777,7 @@ class _SearchFieldState extends State<SearchField> {
         builder: (context, active) => AnimatedContainer(
           duration: const Duration(milliseconds: 140),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(lumenCorner(16)),
             border: Border.all(
               color: active ? accent : Colors.transparent,
               width: 1.5,
@@ -1899,7 +1915,7 @@ Widget _skelBox(double w, double h, {double r = 12}) => Container(
   height: h,
   decoration: BoxDecoration(
     color: surfaceHi,
-    borderRadius: BorderRadius.circular(r),
+    borderRadius: BorderRadius.circular(lumenCorner(r)),
   ),
 );
 
@@ -2040,7 +2056,7 @@ class GridLoading extends StatelessWidget {
             itemBuilder: (_, i) => DecoratedBox(
               decoration: BoxDecoration(
                 color: surfaceHi,
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(lumenCorner(14)),
               ),
             ),
           );
@@ -2075,7 +2091,8 @@ class PillButton extends StatelessWidget {
       onKeyEvent: onKeyEvent,
       onTap: onTap,
       builder: (context, active) => AnimatedScale(
-        scale: active ? 1.025 : 1.0,
+        // FocusableTap owns the app-wide, user-selected scale treatment.
+        scale: 1,
         duration: lumenMotionFast,
         curve: Curves.easeOut,
         child: Container(
@@ -2084,7 +2101,7 @@ class PillButton extends StatelessWidget {
             color: filled
                 ? accent
                 : (active ? surfaceRaised : surfaceHi.withValues(alpha: 0.82)),
-            borderRadius: BorderRadius.circular(lumenRadiusMd),
+            borderRadius: BorderRadius.circular(lumenCorner(lumenRadiusMd)),
             border: filled
                 ? Border.all(
                     color: active
@@ -2093,7 +2110,7 @@ class PillButton extends StatelessWidget {
                   )
                 : Border.all(
                     color: active ? accentInk : lineStrong,
-                    width: active ? 1.5 : 1,
+                    width: active ? activeFocusStyle.ringWidth : 1,
                   ),
             boxShadow: filled
                 ? [
@@ -2151,7 +2168,7 @@ class SectionHeader extends StatelessWidget {
             margin: const EdgeInsets.only(right: 12, bottom: 1),
             decoration: BoxDecoration(
               color: accentInk,
-              borderRadius: BorderRadius.circular(2),
+              borderRadius: BorderRadius.circular(lumenCorner(2)),
             ),
           ),
           Expanded(
@@ -2256,7 +2273,7 @@ class PosterCard extends StatelessWidget {
     final card = AspectRatio(
       aspectRatio: 2 / 3,
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(radius),
+        borderRadius: BorderRadius.circular(lumenCorner(radius)),
         child: Stack(
           fit: StackFit.expand,
           children: [
@@ -2330,7 +2347,7 @@ class PosterCard extends StatelessWidget {
                   ),
                   decoration: BoxDecoration(
                     color: const Color(0xD9141719),
-                    borderRadius: BorderRadius.circular(7),
+                    borderRadius: BorderRadius.circular(lumenCorner(7)),
                     border: Border.all(color: Colors.white12),
                   ),
                   child: Row(
@@ -2378,12 +2395,12 @@ class PosterCard extends StatelessWidget {
             // hairline edge
             DecoratedBox(
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(radius),
+                borderRadius: BorderRadius.circular(lumenCorner(radius)),
                 border: Border.all(
                   color: active
                       ? accentInk.withValues(alpha: 0.72)
                       : Colors.white.withValues(alpha: 0.09),
-                  width: active ? 1.5 : 1,
+                  width: active ? activeFocusStyle.ringWidth : 1,
                 ),
               ),
             ),
@@ -2393,21 +2410,16 @@ class PosterCard extends StatelessWidget {
     );
 
     return AnimatedScale(
-      scale: active ? 1.035 : 1.0,
+      // FocusableTap owns the app-wide, user-selected scale treatment.
+      scale: 1,
       duration: lumenMotion,
       curve: Curves.easeOut,
       child: AnimatedContainer(
         duration: lumenMotion,
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(radius),
+          borderRadius: BorderRadius.circular(lumenCorner(radius)),
           boxShadow: active
-              ? [
-                  BoxShadow(
-                    color: accent.withValues(alpha: 0.34),
-                    blurRadius: 24,
-                    offset: const Offset(0, 10),
-                  ),
-                ]
+              ? lumenFocusShadows(accentInk)
               : [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: isDark ? 0.45 : 0.18),
@@ -2477,7 +2489,7 @@ class ChannelCard extends StatelessWidget {
           aspectRatio: 1,
           child: DecoratedBox(
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(lumenCorner(16)),
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
@@ -2518,7 +2530,7 @@ class ChannelCard extends StatelessWidget {
                     ),
                     decoration: BoxDecoration(
                       color: const Color(0xFFFF3B5C),
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(lumenCorner(8)),
                     ),
                     child: const Row(
                       mainAxisSize: MainAxisSize.min,
@@ -2552,7 +2564,7 @@ class ChannelCard extends StatelessWidget {
                           height: 25,
                           decoration: BoxDecoration(
                             color: const Color(0xD9141719),
-                            borderRadius: BorderRadius.circular(7),
+                            borderRadius: BorderRadius.circular(lumenCorner(7)),
                             border: Border.all(color: Colors.white12),
                           ),
                           child: Icon(
@@ -2572,8 +2584,8 @@ class ChannelCard extends StatelessWidget {
                     child: Container(
                       padding: const EdgeInsets.fromLTRB(10, 20, 10, 9),
                       decoration: BoxDecoration(
-                        borderRadius: const BorderRadius.vertical(
-                          bottom: Radius.circular(15),
+                        borderRadius: BorderRadius.vertical(
+                          bottom: Radius.circular(lumenCorner(15)),
                         ),
                         gradient: LinearGradient(
                           begin: Alignment.topCenter,
@@ -2599,7 +2611,9 @@ class ChannelCard extends StatelessWidget {
                             LinearProgressIndicator(
                               value: value.clamp(0.0, 1.0),
                               minHeight: 2.5,
-                              borderRadius: BorderRadius.circular(2),
+                              borderRadius: BorderRadius.circular(
+                                lumenCorner(2),
+                              ),
                               color: accent,
                               backgroundColor: Colors.white24,
                             ),
@@ -2658,22 +2672,15 @@ class ChannelCard extends StatelessWidget {
           ? null
           : () => Library.instance.toggleFav(favoriteRef!),
       builder: (context, active) => AnimatedScale(
-        scale: active ? 1.035 : 1.0,
+        // FocusableTap owns the app-wide, user-selected scale treatment.
+        scale: 1,
         duration: lumenMotionFast,
         curve: Curves.easeOut,
         child: AnimatedContainer(
           duration: lumenMotionFast,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: active
-                ? [
-                    BoxShadow(
-                      color: accent.withValues(alpha: 0.4),
-                      blurRadius: 22,
-                      offset: const Offset(0, 10),
-                    ),
-                  ]
-                : null,
+            borderRadius: BorderRadius.circular(lumenCorner(16)),
+            boxShadow: active ? lumenFocusShadows(accentInk) : null,
           ),
           child: tile,
         ),

@@ -633,12 +633,12 @@ class _PosterArtifact extends StatelessWidget {
     child: Container(
       width: width,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(7),
+        borderRadius: BorderRadius.circular(lumenCorner(7)),
         border: Border.all(color: line, width: 1.5),
         boxShadow: glow(Colors.black, blur: 44, y: 22, a: .65),
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(lumenCorner(6)),
         child: AspectRatio(
           aspectRatio: 2 / 3,
           child: MediaImage(
@@ -671,7 +671,7 @@ class _Fact extends StatelessWidget {
     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
     decoration: BoxDecoration(
       color: surface.withValues(alpha: isDark ? .78 : .90),
-      borderRadius: BorderRadius.circular(99),
+      borderRadius: BorderRadius.circular(lumenCorner(99)),
       border: Border.all(color: line),
     ),
     child: Row(
@@ -713,7 +713,7 @@ class _PrimaryPlay extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 15),
       decoration: BoxDecoration(
         color: accent,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(lumenCorner(14)),
         boxShadow: glow(accent, blur: 24, y: 9, a: .42),
       ),
       child: Column(
@@ -778,7 +778,7 @@ class _DetailAction extends StatelessWidget {
           color: selected
               ? accent
               : surface.withValues(alpha: isDark ? .82 : .92),
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(lumenCorner(14)),
           border: Border.all(color: selected ? Colors.transparent : line),
         ),
         child: Row(
@@ -916,7 +916,7 @@ class _DetailPanel extends StatelessWidget {
     padding: const EdgeInsets.all(22),
     decoration: BoxDecoration(
       color: surface.withValues(alpha: .72),
-      borderRadius: BorderRadius.circular(22),
+      borderRadius: BorderRadius.circular(lumenCorner(22)),
       border: Border.all(color: line),
     ),
     child: Column(

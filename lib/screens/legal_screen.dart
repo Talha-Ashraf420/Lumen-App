@@ -174,7 +174,7 @@ class LegalScreen extends StatelessWidget {
                                           decoration: BoxDecoration(
                                             color: accent,
                                             borderRadius: BorderRadius.circular(
-                                              17,
+                                              lumenCorner(17),
                                             ),
                                           ),
                                           child: Icon(

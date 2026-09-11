@@ -1129,7 +1129,9 @@ class _PlayerHostState extends State<PlayerHost> {
                       curve: Curves.easeOutCubic,
                       decoration: BoxDecoration(
                         color: Colors.black,
-                        borderRadius: BorderRadius.circular(mini ? 14 : 0),
+                        borderRadius: BorderRadius.circular(
+                          lumenCorner(mini ? 14 : 0),
+                        ),
                         border: mini ? Border.all(color: Colors.white24) : null,
                         boxShadow: mini
                             ? const [
@@ -1266,7 +1268,7 @@ class _PlayerHostState extends State<PlayerHost> {
                       ),
                       decoration: BoxDecoration(
                         color: const Color(0xE6101112),
-                        borderRadius: BorderRadius.circular(999),
+                        borderRadius: BorderRadius.circular(lumenCorner(999)),
                         border: Border.all(color: Colors.white12),
                         boxShadow: const [
                           BoxShadow(color: Colors.black45, blurRadius: 18),
@@ -1773,7 +1775,7 @@ class _PlayerHostState extends State<PlayerHost> {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
               decoration: BoxDecoration(
                 color: const Color(0xE8121514),
-                borderRadius: BorderRadius.circular(18),
+                borderRadius: BorderRadius.circular(lumenCorner(18)),
                 border: Border.all(color: Colors.white24),
                 boxShadow: const [
                   BoxShadow(
@@ -1853,11 +1855,16 @@ class _PlayerHostState extends State<PlayerHost> {
           if (_isAndroid)
             IconButton(
               tooltip: 'Open Android compatibility player',
-              style: IconButton.styleFrom(
-                foregroundColor: Colors.white,
-                backgroundColor: Colors.white10,
-                side: const BorderSide(color: Colors.white24),
-              ),
+              style:
+                  IconButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    backgroundColor: Colors.white10,
+                  ).copyWith(
+                    side: lumenControlSide(
+                      resting: const BorderSide(color: Colors.white24),
+                      focused: accent,
+                    ),
+                  ),
               onPressed: () async {
                 final opened = await AndroidCompatibilityPlayer.open(
                   url: pc.activeSourceUrl,
@@ -1883,22 +1890,32 @@ class _PlayerHostState extends State<PlayerHost> {
             ),
           IconButton(
             tooltip: 'Playback information',
-            style: IconButton.styleFrom(
-              foregroundColor: Colors.white,
-              backgroundColor: Colors.white10,
-              side: const BorderSide(color: Colors.white24),
-            ),
+            style:
+                IconButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  backgroundColor: Colors.white10,
+                ).copyWith(
+                  side: lumenControlSide(
+                    resting: const BorderSide(color: Colors.white24),
+                    focused: accent,
+                  ),
+                ),
             onPressed: _openDiagnostics,
             icon: const Icon(Icons.info_outline_rounded, size: 19),
           ),
           if (_hasNext)
             IconButton(
               tooltip: 'Next channel',
-              style: IconButton.styleFrom(
-                foregroundColor: Colors.white,
-                backgroundColor: Colors.white10,
-                side: const BorderSide(color: Colors.white24),
-              ),
+              style:
+                  IconButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    backgroundColor: Colors.white10,
+                  ).copyWith(
+                    side: lumenControlSide(
+                      resting: const BorderSide(color: Colors.white24),
+                      focused: accent,
+                    ),
+                  ),
               onPressed: () => _go(pc.index + 1),
               icon: const Icon(Icons.skip_next_rounded, size: 20),
             ),
@@ -1958,7 +1975,7 @@ class _PlayerHostState extends State<PlayerHost> {
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
           decoration: BoxDecoration(
             color: Colors.black.withValues(alpha: 0.6),
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(lumenCorner(16)),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -1977,7 +1994,7 @@ class _PlayerHostState extends State<PlayerHost> {
                 SizedBox(
                   width: 120,
                   child: ClipRRect(
-                    borderRadius: BorderRadius.circular(2),
+                    borderRadius: BorderRadius.circular(lumenCorner(2)),
                     child: LinearProgressIndicator(
                       value: _hudValue,
                       minHeight: 4,
@@ -2049,7 +2066,7 @@ class _PlayerHostState extends State<PlayerHost> {
             padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
             decoration: BoxDecoration(
               color: Colors.black.withValues(alpha: 0.65),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(lumenCorner(12)),
               border: Border.all(color: Colors.white24),
             ),
             child: const Row(
@@ -2082,7 +2099,7 @@ class _PlayerHostState extends State<PlayerHost> {
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: Colors.black.withValues(alpha: 0.82),
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(lumenCorner(16)),
           border: Border.all(color: Colors.white24),
         ),
         child: Column(
@@ -2119,7 +2136,7 @@ class _PlayerHostState extends State<PlayerHost> {
                     ),
                     decoration: BoxDecoration(
                       color: accent,
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: BorderRadius.circular(lumenCorner(20)),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -2217,7 +2234,7 @@ class _PlayerHostState extends State<PlayerHost> {
                 padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
                 decoration: BoxDecoration(
                   color: const Color(0xFFFF3B5C),
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(lumenCorner(8)),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -2289,7 +2306,7 @@ class _PlayerHostState extends State<PlayerHost> {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         color: Colors.black.withValues(alpha: 0.48),
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(lumenCorner(999)),
         border: Border.all(color: Colors.white24),
         boxShadow: const [
           BoxShadow(
@@ -2833,8 +2850,8 @@ class _PlayerHostState extends State<PlayerHost> {
             right: 0,
             width: panelW,
             child: ClipRRect(
-              borderRadius: const BorderRadius.horizontal(
-                left: Radius.circular(22),
+              borderRadius: BorderRadius.horizontal(
+                left: Radius.circular(lumenCorner(22)),
               ),
               child: BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
@@ -3010,12 +3027,15 @@ class _PlayerHostState extends State<PlayerHost> {
                   vertical: 10,
                 ),
                 enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(lumenCorner(12)),
                   borderSide: BorderSide(color: Colors.white24),
                 ),
                 focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: accent),
+                  borderRadius: BorderRadius.circular(lumenCorner(12)),
+                  borderSide: BorderSide(
+                    color: accent,
+                    width: activeFocusStyle.ringWidth,
+                  ),
                 ),
                 suffixIcon: IconButton(
                   icon: Icon(Icons.search_rounded, color: accent),
@@ -3047,7 +3067,7 @@ class _PlayerHostState extends State<PlayerHost> {
                       color: sel
                           ? accent
                           : Colors.white.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(lumenCorner(16)),
                       border: Border.all(color: sel ? accent : Colors.white24),
                     ),
                     child: Text(
@@ -3198,7 +3218,7 @@ class _PlayerHostState extends State<PlayerHost> {
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: Colors.white.withValues(alpha: 0.07),
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(lumenCorner(16)),
                 border: Border.all(color: Colors.white12),
               ),
               child: Row(
@@ -3287,10 +3307,13 @@ class _PlayerHostState extends State<PlayerHost> {
                   label: const Text('Retry stream'),
                 ),
                 OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.white,
-                    side: const BorderSide(color: Colors.white24),
-                  ),
+                  style: OutlinedButton.styleFrom(foregroundColor: Colors.white)
+                      .copyWith(
+                        side: lumenControlSide(
+                          resting: const BorderSide(color: Colors.white24),
+                          focused: accent,
+                        ),
+                      ),
                   onPressed: () async {
                     await Clipboard.setData(
                       ClipboardData(text: pc.diagnosticSummary),
@@ -3630,7 +3653,7 @@ class _PlayerHostState extends State<PlayerHost> {
                 ),
                 decoration: BoxDecoration(
                   color: sel ? accent : Colors.white.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(lumenCorner(12)),
                 ),
                 child: Text(
                   label,

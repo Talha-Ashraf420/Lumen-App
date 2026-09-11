@@ -169,7 +169,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
             decoration: BoxDecoration(
               color: surface,
               border: Border.all(color: line),
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(lumenCorner(14)),
             ),
             child: Icon(Icons.arrow_back_rounded, color: textHi),
           ),
@@ -206,7 +206,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
           height: 42,
           decoration: BoxDecoration(
             color: accentInk.withValues(alpha: 0.13),
-            borderRadius: BorderRadius.circular(13),
+            borderRadius: BorderRadius.circular(lumenCorner(13)),
           ),
           child: Icon(Icons.visibility_outlined, color: accentInk, size: 21),
         ),
@@ -321,7 +321,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
         decoration: BoxDecoration(
           color: primary ? accent : surface,
           border: Border.all(color: primary ? accent : line),
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(lumenCorner(16)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -376,7 +376,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
           decoration: BoxDecoration(
             color: bg.withValues(alpha: 0.55),
             border: Border.all(color: line.withValues(alpha: 0.75)),
-            borderRadius: BorderRadius.circular(15),
+            borderRadius: BorderRadius.circular(lumenCorner(15)),
           ),
           child: SelectableText(
             _loading ? 'Preparing a private report…' : _report,

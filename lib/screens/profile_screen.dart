@@ -46,6 +46,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _entryFocus = FocusNode(debugLabel: 'Profile add account');
   final _themeEntryFocus = FocusNode(debugLabel: 'Dark appearance');
   final _fontEntryFocus = FocusNode(debugLabel: 'Lumen font');
+  final _cornerEntryFocus = FocusNode(debugLabel: 'Crisp corners');
+  final _focusStyleEntryFocus = FocusNode(debugLabel: 'Outline focus');
   final _accentEntryFocus = FocusNode(debugLabel: 'Signal lime accent');
   final _playbackModeFocus = FocusNode(debugLabel: 'Live playback mode');
   final _insightsFocus = FocusNode(debugLabel: 'Watch insights');
@@ -519,6 +521,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _entryFocus.dispose();
     _themeEntryFocus.dispose();
     _fontEntryFocus.dispose();
+    _cornerEntryFocus.dispose();
+    _focusStyleEntryFocus.dispose();
     _accentEntryFocus.dispose();
     _playbackModeFocus.dispose();
     _insightsFocus.dispose();
@@ -651,7 +655,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: accent,
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: BorderRadius.circular(lumenCorner(18)),
                   boxShadow: glow(accent, blur: 18, y: 7),
                 ),
                 child: c.isDemo
@@ -796,7 +800,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     decoration: BoxDecoration(
                       color: accentInk.withValues(alpha: isDark ? 0.12 : 0.10),
-                      borderRadius: BorderRadius.circular(11),
+                      borderRadius: BorderRadius.circular(lumenCorner(11)),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -868,15 +872,80 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _FontSelector(
         entryFocusNode: _fontEntryFocus,
         upFocusNode: _themeEntryFocus,
+        downFocusNode: _cornerEntryFocus,
+        leftExitFocusNode: widget.shellRailFocusNode,
+      ),
+      const SizedBox(height: 20),
+      Text('CORNERS', style: kSection()),
+      const SizedBox(height: 10),
+      _PreferenceSelector<LumenCornerStyle>(
+        entryFocusNode: _cornerEntryFocus,
+        upFocusNode: _fontEntryFocus,
+        downFocusNode: _focusStyleEntryFocus,
+        leftExitFocusNode: widget.shellRailFocusNode,
+        values: LumenCornerStyle.values,
+        current: ThemeController.instance.corners,
+        semanticSuffix: 'corners',
+        keyPrefix: 'profile-corners',
+        labelOf: (value) => value.label,
+        descriptionOf: (value) => value.description,
+        onSelected: ThemeController.instance.setCorners,
+        previewBuilder: (value, selected) => Container(
+          width: 28,
+          height: 20,
+          decoration: BoxDecoration(
+            color: selected
+                ? accent.withValues(alpha: .28)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(
+              (14 * value.multiplier).clamp(3.5, 20),
+            ),
+            border: Border.all(color: selected ? accentInk : muted, width: 2),
+          ),
+        ),
+      ),
+      const SizedBox(height: 20),
+      Text('FOCUS', style: kSection()),
+      const SizedBox(height: 10),
+      _PreferenceSelector<LumenFocusStyle>(
+        entryFocusNode: _focusStyleEntryFocus,
+        upFocusNode: _cornerEntryFocus,
         downFocusNode: _accentEntryFocus,
         leftExitFocusNode: widget.shellRailFocusNode,
+        values: LumenFocusStyle.values,
+        current: ThemeController.instance.focus,
+        semanticSuffix: 'focus',
+        keyPrefix: 'profile-focus',
+        labelOf: (value) => value.label,
+        descriptionOf: (value) => value.description,
+        onSelected: ThemeController.instance.setFocus,
+        previewBuilder: (value, selected) => Container(
+          width: 28,
+          height: 20,
+          decoration: BoxDecoration(
+            color: surface,
+            borderRadius: BorderRadius.circular(lumenCorner(7)),
+            border: Border.all(
+              color: selected ? accentInk : muted,
+              width: value.ringWidth,
+            ),
+            boxShadow: value.blurRadius <= 0
+                ? const []
+                : [
+                    BoxShadow(
+                      color: accent.withValues(alpha: .32),
+                      blurRadius: value.blurRadius,
+                    ),
+                  ],
+          ),
+        ),
       ),
       const SizedBox(height: 20),
       Text('ACCENT', style: kSection()),
       const SizedBox(height: 12),
       _AccentPicker(
         entryFocusNode: _accentEntryFocus,
-        upFocusNode: _fontEntryFocus,
+        upFocusNode: _focusStyleEntryFocus,
         downFocusNode: _playbackModeFocus,
         leftExitFocusNode: widget.shellRailFocusNode,
       ),
@@ -1109,7 +1178,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               height: 38,
               decoration: BoxDecoration(
                 color: accentInk.withValues(alpha: isDark ? 0.12 : 0.10),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(lumenCorner(12)),
               ),
               child: Icon(icon, color: accentInk, size: 19),
             ),
@@ -1173,7 +1242,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               height: 38,
               decoration: BoxDecoration(
                 color: iconColor.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(lumenCorner(12)),
               ),
               child: Icon(icon, color: iconColor, size: 19),
             ),
@@ -1228,7 +1297,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
       decoration: BoxDecoration(
         color: dangerInk.withValues(alpha: isDark ? 0.07 : 0.08),
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(lumenCorner(18)),
         border: Border.all(
           color: dangerInk.withValues(alpha: isDark ? 0.19 : 0.25),
         ),
@@ -1363,7 +1432,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: surfaceHi,
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(lumenCorner(10)),
                   border: Border.all(color: line),
                 ),
                 child: Icon(
@@ -1449,7 +1518,7 @@ class _AccountRemovalDialogState extends State<_AccountRemovalDialog> {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
             decoration: BoxDecoration(
               color: danger,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(lumenCorner(12)),
             ),
             child: Text(
               'Remove',
@@ -1554,7 +1623,7 @@ class _FontSelectorState extends State<_FontSelector> {
                     color: current == LumenFont.values[index]
                         ? accent.withValues(alpha: isDark ? .16 : .22)
                         : surfaceHi.withValues(alpha: .55),
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(lumenCorner(14)),
                     border: Border.all(
                       color: current == LumenFont.values[index]
                           ? accentInk
@@ -1592,6 +1661,165 @@ class _FontSelectorState extends State<_FontSelector> {
       ),
     );
   }
+}
+
+/// A shared, remote-safe selector for visual system preferences. Keeping
+/// corner and focus choices on the same primitive prevents their interaction,
+/// semantics and D-pad behavior from drifting apart.
+class _PreferenceSelector<T> extends StatefulWidget {
+  const _PreferenceSelector({
+    required this.entryFocusNode,
+    required this.upFocusNode,
+    required this.downFocusNode,
+    required this.values,
+    required this.current,
+    required this.semanticSuffix,
+    required this.keyPrefix,
+    required this.labelOf,
+    required this.descriptionOf,
+    required this.onSelected,
+    this.previewBuilder,
+    this.leftExitFocusNode,
+  });
+
+  final FocusNode entryFocusNode;
+  final FocusNode upFocusNode;
+  final FocusNode downFocusNode;
+  final FocusNode? leftExitFocusNode;
+  final List<T> values;
+  final ValueNotifier<T> current;
+  final String semanticSuffix;
+  final String keyPrefix;
+  final String Function(T) labelOf;
+  final String Function(T) descriptionOf;
+  final ValueChanged<T> onSelected;
+  final Widget Function(T value, bool selected)? previewBuilder;
+
+  @override
+  State<_PreferenceSelector<T>> createState() => _PreferenceSelectorState<T>();
+}
+
+class _PreferenceSelectorState<T> extends State<_PreferenceSelector<T>> {
+  late final List<FocusNode> _focusNodes = [
+    widget.entryFocusNode,
+    for (final value in widget.values.skip(1))
+      FocusNode(
+        debugLabel:
+            '${widget.labelOf(value)} ${widget.semanticSuffix.toLowerCase()}',
+      ),
+  ];
+
+  @override
+  void dispose() {
+    for (final node in _focusNodes.skip(1)) {
+      node.dispose();
+    }
+    super.dispose();
+  }
+
+  KeyEventResult _route(int index, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+      widget.upFocusNode.requestFocus();
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+      widget.downFocusNode.requestFocus();
+      return KeyEventResult.handled;
+    }
+    final delta = event.logicalKey == LogicalKeyboardKey.arrowLeft
+        ? -1
+        : event.logicalKey == LogicalKeyboardKey.arrowRight
+        ? 1
+        : 0;
+    if (delta == 0) return KeyEventResult.ignored;
+    final target = index + delta;
+    if (target >= 0 && target < _focusNodes.length) {
+      _focusNodes[target].requestFocus();
+    } else if (target < 0 &&
+        widget.leftExitFocusNode?.canRequestFocus == true) {
+      widget.leftExitFocusNode!.requestFocus();
+    }
+    return KeyEventResult.handled;
+  }
+
+  @override
+  Widget build(BuildContext context) => ValueListenableBuilder<T>(
+    valueListenable: widget.current,
+    builder: (context, current, _) => Row(
+      children: [
+        for (var index = 0; index < widget.values.length; index++) ...[
+          if (index > 0) const SizedBox(width: 8),
+          Expanded(
+            child: RemoteTap(
+              focusNode: _focusNodes[index],
+              focusRadius: 14,
+              semanticLabel:
+                  '${widget.labelOf(widget.values[index])} ${widget.semanticSuffix}',
+              onKeyEvent: (_, event) => _route(index, event),
+              onTap: () => widget.onSelected(widget.values[index]),
+              child: AnimatedContainer(
+                key: ValueKey(
+                  '${widget.keyPrefix}-${widget.labelOf(widget.values[index]).toLowerCase()}',
+                ),
+                duration: lumenMotion,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 12,
+                ),
+                decoration: BoxDecoration(
+                  color: current == widget.values[index]
+                      ? accent.withValues(alpha: isDark ? .16 : .22)
+                      : surfaceHi.withValues(alpha: .55),
+                  borderRadius: BorderRadius.circular(lumenCorner(14)),
+                  border: Border.all(
+                    color: current == widget.values[index] ? accentInk : line,
+                    width: current == widget.values[index] ? 1.5 : 1,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    if (widget.previewBuilder != null) ...[
+                      widget.previewBuilder!(
+                        widget.values[index],
+                        current == widget.values[index],
+                      ),
+                      const SizedBox(width: 9),
+                    ],
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            widget.labelOf(widget.values[index]),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            widget.descriptionOf(widget.values[index]),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(color: muted, fontSize: 9.5),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ],
+    ),
+  );
 }
 
 /// Dark / Light / System segmented selector wired to ThemeController.
@@ -1677,7 +1905,7 @@ class _ThemeSelectorState extends State<_ThemeSelector> {
           padding: const EdgeInsets.all(5),
           decoration: BoxDecoration(
             color: surfaceHi.withValues(alpha: 0.7),
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(lumenCorner(18)),
           ),
           child: Row(
             children: [
@@ -1702,7 +1930,7 @@ class _ThemeSelectorState extends State<_ThemeSelector> {
                         color: current == _opts[index].mode
                             ? accent
                             : Colors.transparent,
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius: BorderRadius.circular(lumenCorner(14)),
                       ),
                       child: Column(
                         children: [
@@ -1852,7 +2080,7 @@ class _AccentPickerState extends State<_AccentPicker> {
                     height: 54,
                     decoration: BoxDecoration(
                       color: picked,
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(lumenCorner(14)),
                       border: Border.all(color: Colors.white24),
                     ),
                   ),
@@ -1921,7 +2149,7 @@ class _AccentPickerState extends State<_AccentPicker> {
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: surfaceHi,
-                    borderRadius: BorderRadius.circular(22),
+                    borderRadius: BorderRadius.circular(lumenCorner(22)),
                     border: Border.all(color: line),
                   ),
                   child: Text(
@@ -1946,7 +2174,7 @@ class _AccentPickerState extends State<_AccentPicker> {
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: picked,
-                    borderRadius: BorderRadius.circular(22),
+                    borderRadius: BorderRadius.circular(lumenCorner(22)),
                   ),
                   child: Text(
                     'Apply',
@@ -2027,11 +2255,12 @@ class _AccentPickerState extends State<_AccentPicker> {
                 color: focused
                     ? accentInk.withValues(alpha: isDark ? .14 : .08)
                     : Colors.transparent,
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(lumenCorner(12)),
                 border: Border.all(
                   color: focused ? accentInk : Colors.transparent,
-                  width: focused ? 2 : 1,
+                  width: focused ? activeFocusStyle.ringWidth : 1,
                 ),
+                boxShadow: focused ? lumenFocusShadows(accentInk) : null,
               ),
               child: Row(
                 children: [
@@ -2118,7 +2347,7 @@ class _AccentPickerState extends State<_AccentPicker> {
                   color: isCustom
                       ? accentInk.withValues(alpha: isDark ? 0.16 : 0.10)
                       : surfaceHi,
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(lumenCorner(14)),
                   border: Border.all(
                     color: isCustom ? accentInk : line,
                     width: isCustom ? 2 : 1,
@@ -2197,7 +2426,7 @@ class _AccentPickerState extends State<_AccentPicker> {
           color: selected
               ? accentInk.withValues(alpha: isDark ? 0.16 : 0.10)
               : surfaceHi,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(lumenCorner(14)),
           border: Border.all(
             color: selected ? accentInk : line,
             width: selected ? 2 : 1,

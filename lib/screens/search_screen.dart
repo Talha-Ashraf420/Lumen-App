@@ -1433,7 +1433,7 @@ class SearchScreenState extends State<SearchScreen>
               padding: const EdgeInsets.symmetric(horizontal: 18),
               decoration: BoxDecoration(
                 color: sel ? accent : surfaceHi.withValues(alpha: 0.5),
-                borderRadius: BorderRadius.circular(13),
+                borderRadius: BorderRadius.circular(lumenCorner(13)),
                 border: Border.all(color: sel ? Colors.transparent : line),
               ),
               child: Text(
@@ -1493,7 +1493,7 @@ class SearchScreenState extends State<SearchScreen>
           tooltip: 'Sort',
           color: surface,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(lumenCorner(16)),
             side: BorderSide(color: line),
           ),
           onSelected: (v) => _changeResults(() => _sort = v),
@@ -1523,7 +1523,7 @@ class SearchScreenState extends State<SearchScreen>
               ),
           ],
           child: AnimatedScale(
-            scale: _sortFocus.hasFocus ? 1.045 : 1,
+            scale: _sortFocus.hasFocus ? activeFocusStyle.scale : 1,
             duration: const Duration(milliseconds: 130),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 130),
@@ -1532,13 +1532,13 @@ class SearchScreenState extends State<SearchScreen>
                 color: _sortFocus.hasFocus
                     ? accent.withValues(alpha: .22)
                     : surfaceHi.withValues(alpha: 0.6),
-                borderRadius: BorderRadius.circular(13),
+                borderRadius: BorderRadius.circular(lumenCorner(13)),
                 border: Border.all(
                   color: _sortFocus.hasFocus ? accentInk : line,
-                  width: _sortFocus.hasFocus ? 3 : 1,
+                  width: _sortFocus.hasFocus ? activeFocusStyle.ringWidth : 1,
                 ),
                 boxShadow: _sortFocus.hasFocus
-                    ? glow(accent, blur: 18, a: .5)
+                    ? lumenFocusShadows(accentInk)
                     : null,
               ),
               child: Row(
@@ -1594,7 +1594,7 @@ class SearchScreenState extends State<SearchScreen>
           color: surface,
           constraints: const BoxConstraints(minWidth: 260, maxHeight: 460),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(lumenCorner(16)),
             side: BorderSide(color: line),
           ),
           onSelected: (v) => _selectCategory(v, restoreCategoryFocus: false),
@@ -1603,7 +1603,7 @@ class SearchScreenState extends State<SearchScreen>
             for (final c in _curCats) _catItem(c.id, c.name),
           ],
           child: AnimatedScale(
-            scale: _categoryButtonFocus.hasFocus ? 1.035 : 1,
+            scale: _categoryButtonFocus.hasFocus ? activeFocusStyle.scale : 1,
             duration: const Duration(milliseconds: 130),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -1611,13 +1611,15 @@ class SearchScreenState extends State<SearchScreen>
                 color: _categoryButtonFocus.hasFocus
                     ? accent.withValues(alpha: .22)
                     : surfaceHi.withValues(alpha: 0.6),
-                borderRadius: BorderRadius.circular(13),
+                borderRadius: BorderRadius.circular(lumenCorner(13)),
                 border: Border.all(
                   color: _categoryButtonFocus.hasFocus ? accentInk : line,
-                  width: _categoryButtonFocus.hasFocus ? 3 : 1,
+                  width: _categoryButtonFocus.hasFocus
+                      ? activeFocusStyle.ringWidth
+                      : 1,
                 ),
                 boxShadow: _categoryButtonFocus.hasFocus
-                    ? glow(accent, blur: 18, a: .5)
+                    ? lumenFocusShadows(accentInk)
                     : null,
               ),
               child: Row(
@@ -1731,7 +1733,7 @@ class SearchScreenState extends State<SearchScreen>
               : (active
                     ? surfaceHi.withValues(alpha: 0.7)
                     : Colors.transparent),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(lumenCorner(12)),
         ),
         child: Row(
           children: [
@@ -1741,7 +1743,7 @@ class SearchScreenState extends State<SearchScreen>
               height: sel ? 16 : 0,
               decoration: BoxDecoration(
                 color: accentInk,
-                borderRadius: BorderRadius.circular(2),
+                borderRadius: BorderRadius.circular(lumenCorner(2)),
               ),
             ),
             const SizedBox(width: 10),

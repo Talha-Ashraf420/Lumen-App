@@ -625,7 +625,7 @@ class _LoginScreenState extends State<LoginScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
               color: warningSurface,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(lumenCorner(12)),
               border: Border.all(color: warningLine),
             ),
             child: Row(
@@ -655,7 +655,7 @@ class _LoginScreenState extends State<LoginScreen> {
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: dangerSurface,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(lumenCorner(12)),
               border: Border.all(color: dangerLine),
             ),
             child: Text(
@@ -691,7 +691,7 @@ class _LoginScreenState extends State<LoginScreen> {
               padding: const EdgeInsets.symmetric(vertical: 16),
               decoration: BoxDecoration(
                 color: _busy ? accent.withValues(alpha: .58) : accent,
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(lumenCorner(14)),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -764,14 +764,20 @@ class _LoginScreenState extends State<LoginScreen> {
               onPressed: _startDemo,
               icon: const Icon(Icons.auto_awesome_rounded, size: 18),
               label: const Text('Explore offline demo'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: accentInk,
-                side: BorderSide(color: accentInk.withValues(alpha: .45)),
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-              ),
+              style:
+                  OutlinedButton.styleFrom(
+                    foregroundColor: accentInk,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(lumenCorner(14)),
+                    ),
+                  ).copyWith(
+                    side: lumenControlSide(
+                      resting: BorderSide(
+                        color: accentInk.withValues(alpha: .45),
+                      ),
+                    ),
+                  ),
             ),
           ),
           const SizedBox(height: 8),
@@ -860,7 +866,7 @@ class _ProfileTile extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
           color: surfaceHi.withValues(alpha: 0.5),
-          borderRadius: BorderRadius.circular(15),
+          borderRadius: BorderRadius.circular(lumenCorner(15)),
           border: Border.all(color: line),
         ),
         child: Row(
@@ -870,7 +876,7 @@ class _ProfileTile extends StatelessWidget {
               height: 38,
               decoration: BoxDecoration(
                 color: accentInk.withValues(alpha: isDark ? 0.13 : 0.09),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(lumenCorner(12)),
               ),
               child: Icon(Icons.tv_rounded, color: accentInk, size: 19),
             ),
@@ -915,7 +921,7 @@ class _TrustPill extends StatelessWidget {
     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
     decoration: BoxDecoration(
       color: surfaceHi.withValues(alpha: 0.55),
-      borderRadius: BorderRadius.circular(13),
+      borderRadius: BorderRadius.circular(lumenCorner(13)),
       border: Border.all(color: line),
     ),
     child: Row(

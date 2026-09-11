@@ -86,7 +86,9 @@ class _CustomizeHomeScreenState extends State<CustomizeHomeScreen> {
                               ),
                               decoration: BoxDecoration(
                                 color: surfaceHi.withValues(alpha: 0.7),
-                                borderRadius: BorderRadius.circular(13),
+                                borderRadius: BorderRadius.circular(
+                                  lumenCorner(13),
+                                ),
                                 border: Border.all(color: line),
                               ),
                               child: const Text(
@@ -213,7 +215,7 @@ class _CustomizeHomeScreenState extends State<CustomizeHomeScreen> {
                 color: on
                     ? accent.withValues(alpha: 0.14)
                     : surfaceHi.withValues(alpha: 0.48),
-                borderRadius: BorderRadius.circular(15),
+                borderRadius: BorderRadius.circular(lumenCorner(15)),
                 border: Border.all(
                   color: on ? accent.withValues(alpha: 0.48) : line,
                 ),
@@ -225,7 +227,7 @@ class _CustomizeHomeScreenState extends State<CustomizeHomeScreen> {
                     height: 30,
                     decoration: BoxDecoration(
                       color: on ? accent : surface.withValues(alpha: 0.8),
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(lumenCorner(10)),
                     ),
                     child: Icon(
                       on ? Icons.check_rounded : Icons.add_rounded,
@@ -313,7 +315,7 @@ class _CustomizeHomeScreenState extends State<CustomizeHomeScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
         decoration: BoxDecoration(
           color: surfaceHi.withValues(alpha: 0.48),
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(lumenCorner(16)),
           border: Border.all(color: line),
         ),
         child: Row(
@@ -347,7 +349,7 @@ class _CustomizeHomeScreenState extends State<CustomizeHomeScreen> {
     padding: const EdgeInsets.fromLTRB(11, 9, 6, 9),
     decoration: BoxDecoration(
       color: surfaceHi.withValues(alpha: 0.55),
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(lumenCorner(14)),
       border: Border.all(color: line),
     ),
     child: Row(

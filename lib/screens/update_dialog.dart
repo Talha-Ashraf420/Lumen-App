@@ -63,7 +63,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                     height: 52,
                     decoration: BoxDecoration(
                       color: accent,
-                      borderRadius: BorderRadius.circular(17),
+                      borderRadius: BorderRadius.circular(lumenCorner(17)),
                     ),
                     child: Icon(
                       Icons.rocket_launch_rounded,
@@ -96,7 +96,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: surfaceHi.withValues(alpha: 0.55),
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: BorderRadius.circular(lumenCorner(18)),
                   border: Border.all(color: line),
                 ),
                 child: Column(
@@ -137,7 +137,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: dangerSurface,
-                    borderRadius: BorderRadius.circular(13),
+                    borderRadius: BorderRadius.circular(lumenCorner(13)),
                     border: Border.all(color: dangerLine),
                   ),
                   child: Text(
@@ -155,14 +155,20 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                       onPressed: _busy
                           ? null
                           : () => Navigator.of(context).pop(),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: muted,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        side: BorderSide(color: line),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                      ),
+                      style:
+                          OutlinedButton.styleFrom(
+                            foregroundColor: muted,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(
+                                lumenCorner(14),
+                              ),
+                            ),
+                          ).copyWith(
+                            side: lumenControlSide(
+                              resting: BorderSide(color: line),
+                            ),
+                          ),
                       child: const Text('Maybe later'),
                     ),
                   ),
@@ -174,7 +180,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                         foregroundColor: onAccent,
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
+                          borderRadius: BorderRadius.circular(lumenCorner(14)),
                         ),
                       ),
                       onPressed: _busy ? null : _run,

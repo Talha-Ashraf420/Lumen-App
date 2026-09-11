@@ -47,6 +47,78 @@ const lumenRadiusLg = 24.0;
 const lumenMotionFast = Duration(milliseconds: 140);
 const lumenMotion = Duration(milliseconds: 190);
 
+/// A proportional corner scale keeps component hierarchy intact while letting
+/// the viewer choose how crisp or soft the entire interface feels.
+enum LumenCornerStyle {
+  crisp('Crisp', 'Tighter, more precise corners', .58),
+  balanced('Balanced', 'Lumen’s default shape language', 1),
+  soft('Soft', 'Rounder, more relaxed surfaces', 1.42);
+
+  const LumenCornerStyle(this.label, this.description, this.multiplier);
+
+  final String label;
+  final String description;
+  final double multiplier;
+}
+
+/// Focus treatments remain visible on every background while offering a calm
+/// desktop mode and stronger ten-foot TV choices.
+enum LumenFocusStyle {
+  outline('Outline', 'A clean two-pixel indicator', 1, 2, 0),
+  lift('Lift', 'Outline with a subtle scale and shadow', 1.025, 2, 8),
+  glow('Glow', 'The strongest signal for TV viewing', 1.04, 2.5, 14);
+
+  const LumenFocusStyle(
+    this.label,
+    this.description,
+    this.scale,
+    this.ringWidth,
+    this.blurRadius,
+  );
+
+  final String label;
+  final String description;
+  final double scale;
+  final double ringWidth;
+  final double blurRadius;
+}
+
+LumenCornerStyle get activeCornerStyle =>
+    ThemeController.instance.corners.value;
+LumenFocusStyle get activeFocusStyle => ThemeController.instance.focus.value;
+
+/// Resolves every authored component radius through the selected shape scale.
+/// Tiny 2–3 px details and intentionally pill-shaped values stay semantic.
+double lumenCorner(double base) {
+  if (base <= 3 || base >= 90) return base;
+  return (base * activeCornerStyle.multiplier).clamp(3.5, 48.0);
+}
+
+List<BoxShadow> lumenFocusShadows(Color color) {
+  final style = activeFocusStyle;
+  if (style.blurRadius <= 0) return const [];
+  return [
+    BoxShadow(
+      color: color.withValues(alpha: isDark ? .34 : .24),
+      blurRadius: style.blurRadius,
+    ),
+  ];
+}
+
+/// Keeps locally styled Material controls inside the shared focus system.
+WidgetStateProperty<BorderSide?> lumenControlSide({
+  BorderSide? resting,
+  Color? focused,
+}) => WidgetStateProperty.resolveWith((states) {
+  if (states.contains(WidgetState.focused)) {
+    return BorderSide(
+      color: focused ?? accentInk,
+      width: activeFocusStyle.ringWidth,
+    );
+  }
+  return resting;
+});
+
 /// Offline-safe type choices designed for both ten-foot TV interfaces and
 /// handheld screens. The device option deliberately has no family so Flutter
 /// uses the platform's native UI font.
@@ -300,8 +372,22 @@ ThemeData buildTheme(Palette p) {
     p.surfaceHi,
   );
   final componentShape = RoundedRectangleBorder(
-    borderRadius: BorderRadius.circular(lumenRadiusMd),
+    borderRadius: BorderRadius.circular(lumenCorner(lumenRadiusMd)),
     side: BorderSide(color: p.line),
+  );
+  final focusStyle = activeFocusStyle;
+  final controlShape = RoundedRectangleBorder(
+    borderRadius: BorderRadius.circular(lumenCorner(lumenRadiusMd)),
+  );
+  WidgetStateProperty<BorderSide?> focusSide({bool outlined = false}) =>
+      WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.focused)) {
+          return BorderSide(color: p.accentInk, width: focusStyle.ringWidth);
+        }
+        return outlined ? BorderSide(color: p.line) : null;
+      });
+  final buttonTextStyle = WidgetStatePropertyAll(
+    text.labelLarge?.copyWith(fontWeight: FontWeight.w800),
   );
   return base.copyWith(
     scaffoldBackgroundColor: p.bg,
@@ -345,6 +431,13 @@ ThemeData buildTheme(Palette p) {
       ),
     ),
     iconTheme: IconThemeData(color: p.textHi),
+    iconButtonTheme: IconButtonThemeData(
+      style: ButtonStyle(
+        foregroundColor: WidgetStatePropertyAll(p.textHi),
+        shape: WidgetStatePropertyAll(controlShape),
+        side: focusSide(),
+      ),
+    ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: p.surfaceHi.withValues(alpha: 0.7),
@@ -357,19 +450,19 @@ ThemeData buildTheme(Palette p) {
         fontWeight: FontWeight.w600,
       ),
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(lumenCorner(16)),
         borderSide: BorderSide.none,
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(lumenCorner(16)),
         borderSide: BorderSide(color: p.line),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
-        borderSide: BorderSide(color: p.accentInk),
+        borderRadius: BorderRadius.circular(lumenCorner(16)),
+        borderSide: BorderSide(color: p.accentInk, width: focusStyle.ringWidth),
       ),
       errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(lumenCorner(16)),
         borderSide: BorderSide(
           color: p.brightness == Brightness.dark
               ? const Color(0xFF713044)
@@ -377,39 +470,46 @@ ThemeData buildTheme(Palette p) {
         ),
       ),
       focusedErrorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(lumenCorner(16)),
         borderSide: BorderSide(
           color: p.brightness == Brightness.dark
               ? const Color(0xFFFF7A9A)
               : const Color(0xFFA5193C),
-          width: 1.5,
+          width: focusStyle.ringWidth,
         ),
       ),
     ),
     dividerTheme: DividerThemeData(color: p.line, thickness: 1),
     progressIndicatorTheme: ProgressIndicatorThemeData(color: p.accentInk),
     textButtonTheme: TextButtonThemeData(
-      style: TextButton.styleFrom(foregroundColor: p.accentInk),
+      style: ButtonStyle(
+        foregroundColor: WidgetStatePropertyAll(p.accentInk),
+        textStyle: buttonTextStyle,
+        shape: WidgetStatePropertyAll(controlShape),
+        side: focusSide(),
+      ),
     ),
     filledButtonTheme: FilledButtonThemeData(
-      style: FilledButton.styleFrom(
-        backgroundColor: p.accent,
-        foregroundColor: foregroundFor(p.accent),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(lumenRadiusMd),
+      style: ButtonStyle(
+        backgroundColor: WidgetStatePropertyAll(p.accent),
+        foregroundColor: WidgetStatePropertyAll(foregroundFor(p.accent)),
+        padding: const WidgetStatePropertyAll(
+          EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         ),
-        textStyle: const TextStyle(fontWeight: FontWeight.w800),
+        shape: WidgetStatePropertyAll(controlShape),
+        side: focusSide(),
+        textStyle: buttonTextStyle,
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
-      style: OutlinedButton.styleFrom(
-        foregroundColor: p.textHi,
-        side: BorderSide(color: p.line),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(lumenRadiusMd),
+      style: ButtonStyle(
+        foregroundColor: WidgetStatePropertyAll(p.textHi),
+        side: focusSide(outlined: true),
+        padding: const WidgetStatePropertyAll(
+          EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         ),
+        shape: WidgetStatePropertyAll(controlShape),
+        textStyle: buttonTextStyle,
       ),
     ),
     cardTheme: CardThemeData(
@@ -422,7 +522,7 @@ ThemeData buildTheme(Palette p) {
       backgroundColor: p.surface,
       surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(lumenRadiusLg),
+        borderRadius: BorderRadius.circular(lumenCorner(lumenRadiusLg)),
         side: BorderSide(color: p.line),
       ),
       titleTextStyle: text.titleLarge?.copyWith(fontWeight: FontWeight.w800),
@@ -440,7 +540,7 @@ ThemeData buildTheme(Palette p) {
       contentTextStyle: text.bodyMedium?.copyWith(color: p.textHi),
       behavior: SnackBarBehavior.floating,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(lumenRadiusMd),
+        borderRadius: BorderRadius.circular(lumenCorner(lumenRadiusMd)),
         side: BorderSide(color: p.line),
       ),
     ),
@@ -449,7 +549,7 @@ ThemeData buildTheme(Palette p) {
         color: p.brightness == Brightness.dark
             ? const Color(0xF21A1E20)
             : const Color(0xF2FFFFFF),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(lumenCorner(10)),
         border: Border.all(color: p.line),
       ),
       textStyle: TextStyle(
@@ -473,13 +573,22 @@ class ThemeController {
 
   static const _accentKey = 'lumen_accent_color';
   static const _fontKey = 'lumen_font';
+  static const _cornersKey = 'lumen_corner_style';
+  static const _focusKey = 'lumen_focus_style';
 
   final ValueNotifier<ThemeMode> mode = ValueNotifier(ThemeMode.dark);
   final ValueNotifier<Color> accent = ValueNotifier(defaultAccent);
   final ValueNotifier<LumenFont> font = ValueNotifier(LumenFont.lumen);
+  final ValueNotifier<LumenCornerStyle> corners = ValueNotifier(
+    LumenCornerStyle.balanced,
+  );
+  final ValueNotifier<LumenFocusStyle> focus = ValueNotifier(
+    LumenFocusStyle.lift,
+  );
 
   /// Rebuild signal for appearance changes.
-  Listenable get listenable => Listenable.merge([mode, accent, font]);
+  Listenable get listenable =>
+      Listenable.merge([mode, accent, font, corners, focus]);
 
   Future<void> load() async {
     final p = await SharedPreferences.getInstance();
@@ -500,6 +609,20 @@ class ThemeController {
         orElse: () => LumenFont.lumen,
       );
     }
+    final savedCorners = p.getString(_cornersKey);
+    if (savedCorners != null) {
+      corners.value = LumenCornerStyle.values.firstWhere(
+        (option) => option.name == savedCorners,
+        orElse: () => LumenCornerStyle.balanced,
+      );
+    }
+    final savedFocus = p.getString(_focusKey);
+    if (savedFocus != null) {
+      focus.value = LumenFocusStyle.values.firstWhere(
+        (option) => option.name == savedFocus,
+        orElse: () => LumenFocusStyle.lift,
+      );
+    }
   }
 
   Future<void> set(ThemeMode m) async {
@@ -518,6 +641,18 @@ class ThemeController {
     font.value = value;
     final p = await SharedPreferences.getInstance();
     await p.setString(_fontKey, value.name);
+  }
+
+  Future<void> setCorners(LumenCornerStyle value) async {
+    corners.value = value;
+    final p = await SharedPreferences.getInstance();
+    await p.setString(_cornersKey, value.name);
+  }
+
+  Future<void> setFocus(LumenFocusStyle value) async {
+    focus.value = value;
+    final p = await SharedPreferences.getInstance();
+    await p.setString(_focusKey, value.name);
   }
 }
 

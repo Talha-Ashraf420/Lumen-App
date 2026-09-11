@@ -549,7 +549,7 @@ class _EpgGuideScreenState extends State<EpgGuideScreen> {
                 height: 64,
                 decoration: BoxDecoration(
                   color: accentInk.withValues(alpha: isDark ? .14 : .09),
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(lumenCorner(20)),
                   border: Border.all(color: lineStrong),
                 ),
                 child: Icon(
@@ -675,7 +675,7 @@ class _EpgGuideScreenState extends State<EpgGuideScreen> {
   Widget _grid() => Padding(
     padding: EdgeInsets.symmetric(horizontal: _isTv ? 38 : 14),
     child: ClipRRect(
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(lumenCorner(16)),
       child: Stack(
         children: [
           TableView.builder(
@@ -823,8 +823,9 @@ class _EpgGuideScreenState extends State<EpgGuideScreen> {
                 color: focused ? accent.withValues(alpha: .18) : surfaceHi,
                 border: Border.all(
                   color: focused ? accentInk : Colors.transparent,
-                  width: focused ? 2 : 0,
+                  width: focused ? activeFocusStyle.ringWidth : 0,
                 ),
+                boxShadow: focused ? lumenFocusShadows(accentInk) : null,
               ),
               child: Row(
                 children: [
@@ -900,15 +901,16 @@ class _EpgGuideScreenState extends State<EpgGuideScreen> {
             color: airing
                 ? accent.withValues(alpha: .16)
                 : surfaceHi.withValues(alpha: .72),
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(lumenCorner(8)),
             border: Border.all(
               color: node.hasFocus
                   ? accentInk
                   : airing
                   ? accent.withValues(alpha: .55)
                   : line,
-              width: node.hasFocus ? 2.5 : 1,
+              width: node.hasFocus ? activeFocusStyle.ringWidth : 1,
             ),
+            boxShadow: node.hasFocus ? lumenFocusShadows(accentInk) : null,
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -954,7 +956,7 @@ class _EpgGuideScreenState extends State<EpgGuideScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
       decoration: BoxDecoration(
         color: surface,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(lumenCorner(14)),
         border: Border.all(color: line),
       ),
       child: programme == null
@@ -1030,7 +1032,7 @@ class _EpgGuideScreenState extends State<EpgGuideScreen> {
         margin: const EdgeInsets.only(bottom: 10),
         color: surface,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(lumenCorner(14)),
           side: BorderSide(color: line),
         ),
         child: Padding(
@@ -1206,11 +1208,12 @@ class _GuideAction extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
         decoration: BoxDecoration(
           color: focusNode.hasFocus ? accent.withValues(alpha: .2) : surface,
-          borderRadius: BorderRadius.circular(11),
+          borderRadius: BorderRadius.circular(lumenCorner(11)),
           border: Border.all(
             color: focusNode.hasFocus ? accentInk : line,
-            width: focusNode.hasFocus ? 2 : 1,
+            width: focusNode.hasFocus ? activeFocusStyle.ringWidth : 1,
           ),
+          boxShadow: focusNode.hasFocus ? lumenFocusShadows(accentInk) : null,
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,

@@ -612,7 +612,9 @@ class _SeriesHero extends StatelessWidget {
                           child: Container(
                             width: 220,
                             decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(8),
+                              borderRadius: BorderRadius.circular(
+                                lumenCorner(8),
+                              ),
                               border: Border.all(color: line),
                               boxShadow: glow(
                                 Colors.black,
@@ -622,7 +624,9 @@ class _SeriesHero extends StatelessWidget {
                               ),
                             ),
                             child: ClipRRect(
-                              borderRadius: BorderRadius.circular(7),
+                              borderRadius: BorderRadius.circular(
+                                lumenCorner(7),
+                              ),
                               child: AspectRatio(
                                 aspectRatio: 2 / 3,
                                 child: MediaImage(
@@ -710,7 +714,7 @@ class _SeriesAction extends StatelessWidget {
             color: filled
                 ? accent
                 : surface.withValues(alpha: isDark ? .82 : .92),
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(lumenCorner(14)),
             border: Border.all(color: filled ? Colors.transparent : line),
             boxShadow: primary ? glow(accent, blur: 22, y: 8, a: .38) : null,
           ),
@@ -878,7 +882,7 @@ class _EpisodeChapter extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           color: surface,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(lumenCorner(18)),
           border: Border.all(color: line),
         ),
         child: Row(
@@ -1130,7 +1134,7 @@ class _EpisodeLoading extends StatelessWidget {
                 height: 116,
                 decoration: BoxDecoration(
                   color: surfaceHi.withValues(alpha: .46),
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: BorderRadius.circular(lumenCorner(18)),
                   border: Border.all(color: line),
                 ),
               ),

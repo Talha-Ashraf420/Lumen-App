@@ -662,7 +662,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
             child: Padding(
               padding: const EdgeInsets.fromLTRB(0, 10, 10, 10),
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(28),
+                borderRadius: BorderRadius.circular(lumenCorner(28)),
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
@@ -732,7 +732,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                         ),
                         decoration: BoxDecoration(
                           color: surface.withValues(alpha: 0.96),
-                          borderRadius: BorderRadius.circular(24),
+                          borderRadius: BorderRadius.circular(lumenCorner(24)),
                           border: Border.all(color: line),
                           boxShadow: glow(Colors.black, blur: 26, y: 12),
                         ),
@@ -775,7 +775,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           height: 50,
           decoration: BoxDecoration(
             color: surface.withValues(alpha: 0.96),
-            borderRadius: BorderRadius.circular(17),
+            borderRadius: BorderRadius.circular(lumenCorner(17)),
             border: Border.all(color: line),
             boxShadow: glow(Colors.black, blur: 16, y: 6),
           ),
@@ -843,7 +843,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
             color: sel
                 ? accentInk.withValues(alpha: isDark ? 0.12 : 0.09)
                 : null,
-            borderRadius: BorderRadius.circular(17),
+            borderRadius: BorderRadius.circular(lumenCorner(17)),
             border: sel
                 ? Border.all(
                     color: accentInk.withValues(alpha: isDark ? 0.28 : 0.42),
@@ -888,7 +888,7 @@ class _MobileUtilityHub extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(18, 10, 18, 18),
         decoration: BoxDecoration(
           color: surface,
-          borderRadius: BorderRadius.circular(28),
+          borderRadius: BorderRadius.circular(lumenCorner(28)),
           border: Border.all(color: line),
           boxShadow: glow(Colors.black, blur: 32, y: 12),
         ),
@@ -902,7 +902,7 @@ class _MobileUtilityHub extends StatelessWidget {
                 height: 4,
                 decoration: BoxDecoration(
                   color: line,
-                  borderRadius: BorderRadius.circular(3),
+                  borderRadius: BorderRadius.circular(lumenCorner(3)),
                 ),
               ),
             ),
@@ -915,7 +915,7 @@ class _MobileUtilityHub extends StatelessWidget {
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: accent,
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(lumenCorner(14)),
                   ),
                   child: Text(
                     account.isEmpty ? 'L' : account[0].toUpperCase(),
@@ -1027,7 +1027,7 @@ class _MobileUtilityDestination extends StatelessWidget {
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: surfaceHi,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(lumenCorner(18)),
           border: Border.all(color: line),
         ),
         child: horizontal
@@ -1190,7 +1190,7 @@ class _SignalDock extends StatelessWidget {
                       accentInk.withValues(alpha: .025),
                     ],
                   ),
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(lumenCorner(16)),
                   border: Border.all(color: lineStrong),
                 ),
                 child: const LumenMark(size: 25),
@@ -1280,7 +1280,7 @@ class _DockItem extends StatelessWidget {
             color: selected
                 ? null
                 : (active ? surfaceRaised : Colors.transparent),
-            borderRadius: BorderRadius.circular(15),
+            borderRadius: BorderRadius.circular(lumenCorner(15)),
             border: Border.all(
               color: selected
                   ? accentInk.withValues(alpha: isDark ? 0.36 : 0.48)
@@ -1305,7 +1305,7 @@ class _DockItem extends StatelessWidget {
                     width: 2,
                     decoration: BoxDecoration(
                       color: accentInk,
-                      borderRadius: BorderRadius.circular(2),
+                      borderRadius: BorderRadius.circular(lumenCorner(2)),
                     ),
                   ),
                 ),
@@ -1465,7 +1465,7 @@ class _CommandBar extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 14),
                   decoration: BoxDecoration(
                     color: active ? surfaceRaised : surface,
-                    borderRadius: BorderRadius.circular(15),
+                    borderRadius: BorderRadius.circular(lumenCorner(15)),
                     border: Border.all(color: active ? accentInk : lineStrong),
                   ),
                   child: Row(
@@ -1485,7 +1485,7 @@ class _CommandBar extends StatelessWidget {
                         ),
                         decoration: BoxDecoration(
                           color: surfaceHi,
-                          borderRadius: BorderRadius.circular(7),
+                          borderRadius: BorderRadius.circular(lumenCorner(7)),
                           border: Border.all(color: line),
                         ),
                         child: Text(
@@ -1526,7 +1526,7 @@ class _CommandBar extends StatelessWidget {
                   height: 40,
                   decoration: BoxDecoration(
                     color: active ? accent : Colors.transparent,
-                    borderRadius: BorderRadius.circular(13),
+                    borderRadius: BorderRadius.circular(lumenCorner(13)),
                     border: Border.all(
                       color: active ? accent : Colors.transparent,
                     ),
@@ -1551,7 +1551,7 @@ class _CommandBar extends StatelessWidget {
                 height: 40,
                 decoration: BoxDecoration(
                   color: active ? accent : surfaceRaised,
-                  borderRadius: BorderRadius.circular(13),
+                  borderRadius: BorderRadius.circular(lumenCorner(13)),
                   border: Border.all(color: active ? accent : lineStrong),
                 ),
                 child: Icon(

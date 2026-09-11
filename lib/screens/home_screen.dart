@@ -343,7 +343,7 @@ class _HomeScreenState extends State<HomeScreen>
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
             color: surface,
-            borderRadius: BorderRadius.circular(11),
+            borderRadius: BorderRadius.circular(lumenCorner(11)),
           ),
           child: Icon(Icons.tune_rounded, color: muted, size: 18),
         ),
@@ -515,7 +515,7 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
     padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
     decoration: BoxDecoration(
       color: surfaceHi,
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(lumenCorner(10)),
       border: Border.all(color: line),
     ),
     child: child,
@@ -547,7 +547,7 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
               key: ValueKey('ncard$poster'),
               width: 152,
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(18),
+                borderRadius: BorderRadius.circular(lumenCorner(18)),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: 0.5),
@@ -559,7 +559,7 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
               child: AspectRatio(
                 aspectRatio: 2 / 3,
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: BorderRadius.circular(lumenCorner(18)),
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
@@ -575,7 +575,7 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
                         ),
                       DecoratedBox(
                         decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(18),
+                          borderRadius: BorderRadius.circular(lumenCorner(18)),
                           border: Border.all(
                             color: Colors.white.withValues(alpha: 0.12),
                           ),
@@ -677,7 +677,7 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
                     ),
                     decoration: BoxDecoration(
                       color: surfaceHi,
-                      borderRadius: BorderRadius.circular(30),
+                      borderRadius: BorderRadius.circular(lumenCorner(30)),
                       border: Border.all(color: line),
                     ),
                     child: Icon(
@@ -778,7 +778,7 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
       child: SizedBox(
         height: h,
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(lumenCorner(22)),
           child: Stack(
             fit: StackFit.expand,
             children: [
@@ -941,7 +941,9 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
                                 height: 47,
                                 decoration: BoxDecoration(
                                   color: active ? surfaceHi : surface,
-                                  borderRadius: BorderRadius.circular(14),
+                                  borderRadius: BorderRadius.circular(
+                                    lumenCorner(14),
+                                  ),
                                   border: Border.all(
                                     color: active ? accent : line,
                                   ),
@@ -996,7 +998,7 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
                   child: DecoratedBox(
                     decoration: BoxDecoration(
                       border: Border.all(color: line),
-                      borderRadius: BorderRadius.circular(22),
+                      borderRadius: BorderRadius.circular(lumenCorner(22)),
                     ),
                   ),
                 ),
@@ -1044,7 +1046,8 @@ class _RailThumb extends StatelessWidget {
       onTap: onTap,
       builder: (context, active) {
         return AnimatedScale(
-          scale: active ? 1.025 : 1.0,
+          // FocusableTap owns the app-wide, user-selected scale treatment.
+          scale: 1,
           duration: const Duration(milliseconds: 200),
           curve: Curves.easeOut,
           alignment: Alignment.bottomCenter,
@@ -1055,7 +1058,7 @@ class _RailThumb extends StatelessWidget {
               width: width,
               child: Container(
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(lumenCorner(10)),
                   border: Border.all(
                     color: selected ? accent : line,
                     width: selected ? 2 : 1,
@@ -1174,7 +1177,7 @@ class _RecentCard extends StatelessWidget {
                   duration: lumenMotionFast,
                   decoration: BoxDecoration(
                     color: active ? surfaceHi : surface,
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(lumenCorner(16)),
                     border: Border.all(color: active ? accent : line),
                     boxShadow: active
                         ? glow(accent, blur: 18, y: 7, a: .28)
@@ -1217,7 +1220,9 @@ class _RecentCard extends StatelessWidget {
                                   ),
                                   decoration: BoxDecoration(
                                     color: const Color(0xFFFF3B41),
-                                    borderRadius: BorderRadius.circular(6),
+                                    borderRadius: BorderRadius.circular(
+                                      lumenCorner(6),
+                                    ),
                                   ),
                                   child: const Text(
                                     'LIVE',
