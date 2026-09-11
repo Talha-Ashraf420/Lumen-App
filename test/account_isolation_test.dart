@@ -232,7 +232,7 @@ void main() {
     await tester.pump(const Duration(seconds: 2));
 
     expect(find.byTooltip('Live'), findsOneWidget);
-    expect(find.byTooltip('Guide'), findsNothing);
+    expect(find.byTooltip('Guide'), findsOneWidget);
     expect(find.byTooltip('Movies'), findsNothing);
     expect(find.byTooltip('Series'), findsNothing);
     expect(find.byTooltip('Discover'), findsNothing);
@@ -637,6 +637,7 @@ void main() {
       ('Movies', ('movie category all', 'Command find anything')),
       ('Series', ('series category all', 'Command find anything')),
       ('Live', ('live category all', 'Command find anything')),
+      ('Guide', ('Guide first category', 'Command find anything')),
       ('Downloads', ('Downloads filter 0', 'Command find anything')),
     ];
 
@@ -670,7 +671,10 @@ void main() {
         route.$2.$2,
         reason: '${route.$1} must reach the global command bar with Up.',
       );
-      if (route.$1 == 'Movies' || route.$1 == 'Series' || route.$1 == 'Live') {
+      if (route.$1 == 'Movies' ||
+          route.$1 == 'Series' ||
+          route.$1 == 'Live' ||
+          route.$1 == 'Guide') {
         await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
         await tester.pump(const Duration(milliseconds: 80));
         expect(

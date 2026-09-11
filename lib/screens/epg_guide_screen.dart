@@ -16,7 +16,10 @@ import '../theme.dart';
 import '../widgets.dart';
 import '../xtream.dart';
 
-const Duration _guideSlot = Duration(minutes: 30);
+// Five-minute placement cells keep real-world EPG boundaries (08:15, 08:50,
+// etc.) from being rounded into the same large 30-minute cell. The table is
+// virtualised, so the finer timeline does not build off-screen columns.
+const Duration _guideSlot = Duration(minutes: 5);
 
 int closestProgrammeIndexByTime(
   List<EpgProgramme> programmes,
@@ -53,6 +56,9 @@ class EpgGuideScreen extends StatefulWidget {
     required this.channels,
     this.title = 'TV Guide',
     this.initialGuide = const {},
+    this.showBackButton = true,
+    this.embedded = false,
+    this.externalLeftFocusNode,
   });
 
   final XtreamClient client;
@@ -60,6 +66,9 @@ class EpgGuideScreen extends StatefulWidget {
   final List<LiveStream> channels;
   final String title;
   final Map<int, List<EpgProgramme>> initialGuide;
+  final bool showBackButton;
+  final bool embedded;
+  final FocusNode? externalLeftFocusNode;
 
   @override
   State<EpgGuideScreen> createState() => _EpgGuideScreenState();
@@ -71,6 +80,9 @@ class _EpgGuideScreenState extends State<EpgGuideScreen> {
   final FocusNode _backFocus = FocusNode(debugLabel: 'Guide back');
   final FocusNode _nowFocus = FocusNode(debugLabel: 'Guide now');
   final FocusNode _refreshFocus = FocusNode(debugLabel: 'Guide refresh');
+  final FocusNode _emptyRefreshFocus = FocusNode(
+    debugLabel: 'Guide empty refresh',
+  );
   final Map<int, FocusNode> _channelFocus = <int, FocusNode>{};
   final Map<String, FocusNode> _programmeFocus = <String, FocusNode>{};
   final Map<String, TableViewCell> _programmeCells = <String, TableViewCell>{};
@@ -87,7 +99,7 @@ class _EpgGuideScreenState extends State<EpgGuideScreen> {
 
   bool get _isTv => DeviceProfile.isTelevision;
   double get _channelWidth => _isTv ? 250 : 190;
-  double get _slotWidth => _isTv ? 138 : 112;
+  double get _slotWidth => _isTv ? 23 : 18.6667;
   double get _rowHeight => _isTv ? 84 : 72;
   int get _slotCount =>
       _windowEnd.difference(_windowStart).inMinutes ~/ _guideSlot.inMinutes;
@@ -127,6 +139,7 @@ class _EpgGuideScreenState extends State<EpgGuideScreen> {
     _backFocus.dispose();
     _nowFocus.dispose();
     _refreshFocus.dispose();
+    _emptyRefreshFocus.dispose();
     for (final node in _channelFocus.values) {
       node.dispose();
     }
@@ -178,19 +191,38 @@ class _EpgGuideScreenState extends State<EpgGuideScreen> {
     _slots.clear();
     _programmeCells.clear();
     for (var row = 0; row < widget.channels.length; row++) {
-      final programmes = _guide[widget.channels[row].streamId] ?? const [];
+      final programmes = List<EpgProgramme>.of(
+        _guide[widget.channels[row].streamId] ?? const [],
+      )..sort((a, b) => a.startUtc.compareTo(b.startUtc));
+      var nextFreeSlot = 0;
       for (var index = 0; index < programmes.length; index++) {
         final programme = programmes[index];
         final rawStart = programme.startUtc.difference(_windowStart).inMinutes;
         final rawEnd = programme.stopUtc.difference(_windowStart).inMinutes;
-        final start = (rawStart / _guideSlot.inMinutes).floor().clamp(
+        var start = (rawStart / _guideSlot.inMinutes).floor().clamp(
           0,
           _slotCount - 1,
         );
-        final end = (rawEnd / _guideSlot.inMinutes).ceil().clamp(
+        var end = (rawEnd / _guideSlot.inMinutes).ceil().clamp(
           start + 1,
           _slotCount,
         );
+        // Some provider feeds contain overlapping listings for one channel.
+        // Never let two merged table cells occupy the same columns: preserve
+        // chronological order and trim/shift only the visual allocation.
+        start = math.max(start, nextFreeSlot);
+        if (start >= _slotCount) continue;
+        if (index + 1 < programmes.length) {
+          final nextStart =
+              (programmes[index + 1].startUtc
+                          .difference(_windowStart)
+                          .inMinutes /
+                      _guideSlot.inMinutes)
+                  .floor()
+                  .clamp(start + 1, _slotCount);
+          end = math.min(end, nextStart);
+        }
+        end = math.max(start + 1, end).clamp(start + 1, _slotCount);
         final placed = _PlacedProgramme(
           row: row,
           index: index,
@@ -205,6 +237,7 @@ class _EpgGuideScreenState extends State<EpgGuideScreen> {
         ) {
           _slots[(row + 1, column)] = placed;
         }
+        nextFreeSlot = end;
       }
     }
   }
@@ -305,7 +338,12 @@ class _EpgGuideScreenState extends State<EpgGuideScreen> {
     }
     final key = event.logicalKey;
     if (key == LogicalKeyboardKey.arrowLeft) {
-      Navigator.of(context).pop();
+      final externalTarget = widget.externalLeftFocusNode;
+      if (externalTarget != null) {
+        externalTarget.requestFocus();
+      } else if (widget.showBackButton) {
+        Navigator.of(context).pop();
+      }
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.arrowRight) {
@@ -469,38 +507,112 @@ class _EpgGuideScreenState extends State<EpgGuideScreen> {
   @override
   Widget build(BuildContext context) {
     final phone = !isWide(context) && !_isTv;
+    final hasProgrammes = _guide.values.any((values) => values.isNotEmpty);
+    final showEmpty =
+        !_loading && !hasProgrammes && !widget.repository.guideRefreshing;
     return Scaffold(
-      backgroundColor: bg,
+      backgroundColor: widget.embedded ? Colors.transparent : bg,
       body: SafeArea(
+        top: !widget.embedded,
+        bottom: !widget.embedded,
         child: Column(
           children: [
             _toolbar(),
             Expanded(
               child: _loading && _guide.isEmpty
                   ? const GridLoading(channel: true)
+                  : showEmpty
+                  ? _emptyGuide()
                   : phone
                   ? _agenda()
                   : _grid(),
             ),
-            if (!phone) _detailsPanel(),
+            if (!phone && !showEmpty) _detailsPanel(),
           ],
         ),
       ),
     );
   }
 
+  Widget _emptyGuide() {
+    final status = widget.repository.guideStatus.trim();
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  color: accentInk.withValues(alpha: isDark ? .14 : .09),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: lineStrong),
+                ),
+                child: Icon(
+                  Icons.calendar_month_outlined,
+                  color: accentInk,
+                  size: 30,
+                ),
+              ),
+              const SizedBox(height: 18),
+              Text(
+                'No programme schedule available',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: textHi,
+                  fontSize: _isTv ? 23 : 20,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                status.isNotEmpty
+                    ? status
+                    : 'This IPTV service did not return programme listings for these channels. Live TV can still be played normally.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: muted,
+                  fontSize: _isTv ? 15 : 13,
+                  height: 1.45,
+                ),
+              ),
+              const SizedBox(height: 18),
+              OutlinedButton.icon(
+                focusNode: _emptyRefreshFocus,
+                onPressed: _refresh,
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                label: const Text('Try again'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _refresh() async {
+    await widget.repository.ensureFullGuide(force: true);
+    await _readWindow();
+  }
+
   Widget _toolbar() => Padding(
     padding: EdgeInsets.fromLTRB(_isTv ? 38 : 14, 14, _isTv ? 38 : 14, 12),
     child: Row(
       children: [
-        _GuideAction(
-          focusNode: _backFocus,
-          icon: Icons.arrow_back_rounded,
-          label: 'Live',
-          onTap: () => Navigator.of(context).pop(),
-          onDown: () => _requestChannel(0),
-        ),
-        const SizedBox(width: 14),
+        if (widget.showBackButton) ...[
+          _GuideAction(
+            focusNode: _backFocus,
+            icon: Icons.arrow_back_rounded,
+            label: 'Live',
+            onTap: () => Navigator.of(context).pop(),
+            onDown: () => _requestChannel(0),
+          ),
+          const SizedBox(width: 14),
+        ],
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -544,16 +656,13 @@ class _EpgGuideScreenState extends State<EpgGuideScreen> {
           focusNode: _refreshFocus,
           icon: Icons.refresh_rounded,
           label: 'Refresh',
-          onTap: () async {
-            await widget.repository.ensureFullGuide(force: true);
-            await _readWindow();
-          },
+          onTap: _refresh,
           onDown: () => _requestChannel(0),
         ),
         const SizedBox(width: 8),
         _GuideAction(
           focusNode: _nowFocus,
-          autofocus: _isTv,
+          autofocus: _isTv && widget.showBackButton,
           icon: Icons.my_location_rounded,
           label: 'Now',
           onTap: _goNow,
@@ -662,7 +771,7 @@ class _EpgGuideScreenState extends State<EpgGuideScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 10),
           color: surfaceHi,
           child: Text(
-            vicinity.column.isOdd ? _timeLabel(context, instant) : '',
+            instant.minute == 0 ? _timeLabel(context, instant) : '',
             style: TextStyle(
               color: textHi,
               fontSize: 12,
@@ -784,6 +893,7 @@ class _EpgGuideScreenState extends State<EpgGuideScreen> {
       child: AnimatedBuilder(
         animation: node,
         builder: (_, _) => Container(
+          key: ValueKey('guide-programme-${placed.row}-${placed.index}'),
           margin: const EdgeInsets.all(3),
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(

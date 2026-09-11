@@ -14,6 +14,7 @@ import '../theme.dart';
 import '../widgets.dart';
 import '../xtream.dart';
 import 'downloads_screen.dart';
+import 'guide_tab_screen.dart';
 import 'home_screen.dart';
 import 'update_dialog.dart';
 import 'mylist_screen.dart';
@@ -108,9 +109,10 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     5: FocusNode(debugLabel: 'Series dock'),
     6: FocusNode(debugLabel: 'Live dock'),
     7: FocusNode(debugLabel: 'Downloads dock'),
+    8: FocusNode(debugLabel: 'Guide dock'),
   };
   final Map<int, FocusScopeNode> _pageFocusScopes = <int, FocusScopeNode>{
-    for (var page = 0; page < 8; page++)
+    for (var page = 0; page < 9; page++)
       page: FocusScopeNode(debugLabel: 'Shell page $page'),
   };
   final FocusNode _commandSearchFocus = FocusNode(
@@ -130,13 +132,16 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   final FocusNode _downloadsEntryFocus = FocusNode(
     debugLabel: 'Downloads filter 0',
   );
+  final FocusNode _guideEntryFocus = FocusNode(
+    debugLabel: 'Guide first category',
+  );
   final Map<int, Widget> _pageCache = <int, Widget>{};
   bool _exitDialogOpen = false;
 
   // Phones and larger screens share the same page map. The phone dock promotes
   // the three catalog pages to first-class destinations, while the account and
   // personal-library pages live in a compact utility hub.
-  static const _pageCount = 8;
+  static const _pageCount = 9;
 
   bool _allows(int page) => _capabilities.allows(page);
 
@@ -229,6 +234,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     _profileEntryFocus.dispose();
     _homeEntryFocus.dispose();
     _downloadsEntryFocus.dispose();
+    _guideEntryFocus.dispose();
     super.dispose();
   }
 
@@ -323,11 +329,17 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       shellRailFocusNode: _dockFocusNodes[6],
       shellTopFocusNode: _commandSearchFocus,
     ),
-    _ => DownloadsScreen(
+    7 => DownloadsScreen(
       client: widget.client,
       shellRailFocusNode: _dockFocusNodes[7],
       shellTopFocusNode: _commandSearchFocus,
       entryFocusNode: _downloadsEntryFocus,
+    ),
+    _ => GuideTabScreen(
+      client: widget.client,
+      shellRailFocusNode: _dockFocusNodes[8],
+      shellTopFocusNode: _commandSearchFocus,
+      entryFocusNode: _guideEntryFocus,
     ),
   };
 
@@ -477,6 +489,10 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       }
       if (page == 7 && isMountedTarget(_downloadsEntryFocus)) {
         scope.requestFocus(_downloadsEntryFocus);
+        return;
+      }
+      if (page == 8 && isMountedTarget(_guideEntryFocus)) {
+        scope.requestFocus(_guideEntryFocus);
         return;
       }
       final candidates = <FocusNode>[];
@@ -739,6 +755,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     if (_capabilities.series)
       const _Nav(Icons.amp_stories_rounded, 'Series', 5),
     if (_capabilities.live) const _Nav(Icons.sensors_rounded, 'Live', 6),
+    if (_capabilities.live)
+      const _Nav(Icons.calendar_view_week_rounded, 'Guide', 8),
     const _Nav(Icons.search_rounded, 'Search', 1),
   ];
 
@@ -1063,6 +1081,7 @@ class _CatalogCapabilities {
     4 => movies,
     5 => series,
     6 => live,
+    8 => live,
     _ => true,
   };
 }
@@ -1085,6 +1104,7 @@ const List<_Nav> _mainDock = [
   _Nav(Icons.movie_filter_rounded, 'Movies', 4),
   _Nav(Icons.amp_stories_rounded, 'Series', 5),
   _Nav(Icons.sensors_rounded, 'Live', 6),
+  _Nav(Icons.calendar_view_week_rounded, 'Guide', 8),
   _Nav(Icons.search_rounded, 'Search', 1),
 ];
 
@@ -1343,6 +1363,7 @@ class _CommandBar extends StatelessWidget {
     5: 'Series',
     6: 'Live signal',
     7: 'Downloads',
+    8: 'TV guide',
   };
 
   KeyEventResult _moveCommandFocus(FocusNode node, KeyEvent event) {

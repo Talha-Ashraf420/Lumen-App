@@ -175,6 +175,91 @@ void main() {
     expect(find.byType(TableView), findsNothing);
   });
 
+  testWidgets('overlapping provider listings never overlap visually', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    tester.view.physicalSize = const Size(1280, 720);
+    addTearDown(tester.view.resetPhysicalSize);
+    final fixture = await _fixture();
+    addTearDown(fixture.repository.dispose);
+    final first = fixture.programme;
+    final second = EpgProgramme(
+      channelKey: first.channelKey,
+      startUtc: first.startUtc.add(const Duration(minutes: 20)),
+      stopUtc: first.stopUtc.add(const Duration(minutes: 55)),
+      title: 'Overlapping provider programme',
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildTheme(darkPalette),
+        home: EpgGuideScreen(
+          client: fixture.client,
+          repository: fixture.repository,
+          channels: [
+            LiveStream(1, 'World News', '', 'News', epgId: 'news.example'),
+          ],
+          initialGuide: {
+            1: [first, second],
+          },
+        ),
+      ),
+    );
+    for (var frame = 0; frame < 20; frame++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    final firstFinder = find.byKey(const ValueKey('guide-programme-0-0'));
+    final secondFinder = find.byKey(const ValueKey('guide-programme-0-1'));
+    expect(firstFinder, findsOneWidget);
+    expect(secondFinder, findsOneWidget);
+    final firstRect = tester.getRect(firstFinder);
+    final secondRect = tester.getRect(secondFinder);
+    expect(
+      firstRect.right,
+      lessThanOrEqualTo(secondRect.left + 0.5),
+      reason: 'A provider time conflict must not stack programme cards.',
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('provider without EPG shows an honest empty guide state', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    tester.view.physicalSize = const Size(1280, 720);
+    addTearDown(tester.view.resetPhysicalSize);
+    final client = XtreamClient(XtreamCredentials.demoProfile);
+    final repository = EpgRepository(
+      client: client,
+      store: CatalogStore.instance,
+    );
+    addTearDown(repository.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildTheme(darkPalette),
+        home: EpgGuideScreen(
+          client: client,
+          repository: repository,
+          channels: [LiveStream(1, 'No Guide Channel', '', 'Live')],
+          initialGuide: const {1: <EpgProgramme>[]},
+        ),
+      ),
+    );
+    for (var frame = 0; frame < 20; frame++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    expect(find.text('No programme schedule available'), findsOneWidget);
+    expect(find.text('Try again'), findsOneWidget);
+    expect(find.byType(TableView), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'TV D-pad moves from toolbar through channels by programme time',
     (tester) async {

@@ -107,4 +107,48 @@ void main() {
     );
     expect(cached.single.title, 'First show');
   });
+
+  test('empty replacement keeps the last complete generation', () async {
+    var valid = true;
+    final client = MockClient(
+      (_) async => http.Response(
+        valid
+            ? xml
+            : '<tv><channel id="one"><display-name>One</display-name></channel></tv>',
+        200,
+        headers: {'content-type': 'application/xml'},
+      ),
+    );
+    final loader = EpgXmltvLoader(httpClient: client, store: store);
+    final uri = Uri.parse('https://guide.example/epg.xml');
+    final first = await loader.sync(
+      profileScope: 'profile',
+      uri: uri,
+      now: DateTime.utc(2026, 9, 12, 9),
+    );
+    valid = false;
+
+    await expectLater(
+      loader.sync(
+        profileScope: 'profile',
+        uri: uri,
+        now: DateTime.utc(2026, 9, 12, 10),
+      ),
+      throwsA(
+        isA<EpgSyncException>().having(
+          (error) => error.message,
+          'message',
+          contains('did not provide'),
+        ),
+      ),
+    );
+    final cached = await store.epgWindow(
+      'profile',
+      first.sourceKey,
+      channelKeys: const ['one'],
+      startUtc: DateTime.utc(2026, 9, 12, 9),
+      endUtc: DateTime.utc(2026, 9, 12, 12),
+    );
+    expect(cached.single.title, 'First show');
+  });
 }

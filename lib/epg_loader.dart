@@ -142,6 +142,16 @@ class EpgXmltvLoader {
             ),
           )
           .timeout(_totalTimeout);
+      // A surprising number of Xtream panels expose a syntactically valid
+      // XMLTV document containing only <channel> metadata. Treating that as a
+      // successful refresh would replace a previously useful generation with
+      // a blank timetable. Keep the last good guide and explain the provider
+      // response to the UI instead.
+      if (summary.storedProgrammeCount == 0) {
+        throw const EpgParseException(
+          'This service did not provide any current programme listings.',
+        );
+      }
       await _store.completeEpgImport(
         profileScope,
         sourceKey,
