@@ -1,4 +1,8 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:lumen_tv/models.dart';
 import 'package:lumen_tv/xtream.dart';
 
@@ -75,5 +79,38 @@ https://stream.example/news.m3u8
         'Origin': 'https://portal.example',
       });
     });
+  });
+
+  test('short EPG uses a bounded Xtream request', () async {
+    final client = MockClient((request) async {
+      expect(request.url.path, '/player_api.php');
+      expect(request.url.queryParameters['action'], 'get_short_epg');
+      expect(request.url.queryParameters['stream_id'], '42');
+      expect(request.url.queryParameters['limit'], '12');
+      return http.Response(
+        jsonEncode({
+          'epg_listings': [
+            {
+              'channel_id': 'news',
+              'title': base64.encode(utf8.encode('News now')),
+              'start_timestamp': 1789221600,
+              'stop_timestamp': 1789223400,
+            },
+          ],
+        }),
+        200,
+      );
+    });
+    final api = XtreamClient(
+      const XtreamCredentials(
+        baseUrl: 'https://tv.example',
+        username: 'user',
+        password: 'pass',
+      ),
+      httpClient: client,
+    );
+
+    final guide = await api.shortEpg(42, limit: 99);
+    expect(guide.single.title, 'News now');
   });
 }

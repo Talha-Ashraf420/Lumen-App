@@ -3,9 +3,13 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
 import 'package:http/http.dart' as http;
+import 'catalog_store.dart';
 import 'channel_logos.dart';
 import 'demo_catalog.dart';
+import 'epg.dart';
+import 'epg_loader.dart';
 import 'models.dart';
+import 'store.dart';
 
 class XtreamException implements Exception {
   final String message;
@@ -483,23 +487,79 @@ class XtreamClient {
     );
   }
 
+  /// Fetch the provider's bounded guide response for one visible channel.
+  ///
+  /// Callers own concurrency, debounce and freshness decisions. Keeping this
+  /// method deliberately small prevents an accidental provider-wide EPG fan
+  /// out from being hidden inside the transport layer.
+  Future<List<EpgProgramme>> shortEpg(int streamId, {int limit = 4}) async {
+    if (creds.isDemo || creds.isM3u) return const [];
+    final boundedLimit = limit.clamp(1, 12);
+    final payload = await _get({
+      'action': 'get_short_epg',
+      'stream_id': '$streamId',
+      'limit': '$boundedLimit',
+    });
+    return parseXtreamEpg(payload, fallbackChannelKey: '$streamId');
+  }
+
+  /// Guide locations discovered from the active account.
+  ///
+  /// These URIs can contain credentials. They are for the internal EPG loader
+  /// only and must never be written to logs, diagnostics, or persistent rows.
+  Future<List<Uri>> epgGuideUrls() async {
+    if (creds.isDemo) return const [];
+    if (creds.isM3u) {
+      await _ensureM3u();
+      return List.unmodifiable(_m3uEpgUrls);
+    }
+    return [
+      Uri.parse('${creds.baseUrl}/xmltv.php').replace(
+        queryParameters: {
+          'username': creds.username,
+          'password': creds.password,
+        },
+      ),
+    ];
+  }
+
+  /// Refresh one XMLTV source through the client's existing authenticated
+  /// transport. The credential-bearing URI remains inside the EPG layer.
+  Future<EpgSyncResult> syncEpgGuide(
+    Uri uri, {
+    CatalogStore? store,
+    DateTime? now,
+  }) => EpgXmltvLoader(
+    httpClient: _http,
+    store: store,
+  ).sync(profileScope: Store.profileScope(creds), uri: uri, now: now);
+
   /// Resolve missing channel artwork away from the foreground catalog fetch.
   /// CatalogCache invokes this after it has already returned cached/provider
   /// rows, then publishes one quiet revision when richer artwork is ready.
   Future<List<LiveStream>> enrichLiveLogos(List<LiveStream> channels) async {
     if (creds.isDemo || channels.isEmpty) return channels;
     final resolver = _logoResolver ??= ChannelLogoResolver(httpClient: _http);
-    final guideUrls = creds.isM3u
-        ? List<Uri>.of(_m3uEpgUrls)
-        : [
-            Uri.parse('${creds.baseUrl}/xmltv.php').replace(
-              queryParameters: {
-                'username': creds.username,
-                'password': creds.password,
-              },
-            ),
-          ];
-    return resolver.resolve(channels, guideUrls: guideUrls);
+    final guideUrls = await epgGuideUrls();
+    final cachedGuideChannels = <EpgChannel>[];
+    final scope = Store.profileScope(creds);
+    for (final url in guideUrls.take(3)) {
+      try {
+        cachedGuideChannels.addAll(
+          await CatalogStore.instance.epgChannels(scope, epgSourceKey(url)),
+        );
+      } catch (_) {
+        // Optional cached guide metadata must not block public logo fallback.
+      }
+    }
+    // Do not download XMLTV merely to fill logos. The EPG loader owns the
+    // guide transfer; once cached, its channel table enriches artwork here.
+    return resolver.resolve(
+      channels,
+      guideIndex: cachedGuideChannels.isEmpty
+          ? null
+          : XmltvLogoIndex.fromEpgChannels(cachedGuideChannels),
+    );
   }
 
   // Plain M3U playlists carry only live channels — VOD/series are empty.

@@ -5,6 +5,7 @@ import 'dart:isolate';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
+import 'epg.dart';
 import 'models.dart';
 
 const _catalogChannels = 'https://iptv-org.github.io/api/channels.json';
@@ -52,6 +53,28 @@ class XmltvLogoIndex {
 
   final Map<String, String> byId;
   final Map<String, String> byName;
+
+  factory XmltvLogoIndex.fromEpgChannels(Iterable<EpgChannel> channels) {
+    final byId = <String, String>{};
+    final named = <String, List<String>>{};
+    for (final channel in channels) {
+      final logo = channel.icon.trim();
+      if (logo.isEmpty || !_webUrl(logo)) continue;
+      final id = channel.channelKey.trim().toLowerCase();
+      if (id.isNotEmpty) byId.putIfAbsent(id, () => logo);
+      for (final value in channel.displayNames) {
+        final name = normalizeChannelName(value);
+        if (name.isNotEmpty) named.putIfAbsent(name, () => []).add(logo);
+      }
+    }
+    return XmltvLogoIndex(
+      Map.unmodifiable(byId),
+      Map.unmodifiable({
+        for (final entry in named.entries)
+          if (entry.value.toSet().length == 1) entry.key: entry.value.first,
+      }),
+    );
+  }
 
   factory XmltvLogoIndex.parse(String xml) {
     final byId = <String, String>{};
@@ -276,8 +299,15 @@ class ChannelLogoResolver {
   Future<List<LiveStream>> resolve(
     List<LiveStream> channels, {
     List<Uri> guideUrls = const [],
+    XmltvLogoIndex? guideIndex,
   }) async {
     var enriched = List<LiveStream>.of(channels);
+    if (guideIndex != null) {
+      enriched = [
+        for (final channel in enriched)
+          _withResolved(channel, guideIndex.logoFor(channel), 'xmltv'),
+      ];
+    }
     if (guideUrls.isNotEmpty) {
       try {
         final guide = await _guideIndex(guideUrls);

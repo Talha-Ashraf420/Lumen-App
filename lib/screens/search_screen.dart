@@ -1,9 +1,12 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../catalog_cache.dart';
 import '../device_profile.dart';
+import '../epg.dart';
+import '../epg_repository.dart';
 import '../library.dart';
 import '../refresh.dart';
 import '../responsive.dart';
@@ -14,6 +17,7 @@ import '../widgets.dart';
 import '../xtream.dart';
 import '../playback.dart';
 import 'movie_detail_screen.dart';
+import 'epg_guide_screen.dart';
 import 'series_detail_screen.dart';
 
 String _year(String s) => RegExp(r'(19|20)\d{2}').firstMatch(s)?.group(0) ?? '';
@@ -30,6 +34,7 @@ class _Res {
   final double rating;
   final bool live;
   final VoidCallback onTap;
+  final int liveStreamId;
   _Res(
     this.name,
     this.image,
@@ -39,6 +44,7 @@ class _Res {
     this.onTap, {
     this.fallbackImage = '',
     this.favoriteRef,
+    this.liveStreamId = 0,
   });
 }
 
@@ -88,6 +94,7 @@ class SearchScreenState extends State<SearchScreen>
   final _categoryButtonFocus = FocusNode(debugLabel: 'Search category');
   final _categoryMenuKey = GlobalKey<PopupMenuButtonState<String>>();
   final _sortFocus = FocusNode(debugLabel: 'Catalog sort');
+  final _guideFocus = FocusNode(debugLabel: 'Open TV guide');
   final _sortMenuKey = GlobalKey<PopupMenuButtonState<String>>();
   final _gridScroll = ScrollController();
   final _categoryScroll = ScrollController();
@@ -135,6 +142,7 @@ class SearchScreenState extends State<SearchScreen>
   bool _movieCatsReady = false;
   bool _seriesCatsReady = false;
   bool _liveCatsReady = false;
+  late final EpgRepository _epg;
 
   @override
   bool get wantKeepAlive => true;
@@ -152,6 +160,7 @@ class SearchScreenState extends State<SearchScreen>
   @override
   void initState() {
     super.initState();
+    _epg = EpgRepository(client: widget.client)..addListener(_onEpgChanged);
     _searchFocus.onKeyEvent = _moveSearchFieldFocus;
     _categoryButtonFocus
       ..onKeyEvent = _moveCategoryButtonFocus
@@ -159,6 +168,7 @@ class SearchScreenState extends State<SearchScreen>
     _sortFocus
       ..onKeyEvent = _moveSortFocus
       ..addListener(_onSortFocusChanged);
+    _guideFocus.onKeyEvent = _moveGuideFocus;
     _loadCats();
     contentRefresh.addListener(_onRefresh);
     CatalogCache.instance.revision.addListener(_onCatalogRevision);
@@ -239,6 +249,10 @@ class SearchScreenState extends State<SearchScreen>
     _sortFocus
       ..removeListener(_onSortFocusChanged)
       ..dispose();
+    _guideFocus.dispose();
+    _epg
+      ..removeListener(_onEpgChanged)
+      ..dispose();
     _gridScroll.dispose();
     _categoryScroll.dispose();
     _categoryScope.dispose();
@@ -270,6 +284,10 @@ class SearchScreenState extends State<SearchScreen>
   );
 
   void _onSortFocusChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _onEpgChanged() {
     if (mounted) setState(() {});
   }
 
@@ -472,8 +490,29 @@ class SearchScreenState extends State<SearchScreen>
       return KeyEventResult.handled;
     }
     if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-      // Sort is the top-right edge of the catalog. Keep focus visible instead
-      // of allowing the geometry policy to lose it outside the page.
+      if (_browse && _section == 'live') _guideFocus.requestFocus();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  KeyEventResult _moveGuideFocus(FocusNode _, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+      _sortFocus.requestFocus();
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+      _requestGridFocus(_lastGridIndex);
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+      _requestShellTopFocus();
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
       return KeyEventResult.handled;
     }
     return KeyEventResult.ignored;
@@ -1048,6 +1087,10 @@ class SearchScreenState extends State<SearchScreen>
       _cacheSignatures[pageKey] = signature;
       _stalePages.remove(pageKey);
     });
+    if (section == 'live') {
+      final visible = _liveByCat[cat] ?? const <LiveStream>[];
+      unawaited(_epg.primeVisible(visible.take(16)));
+    }
   }
 
   // builders → result items
@@ -1095,6 +1138,30 @@ class SearchScreenState extends State<SearchScreen>
       poster: s.effectiveIcon,
       httpHeaders: widget.client.streamHeaders(s.streamId),
       favRef: ref,
+    );
+  }
+
+  double? _epgProgress(EpgProgramme? programme) {
+    if (programme == null || programme.duration.inMilliseconds <= 0) {
+      return null;
+    }
+    final elapsed = DateTime.now()
+        .toUtc()
+        .difference(programme.startUtc)
+        .inMilliseconds;
+    return (elapsed / programme.duration.inMilliseconds).clamp(0.0, 1.0);
+  }
+
+  void _openGuide() {
+    final channels = _liveByCat[_cat] ?? const <LiveStream>[];
+    if (channels.isEmpty) return;
+    _push(
+      EpgGuideScreen(
+        client: widget.client,
+        repository: _epg,
+        channels: List.unmodifiable(channels),
+        title: _catLabel == 'All categories' ? 'TV Guide' : _catLabel,
+      ),
     );
   }
 
@@ -1229,6 +1296,17 @@ class SearchScreenState extends State<SearchScreen>
           ),
           const SizedBox(width: 12),
           _sortButton(),
+          if (_section == 'live') ...[
+            const SizedBox(width: 8),
+            OutlinedButton.icon(
+              focusNode: _guideFocus,
+              onPressed: (_liveByCat[_cat]?.isNotEmpty ?? false)
+                  ? _openGuide
+                  : null,
+              icon: const Icon(Icons.calendar_view_week_rounded, size: 18),
+              label: const Text('Guide'),
+            ),
+          ],
         ],
       ),
     );
@@ -1733,6 +1811,7 @@ class SearchScreenState extends State<SearchScreen>
               () => PlaybackController.instance.open(livePlaylist, entry.key),
               fallbackImage: entry.value.fallbackIcon,
               favoriteRef: _liveRef(entry.value),
+              liveStreamId: entry.value.streamId,
             ),
           )
           .toList();
@@ -1778,6 +1857,9 @@ class SearchScreenState extends State<SearchScreen>
     final loaded = _has(_section, catId);
     final showingStale = _canShowStale(_section, catId);
     final pageKey = _pageKey(_section, catId);
+    final chans = live
+        ? _liveByCat[catId] ?? const <LiveStream>[]
+        : const <LiveStream>[];
     List<_Res> items;
     if (_section == 'movie') {
       items = (_movieByCat[catId] ?? const []).map(_movie).toList();
@@ -1785,7 +1867,6 @@ class SearchScreenState extends State<SearchScreen>
       items = (_seriesByCat[catId] ?? const []).map(_ser).toList();
     } else {
       // build a shared channel playlist so the player can zap next/previous
-      final chans = _liveByCat[catId] ?? const <LiveStream>[];
       final pl = chans.map(_liveItem).toList();
       items = chans
           .asMap()
@@ -1800,6 +1881,7 @@ class SearchScreenState extends State<SearchScreen>
               () => PlaybackController.instance.open(pl, e.key),
               fallbackImage: e.value.fallbackIcon,
               favoriteRef: _liveRef(e.value),
+              liveStreamId: e.value.streamId,
             ),
           )
           .toList();
@@ -1819,7 +1901,7 @@ class SearchScreenState extends State<SearchScreen>
         );
         final tileWidth =
             (constraints.maxWidth - 32 - ((columns - 1) * 13)) / columns;
-        final rowExtent = tileWidth / (live ? 0.76 : 0.66) + 20;
+        final rowExtent = tileWidth / (live ? 0.70 : 0.66) + 20;
         _gridColumns = columns;
         _gridRowExtent = rowExtent;
         _ensureGridFocusNodes(items.length);
@@ -1828,6 +1910,21 @@ class SearchScreenState extends State<SearchScreen>
           onNotification: (notification) {
             if (more && notification.metrics.extentAfter < 900) {
               _loadNext(_section, catId);
+            }
+            if (live && notification.metrics.axis == Axis.vertical) {
+              final firstRow = (notification.metrics.pixels / rowExtent)
+                  .floor()
+                  .clamp(0, math.max(0, (chans.length / columns).ceil() - 1));
+              final visibleRows =
+                  (notification.metrics.viewportDimension / rowExtent).ceil() +
+                  2;
+              final start = (firstRow * columns - 4)
+                  .clamp(0, chans.length)
+                  .toInt();
+              final end = ((firstRow + visibleRows) * columns + 4)
+                  .clamp(start, chans.length)
+                  .toInt();
+              unawaited(_epg.primeVisible(chans.sublist(start, end)));
             }
             return false;
           },
@@ -1847,7 +1944,7 @@ class SearchScreenState extends State<SearchScreen>
                   // A channel tile is square artwork plus its label. At three
                   // columns on a phone, .82 left less room than the label's
                   // actual line box and produced a repeating 1.5px overflow.
-                  childAspectRatio: live ? 0.76 : 0.66,
+                  childAspectRatio: live ? 0.70 : 0.66,
                   crossAxisSpacing: 13,
                   mainAxisSpacing: 20,
                 ),
@@ -1869,7 +1966,10 @@ class SearchScreenState extends State<SearchScreen>
                       ? ChannelCard(
                           focusNode: _gridFocus[i],
                           onFocusChange: (focused) {
-                            if (focused) _lastGridIndex = i;
+                            if (focused) {
+                              _lastGridIndex = i;
+                              unawaited(_epg.primeChannel(chans[i]));
+                            }
                           },
                           onKeyEvent: (_, event) => _moveGridFocus(
                             i,
@@ -1882,6 +1982,16 @@ class SearchScreenState extends State<SearchScreen>
                           logo: items[i].image,
                           backupLogo: items[i].fallbackImage,
                           favoriteRef: items[i].favoriteRef,
+                          nowTitle:
+                              _epg.nowNextFor(chans[i].streamId).now?.title ??
+                              '',
+                          nextTitle:
+                              _epg.nowNextFor(chans[i].streamId).next?.title ??
+                              '',
+                          programmeProgress: _epgProgress(
+                            _epg.nowNextFor(chans[i].streamId).now,
+                          ),
+                          epgLoading: _epg.isLoading(chans[i].streamId),
                           index: i,
                           onTap: items[i].onTap,
                         )
@@ -1944,6 +2054,16 @@ class SearchScreenState extends State<SearchScreen>
                       logo: items[i].image,
                       backupLogo: items[i].fallbackImage,
                       favoriteRef: items[i].favoriteRef,
+                      nowTitle:
+                          _epg.nowNextFor(items[i].liveStreamId).now?.title ??
+                          '',
+                      nextTitle:
+                          _epg.nowNextFor(items[i].liveStreamId).next?.title ??
+                          '',
+                      programmeProgress: _epgProgress(
+                        _epg.nowNextFor(items[i].liveStreamId).now,
+                      ),
+                      epgLoading: _epg.isLoading(items[i].liveStreamId),
                       index: i,
                       onTap: items[i].onTap,
                     )

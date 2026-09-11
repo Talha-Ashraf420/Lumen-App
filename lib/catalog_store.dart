@@ -1,10 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart' as mobile;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'epg.dart';
 import 'models.dart';
 
 /// A page read from Lumen's durable catalog index.
@@ -50,7 +52,7 @@ class CatalogStore {
       return override.openDatabase(
         _pathOverride ?? inMemoryDatabasePath,
         options: OpenDatabaseOptions(
-          version: 3,
+          version: 4,
           onCreate: _create,
           onUpgrade: _upgrade,
         ),
@@ -78,7 +80,7 @@ class CatalogStore {
     return factory.openDatabase(
       '${databases.path}/lumen_catalog.sqlite',
       options: OpenDatabaseOptions(
-        version: 3,
+        version: 4,
         onCreate: _create,
         onUpgrade: _upgrade,
       ),
@@ -142,6 +144,7 @@ class CatalogStore {
       ON catalog_items(profile_scope, media_kind, sort_name)
     ''');
     await _createOrderIndex(db);
+    await _createEpgTables(db);
   }
 
   Future<void> _upgrade(Database db, int oldVersion, int newVersion) async {
@@ -165,6 +168,94 @@ class CatalogStore {
       );
       await _createOrderIndex(db);
     }
+    if (oldVersion < 4) await _createEpgTables(db);
+  }
+
+  Future<void> _createEpgTables(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS epg_programmes (
+        profile_scope TEXT NOT NULL,
+        source_key TEXT NOT NULL,
+        generation INTEGER NOT NULL,
+        channel_key TEXT NOT NULL,
+        start_utc INTEGER NOT NULL,
+        stop_utc INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        subtitle TEXT NOT NULL,
+        description TEXT NOT NULL,
+        categories_json TEXT NOT NULL,
+        icon TEXT NOT NULL,
+        has_archive INTEGER NOT NULL,
+        catchup_id TEXT NOT NULL,
+        stop_inferred INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (
+          profile_scope,
+          source_key,
+          generation,
+          channel_key,
+          start_utc,
+          title
+        )
+      )
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS epg_programme_window
+      ON epg_programmes(
+        profile_scope,
+        source_key,
+        generation,
+        channel_key,
+        start_utc,
+        stop_utc
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS epg_channels (
+        profile_scope TEXT NOT NULL,
+        source_key TEXT NOT NULL,
+        generation INTEGER NOT NULL,
+        channel_key TEXT NOT NULL,
+        display_names_json TEXT NOT NULL,
+        icon TEXT NOT NULL,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (
+          profile_scope,
+          source_key,
+          generation,
+          channel_key
+        )
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS epg_sources (
+        profile_scope TEXT NOT NULL,
+        source_key TEXT NOT NULL,
+        active_generation INTEGER NOT NULL,
+        etag TEXT NOT NULL,
+        last_modified TEXT NOT NULL,
+        fetched_at INTEGER NOT NULL,
+        valid_from INTEGER,
+        valid_until INTEGER,
+        status TEXT NOT NULL,
+        last_error TEXT NOT NULL,
+        next_retry_at INTEGER,
+        PRIMARY KEY (profile_scope, source_key)
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS epg_channel_map (
+        profile_scope TEXT NOT NULL,
+        live_stream_id INTEGER NOT NULL,
+        source_key TEXT NOT NULL,
+        epg_channel_key TEXT NOT NULL,
+        match_method TEXT NOT NULL,
+        confidence REAL NOT NULL,
+        user_override INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (profile_scope, live_stream_id, source_key)
+      )
+    ''');
   }
 
   Future<void> _createProfileGenerations(Database db) => db.execute('''
@@ -563,6 +654,407 @@ class CatalogStore {
     return true;
   }
 
+  /// Prepare a new EPG generation without touching the active guide.
+  ///
+  /// The new rows become visible only after [completeEpgImport]. If parsing or
+  /// downloading fails, [abortEpgImport] removes the staged generation and the
+  /// last successful guide remains active.
+  Future<void> beginEpgImport(
+    String scope,
+    String sourceKey,
+    int generation,
+  ) async {
+    if (_disabledForWidgetTests) return;
+    final db = await _database();
+    await db.transaction((txn) async {
+      final sources = await txn.query(
+        'epg_sources',
+        columns: ['active_generation'],
+        where: 'profile_scope = ? AND source_key = ?',
+        whereArgs: [scope, sourceKey],
+        limit: 1,
+      );
+      final activeGeneration = sources.isEmpty
+          ? null
+          : sources.first['active_generation'] as int;
+      if (activeGeneration == generation) {
+        throw ArgumentError.value(
+          generation,
+          'generation',
+          'A new EPG import needs a new generation.',
+        );
+      }
+      for (final table in ['epg_programmes', 'epg_channels']) {
+        if (activeGeneration == null) {
+          await txn.delete(
+            table,
+            where: 'profile_scope = ? AND source_key = ?',
+            whereArgs: [scope, sourceKey],
+          );
+        } else {
+          await txn.delete(
+            table,
+            where: 'profile_scope = ? AND source_key = ? AND generation <> ?',
+            whereArgs: [scope, sourceKey, activeGeneration],
+          );
+        }
+      }
+    });
+  }
+
+  Future<void> appendEpgChannels(
+    String scope,
+    String sourceKey,
+    int generation,
+    List<EpgChannel> channels,
+  ) async {
+    if (_disabledForWidgetTests || channels.isEmpty) return;
+    final db = await _database();
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final batch = db.batch();
+    for (final channel in channels) {
+      batch.insert('epg_channels', {
+        'profile_scope': scope,
+        'source_key': sourceKey,
+        'generation': generation,
+        'channel_key': channel.channelKey,
+        'display_names_json': jsonEncode(channel.displayNames),
+        'icon': channel.icon,
+        'updated_at': now,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    }
+    await batch.commit(noResult: true);
+  }
+
+  Future<void> appendEpgProgrammes(
+    String scope,
+    String sourceKey,
+    int generation,
+    List<EpgProgramme> programmes,
+  ) async {
+    if (_disabledForWidgetTests || programmes.isEmpty) return;
+    final db = await _database();
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final batch = db.batch();
+    for (final programme in programmes) {
+      batch.insert('epg_programmes', {
+        'profile_scope': scope,
+        'source_key': sourceKey,
+        'generation': generation,
+        'channel_key': programme.channelKey,
+        'start_utc': programme.startUtc.millisecondsSinceEpoch,
+        'stop_utc': programme.stopUtc.millisecondsSinceEpoch,
+        'title': programme.title,
+        'subtitle': programme.subtitle,
+        'description': programme.description,
+        'categories_json': jsonEncode(programme.categories),
+        'icon': programme.icon,
+        'has_archive': programme.hasArchive ? 1 : 0,
+        'catchup_id': programme.catchupId,
+        'stop_inferred': programme.stopInferred ? 1 : 0,
+        'updated_at': now,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    }
+    await batch.commit(noResult: true);
+  }
+
+  Future<void> completeEpgImport(
+    String scope,
+    String sourceKey,
+    int generation, {
+    String etag = '',
+    String lastModified = '',
+    DateTime? fetchedAt,
+    DateTime? validFrom,
+    DateTime? validUntil,
+  }) async {
+    if (_disabledForWidgetTests) return;
+    final db = await _database();
+    final completedAt = fetchedAt ?? DateTime.now().toUtc();
+    await db.transaction((txn) async {
+      final floors = await txn.query(
+        'catalog_profile_generations',
+        columns: ['generation'],
+        where: 'profile_scope = ?',
+        whereArgs: [scope],
+        limit: 1,
+      );
+      final floor = floors.isEmpty ? -1 : floors.first['generation'] as int;
+      if (generation < floor) {
+        for (final table in ['epg_programmes', 'epg_channels']) {
+          await txn.delete(
+            table,
+            where: 'profile_scope = ? AND source_key = ? AND generation = ?',
+            whereArgs: [scope, sourceKey, generation],
+          );
+        }
+        throw StateError('The EPG account is no longer active.');
+      }
+      await txn.insert('epg_sources', {
+        'profile_scope': scope,
+        'source_key': sourceKey,
+        'active_generation': generation,
+        'etag': etag,
+        'last_modified': lastModified,
+        'fetched_at': completedAt.millisecondsSinceEpoch,
+        'valid_from': validFrom?.millisecondsSinceEpoch,
+        'valid_until': validUntil?.millisecondsSinceEpoch,
+        'status': 'ready',
+        'last_error': '',
+        'next_retry_at': null,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      for (final table in ['epg_programmes', 'epg_channels']) {
+        await txn.delete(
+          table,
+          where: 'profile_scope = ? AND source_key = ? AND generation <> ?',
+          whereArgs: [scope, sourceKey, generation],
+        );
+      }
+    });
+  }
+
+  Future<void> abortEpgImport(
+    String scope,
+    String sourceKey,
+    int generation, {
+    String sanitizedError = '',
+    DateTime? nextRetryAt,
+  }) async {
+    if (_disabledForWidgetTests) return;
+    final db = await _database();
+    await db.transaction((txn) async {
+      for (final table in ['epg_programmes', 'epg_channels']) {
+        await txn.delete(
+          table,
+          where: 'profile_scope = ? AND source_key = ? AND generation = ?',
+          whereArgs: [scope, sourceKey, generation],
+        );
+      }
+      await txn.update(
+        'epg_sources',
+        {
+          'status': 'stale',
+          'last_error': sanitizedError,
+          'next_retry_at': nextRetryAt?.millisecondsSinceEpoch,
+        },
+        where: 'profile_scope = ? AND source_key = ?',
+        whereArgs: [scope, sourceKey],
+      );
+    });
+  }
+
+  Future<EpgSourceState?> epgSourceState(String scope, String sourceKey) async {
+    if (_disabledForWidgetTests) return null;
+    final db = await _database();
+    final rows = await db.query(
+      'epg_sources',
+      where: 'profile_scope = ? AND source_key = ?',
+      whereArgs: [scope, sourceKey],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    final row = rows.first;
+    DateTime? optionalTime(Object? value) => value is int
+        ? DateTime.fromMillisecondsSinceEpoch(value, isUtc: true)
+        : null;
+    return EpgSourceState(
+      sourceKey: sourceKey,
+      activeGeneration: row['active_generation'] as int,
+      etag: row['etag'] as String,
+      lastModified: row['last_modified'] as String,
+      fetchedAt: DateTime.fromMillisecondsSinceEpoch(
+        row['fetched_at'] as int,
+        isUtc: true,
+      ),
+      validFrom: optionalTime(row['valid_from']),
+      validUntil: optionalTime(row['valid_until']),
+      status: row['status'] as String,
+      lastError: row['last_error'] as String,
+      nextRetryAt: optionalTime(row['next_retry_at']),
+    );
+  }
+
+  Future<void> markEpgNotModified(
+    String scope,
+    String sourceKey, {
+    DateTime? fetchedAt,
+    String? etag,
+    String? lastModified,
+  }) async {
+    if (_disabledForWidgetTests) return;
+    final db = await _database();
+    final values = <String, Object?>{
+      'fetched_at':
+          (fetchedAt ?? DateTime.now().toUtc()).millisecondsSinceEpoch,
+      'status': 'ready',
+      'last_error': '',
+      'next_retry_at': null,
+      if (etag != null && etag.isNotEmpty) 'etag': etag,
+      if (lastModified != null && lastModified.isNotEmpty)
+        'last_modified': lastModified,
+    };
+    final updated = await db.update(
+      'epg_sources',
+      values,
+      where: 'profile_scope = ? AND source_key = ?',
+      whereArgs: [scope, sourceKey],
+    );
+    if (updated == 0) {
+      throw StateError('Cannot validate an EPG source with no cached guide.');
+    }
+  }
+
+  Future<List<EpgProgramme>> epgWindow(
+    String scope,
+    String sourceKey, {
+    required List<String> channelKeys,
+    required DateTime startUtc,
+    required DateTime endUtc,
+  }) async {
+    if (_disabledForWidgetTests ||
+        channelKeys.isEmpty ||
+        !startUtc.isBefore(endUtc)) {
+      return const [];
+    }
+    final source = await epgSourceState(scope, sourceKey);
+    if (source == null) return const [];
+    final db = await _database();
+    final placeholders = List.filled(channelKeys.length, '?').join(',');
+    final rows = await db.query(
+      'epg_programmes',
+      where:
+          'profile_scope = ? AND source_key = ? AND generation = ? '
+          'AND channel_key IN ($placeholders) '
+          'AND start_utc < ? AND stop_utc > ?',
+      whereArgs: [
+        scope,
+        sourceKey,
+        source.activeGeneration,
+        ...channelKeys,
+        endUtc.millisecondsSinceEpoch,
+        startUtc.millisecondsSinceEpoch,
+      ],
+      orderBy: 'channel_key ASC, start_utc ASC',
+    );
+    return [for (final row in rows) _decodeEpgProgramme(row)];
+  }
+
+  Future<List<EpgChannel>> epgChannels(String scope, String sourceKey) async {
+    if (_disabledForWidgetTests) return const [];
+    final source = await epgSourceState(scope, sourceKey);
+    if (source == null) return const [];
+    final db = await _database();
+    final rows = await db.query(
+      'epg_channels',
+      where: 'profile_scope = ? AND source_key = ? AND generation = ?',
+      whereArgs: [scope, sourceKey, source.activeGeneration],
+      orderBy: 'channel_key ASC',
+    );
+    return [
+      for (final row in rows)
+        EpgChannel(
+          channelKey: row['channel_key'] as String,
+          displayNames:
+              (jsonDecode(row['display_names_json'] as String) as List)
+                  .map((value) => '$value')
+                  .toList(growable: false),
+          icon: row['icon'] as String,
+        ),
+    ];
+  }
+
+  /// Replace the small rolling guide window for one Xtream channel.
+  ///
+  /// Short EPG is fetched independently for visible channels, so it cannot use
+  /// the all-or-nothing XMLTV generation swap. Generation zero is reserved for
+  /// these bounded per-channel updates. The transaction keeps readers from
+  /// observing a channel between delete and insert.
+  Future<void> replaceShortEpgChannel(
+    String scope,
+    String sourceKey,
+    String channelKey,
+    List<EpgProgramme> programmes, {
+    DateTime? fetchedAt,
+  }) async {
+    if (_disabledForWidgetTests) return;
+    final db = await _database();
+    final completedAt = (fetchedAt ?? DateTime.now()).toUtc();
+    await db.transaction((txn) async {
+      await txn.delete(
+        'epg_programmes',
+        where:
+            'profile_scope = ? AND source_key = ? AND generation = 0 '
+            'AND channel_key = ?',
+        whereArgs: [scope, sourceKey, channelKey],
+      );
+      final batch = txn.batch();
+      for (final programme in programmes) {
+        batch.insert('epg_programmes', {
+          'profile_scope': scope,
+          'source_key': sourceKey,
+          'generation': 0,
+          'channel_key': channelKey,
+          'start_utc': programme.startUtc.millisecondsSinceEpoch,
+          'stop_utc': programme.stopUtc.millisecondsSinceEpoch,
+          'title': programme.title,
+          'subtitle': programme.subtitle,
+          'description': programme.description,
+          'categories_json': jsonEncode(programme.categories),
+          'icon': programme.icon,
+          'has_archive': programme.hasArchive ? 1 : 0,
+          'catchup_id': programme.catchupId,
+          'stop_inferred': programme.stopInferred ? 1 : 0,
+          'updated_at': completedAt.millisecondsSinceEpoch,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+      await batch.commit(noResult: true);
+      await txn.insert('epg_sources', {
+        'profile_scope': scope,
+        'source_key': sourceKey,
+        'active_generation': 0,
+        'etag': '',
+        'last_modified': '',
+        'fetched_at': completedAt.millisecondsSinceEpoch,
+        'valid_from': programmes.isEmpty
+            ? null
+            : programmes
+                  .map((programme) => programme.startUtc.millisecondsSinceEpoch)
+                  .reduce(math.min),
+        'valid_until': programmes.isEmpty
+            ? null
+            : programmes
+                  .map((programme) => programme.stopUtc.millisecondsSinceEpoch)
+                  .reduce(math.max),
+        'status': 'ready',
+        'last_error': '',
+        'next_retry_at': null,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    });
+  }
+
+  static EpgProgramme _decodeEpgProgramme(Map<String, Object?> row) =>
+      EpgProgramme(
+        channelKey: row['channel_key'] as String,
+        startUtc: DateTime.fromMillisecondsSinceEpoch(
+          row['start_utc'] as int,
+          isUtc: true,
+        ),
+        stopUtc: DateTime.fromMillisecondsSinceEpoch(
+          row['stop_utc'] as int,
+          isUtc: true,
+        ),
+        title: row['title'] as String,
+        subtitle: row['subtitle'] as String,
+        description: row['description'] as String,
+        categories: (jsonDecode(row['categories_json'] as String) as List)
+            .map((value) => '$value')
+            .toList(growable: false),
+        icon: row['icon'] as String,
+        hasArchive: row['has_archive'] == 1,
+        catchupId: row['catchup_id'] as String,
+        stopInferred: row['stop_inferred'] == 1,
+      );
+
   Future<void> deleteProfile(String scope) async {
     if (_disabledForWidgetTests) return;
     try {
@@ -585,6 +1077,10 @@ class CatalogStore {
           'catalog_categories',
           'catalog_items',
           'catalog_generations',
+          'epg_programmes',
+          'epg_channels',
+          'epg_sources',
+          'epg_channel_map',
         ]) {
           await txn.delete(
             table,

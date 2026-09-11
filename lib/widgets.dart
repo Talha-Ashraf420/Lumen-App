@@ -2199,7 +2199,7 @@ class SectionHeader extends StatelessWidget {
 /// Standard width for a poster card in a shelf (keeps everything consistent).
 const double kPosterW = 134;
 double posterShelfHeight({bool live = false}) => live
-    ? kPosterW + 44
+    ? kPosterW + 62
     : kPosterW * 1.5 + 4; // poster (info overlaid) / channel logo + name
 
 /// Premium movie/series poster tile: art fills the card, title + year + rating
@@ -2446,6 +2446,10 @@ class ChannelCard extends StatelessWidget {
   final FocusOnKeyEventCallback? onKeyEvent;
   final ValueChanged<bool>? onFocusChange;
   final MediaRef? favoriteRef;
+  final String nowTitle;
+  final String nextTitle;
+  final double? programmeProgress;
+  final bool epgLoading;
   const ChannelCard({
     super.key,
     required this.name,
@@ -2457,6 +2461,10 @@ class ChannelCard extends StatelessWidget {
     this.onKeyEvent,
     this.onFocusChange,
     this.favoriteRef,
+    this.nowTitle = '',
+    this.nextTitle = '',
+    this.programmeProgress,
+    this.epgLoading = false,
   });
 
   @override
@@ -2556,6 +2564,63 @@ class ChannelCard extends StatelessWidget {
                       },
                     ),
                   ),
+                if (nowTitle.isNotEmpty)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: Container(
+                      padding: const EdgeInsets.fromLTRB(10, 20, 10, 9),
+                      decoration: BoxDecoration(
+                        borderRadius: const BorderRadius.vertical(
+                          bottom: Radius.circular(15),
+                        ),
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [Colors.transparent, Colors.black87],
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            nowTitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          if (programmeProgress case final value?) ...[
+                            const SizedBox(height: 5),
+                            LinearProgressIndicator(
+                              value: value.clamp(0.0, 1.0),
+                              minHeight: 2.5,
+                              borderRadius: BorderRadius.circular(2),
+                              color: accent,
+                              backgroundColor: Colors.white24,
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  )
+                else if (epgLoading)
+                  Positioned(
+                    left: 10,
+                    bottom: 10,
+                    child: SizedBox(
+                      width: 13,
+                      height: 13,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: accent,
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -2568,6 +2633,20 @@ class ChannelCard extends StatelessWidget {
           textAlign: TextAlign.center,
           style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
         ),
+        if (nextTitle.isNotEmpty) ...[
+          const SizedBox(height: 2),
+          Text(
+            'Next  $nextTitle',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 10.5,
+              fontWeight: FontWeight.w500,
+              color: muted,
+            ),
+          ),
+        ],
       ],
     );
     final interactive = FocusableTap(

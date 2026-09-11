@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/testing.dart';
 import 'package:lumen_tv/channel_logos.dart';
+import 'package:lumen_tv/epg.dart';
 import 'package:lumen_tv/models.dart';
 
 void main() {
@@ -34,6 +35,23 @@ void main() {
       'https://guide.example/bbc.png',
     );
     expect(index.logoFor(LiveStream(2, 'News One', '', 'News')), isNull);
+  });
+
+  test('cached EPG channels provide the same conservative logo index', () {
+    final index = XmltvLogoIndex.fromEpgChannels(const [
+      EpgChannel(
+        channelKey: 'BBCOne.uk',
+        displayNames: ['BBC One'],
+        icon: 'https://guide.example/bbc.png',
+      ),
+    ]);
+
+    expect(
+      index.logoFor(
+        LiveStream(1, 'Provider label', '', 'UK', epgId: 'BBCOne.uk'),
+      ),
+      'https://guide.example/bbc.png',
+    );
   });
 
   test('public catalog uses exact IDs and conservative country matching', () {
