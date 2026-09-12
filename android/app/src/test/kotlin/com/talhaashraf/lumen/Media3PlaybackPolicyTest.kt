@@ -166,4 +166,42 @@ class Media3PlaybackPolicyTest {
             )
         )
     }
+
+    @Test
+    fun splitChannelNavigationSkipsTheOtherVisibleChannel() {
+        assertEquals(
+            4,
+            Media3PlaybackPolicy.nextSplitIndex(
+                currentIndex = 2,
+                blockedIndex = 3,
+                direction = 1,
+                itemCount = 8
+            )
+        )
+        assertEquals(
+            1,
+            Media3PlaybackPolicy.nextSplitIndex(
+                currentIndex = 3,
+                blockedIndex = 2,
+                direction = -1,
+                itemCount = 8
+            )
+        )
+    }
+
+    @Test
+    fun splitChannelNavigationStopsAtPlaylistEdges() {
+        assertEquals(
+            null,
+            Media3PlaybackPolicy.nextSplitIndex(0, 1, -1, 4)
+        )
+        assertEquals(
+            null,
+            Media3PlaybackPolicy.nextSplitIndex(3, 2, 1, 4)
+        )
+        assertEquals(
+            null,
+            Media3PlaybackPolicy.nextSplitIndex(1, 0, 0, 4)
+        )
+    }
 }

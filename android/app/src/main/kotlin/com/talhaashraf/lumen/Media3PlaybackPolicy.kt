@@ -127,4 +127,23 @@ internal object Media3PlaybackPolicy {
             !usingAlternateSource &&
             alternateUrl.isNotBlank() &&
             alternateUrl != currentUrl
+
+    /**
+     * Finds the next channel for one split pane without selecting the channel
+     * already playing in the other pane. Returning null lets callers leave the
+     * current stream untouched at either end of the supplied playlist window.
+     */
+    fun nextSplitIndex(
+        currentIndex: Int,
+        blockedIndex: Int,
+        direction: Int,
+        itemCount: Int
+    ): Int? {
+        if (direction == 0 || itemCount <= 0) return null
+        var target = currentIndex + if (direction > 0) 1 else -1
+        while (target in 0 until itemCount && target == blockedIndex) {
+            target += if (direction > 0) 1 else -1
+        }
+        return target.takeIf { it in 0 until itemCount }
+    }
 }

@@ -97,6 +97,20 @@ class Media3PlayerActivity : Activity() {
 
     private lateinit var player: ExoPlayer
     private lateinit var playerView: PlayerView
+    private lateinit var root: FrameLayout
+    private lateinit var videoHost: LinearLayout
+    private lateinit var mainPane: FrameLayout
+    private lateinit var secondaryPane: FrameLayout
+    private lateinit var mainPaneLabel: TextView
+    private lateinit var secondaryPaneLabel: TextView
+    private lateinit var secondaryStatus: TextView
+    private var secondaryPlayer: ExoPlayer? = null
+    private var secondaryPlayerView: PlayerView? = null
+    private var secondaryIndex = -1
+    private var splitFocusedPane = 0
+    private var splitAudioOnSecondary = false
+    private var secondaryRetryAttempt = 0
+    private var secondaryOpenGeneration = 0
     private lateinit var titleBar: View
     private lateinit var controlsBar: View
     private lateinit var backButton: TextView
@@ -112,6 +126,10 @@ class Media3PlayerActivity : Activity() {
     private lateinit var subtitleButton: TextView
     private lateinit var audioButton: TextView
     private lateinit var qualityButton: TextView
+    private lateinit var splitButton: TextView
+    private lateinit var swapAudioButton: TextView
+    private lateinit var swapViewsButton: TextView
+    private lateinit var closePaneButton: TextView
     private lateinit var moreButton: TextView
     private lateinit var progressBar: SeekBar
     private lateinit var positionText: TextView
@@ -184,6 +202,7 @@ class Media3PlayerActivity : Activity() {
             // uses the normal delayed buffering badge, so quick recoveries stay
             // silent and users never see repeated connected/restored notices.
             open()
+            if (splitActive) playSecondaryCurrent()
             handler.post(watchdog)
             handler.post(progressUpdater)
         }
@@ -221,6 +240,9 @@ class Media3PlayerActivity : Activity() {
     private val isTelevisionDevice: Boolean
         get() = resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK ==
             Configuration.UI_MODE_TYPE_TELEVISION
+
+    private val splitActive: Boolean
+        get() = secondaryPlayer != null && secondaryIndex in playlistUrls.indices
 
     private data class TrackChoice(
         val group: Tracks.Group,
@@ -349,7 +371,7 @@ class Media3PlayerActivity : Activity() {
             return
         }
 
-        val root = FrameLayout(this).apply {
+        root = FrameLayout(this).apply {
             setBackgroundColor(Color.BLACK)
             keepScreenOn = true
         }
@@ -367,15 +389,52 @@ class Media3PlayerActivity : Activity() {
             isFocusable = true
             keepScreenOn = true
             setKeepContentOnPlayerReset(true)
+            setOnFocusChangeListener { _, focused ->
+                if (focused && splitActive) selectSplitPane(0)
+            }
         }
-        root.addView(playerView)
+        mainPane = FrameLayout(this).apply {
+            setBackgroundColor(Color.BLACK)
+        }
+        mainPane.addView(
+            playerView,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+        mainPaneLabel = buildSplitPaneLabel()
+        mainPane.addView(mainPaneLabel)
+
+        secondaryPane = FrameLayout(this).apply {
+            setBackgroundColor(Color.BLACK)
+            visibility = View.GONE
+        }
+        secondaryPaneLabel = buildSplitPaneLabel()
+        secondaryPane.addView(secondaryPaneLabel)
+        secondaryStatus = buildSplitStatus()
+        secondaryPane.addView(secondaryStatus)
+
+        videoHost = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setBackgroundColor(Color.BLACK)
+            addView(
+                mainPane,
+                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f)
+            )
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        }
+        root.addView(videoHost)
         titleBar = buildTitleBar().apply { visibility = View.GONE }
         root.addView(titleBar)
         centerTransport = buildCenterTransport()
         controlsBar = buildControlsBar().apply { visibility = View.GONE }
         root.addView(controlsBar)
         bufferingBadge = buildBufferingBadge()
-        root.addView(bufferingBadge)
+        mainPane.addView(bufferingBadge)
         seekFeedback = buildSeekFeedback()
         root.addView(seekFeedback)
         errorPanel = buildErrorPanel()
@@ -452,7 +511,7 @@ class Media3PlayerActivity : Activity() {
                 // Do not let audio run ahead over a black surface. Sound is
                 // released only when Android confirms that a video frame has
                 // actually reached the television display.
-                player.volume = if (keyboardMuted) 0f else volumeBeforeMute
+                applySplitVolumes()
                 markHealthy(
                     SystemClock.elapsedRealtime(),
                     player.currentPosition.coerceAtLeast(0L)
@@ -492,12 +551,18 @@ class Media3PlayerActivity : Activity() {
         val wasExpectedToPlay = player.playWhenReady || player.isPlaying
         player.playWhenReady = false
         player.pause()
+        secondaryPlayer?.let {
+            it.playWhenReady = false
+            it.pause()
+        }
         handler.removeCallbacks(hideControls)
         updateTransportUi()
         if (wasExpectedToPlay) pausedForBackground = true
     }
 
-    private fun buildPlayer(): ExoPlayer {
+    private fun buildPlayer(
+        rawTransportStream: () -> Boolean = ::currentSourceIsRawTransportStream
+    ): ExoPlayer {
         @Suppress("DEPRECATION")
         val supplied = intent.getSerializableExtra(EXTRA_HEADERS) as? HashMap<*, *>
         val headers = HashMap<String, String>()
@@ -536,7 +601,7 @@ class Media3PlayerActivity : Activity() {
                 reconnectDelayMs = Media3PlaybackPolicy.eofReconnectDelayMs(
                     playbackMode
                 ),
-                shouldReconnectAtEof = ::currentSourceIsRawTransportStream
+                shouldReconnectAtEof = rawTransportStream
             )
         } else {
             http
@@ -560,6 +625,12 @@ class Media3PlayerActivity : Activity() {
     private fun currentSourceIsRawTransportStream(): Boolean {
         val path = Uri.parse(url).path.orEmpty()
         return isLive && path.endsWith(".ts", ignoreCase = true)
+    }
+
+    private fun currentSecondarySourceIsRawTransportStream(): Boolean {
+        val secondaryUrl = playlistUrls.getOrNull(secondaryIndex).orEmpty()
+        return splitActive && Uri.parse(secondaryUrl).path.orEmpty()
+            .endsWith(".ts", ignoreCase = true)
     }
 
     private fun buildTitleBar(): View {
@@ -637,7 +708,10 @@ class Media3PlayerActivity : Activity() {
         previousButton = iconButton(
             R.drawable.ic_player_previous,
             if (isLive) "Previous channel" else "Previous episode"
-        ) { openPlaylistItem(playlistIndex - 1, navigationDirection = -1) }
+        ) {
+            if (splitActive) changeFocusedSplitChannel(-1)
+            else openPlaylistItem(playlistIndex - 1, navigationDirection = -1)
+        }
         rewindButton = iconButton(
             R.drawable.ic_player_rewind,
             "Rewind 10 seconds"
@@ -660,7 +734,10 @@ class Media3PlayerActivity : Activity() {
         nextButton = iconButton(
             R.drawable.ic_player_next,
             if (isLive) "Next channel" else "Next episode"
-        ) { openPlaylistItem(playlistIndex + 1, navigationDirection = 1) }
+        ) {
+            if (splitActive) changeFocusedSplitChannel(1)
+            else openPlaylistItem(playlistIndex + 1, navigationDirection = 1)
+        }
 
         return LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -691,6 +768,379 @@ class Media3PlayerActivity : Activity() {
             ViewGroup.LayoutParams.WRAP_CONTENT,
             Gravity.TOP or Gravity.CENTER_HORIZONTAL
         ).apply { topMargin = dp(96) }
+    }
+
+    private fun buildSplitPaneLabel(): TextView = TextView(this).apply {
+        textSize = 14f
+        typeface = mediumTypeface
+        setTextColor(Color.WHITE)
+        maxLines = 1
+        ellipsize = android.text.TextUtils.TruncateAt.END
+        setPadding(dp(12), dp(7), dp(12), dp(7))
+        background = roundedRect(0xCC111511.toInt(), 0x66596157, 1, 14)
+        visibility = View.GONE
+        layoutParams = FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            Gravity.TOP or Gravity.START
+        ).apply {
+            topMargin = dp(22)
+            marginStart = dp(22)
+            marginEnd = dp(22)
+        }
+    }
+
+    private fun buildSplitStatus(): TextView = TextView(this).apply {
+        text = "Connecting second stream…"
+        textSize = 13f
+        typeface = mediumTypeface
+        gravity = Gravity.CENTER
+        setTextColor(0xFFE6EAE3.toInt())
+        setPadding(dp(14), dp(9), dp(14), dp(9))
+        background = roundedRect(
+            0xD9111511.toInt(),
+            withAlpha(accentColor, 0x66),
+            1,
+            16
+        )
+        visibility = View.GONE
+        layoutParams = FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            Gravity.CENTER
+        ).apply {
+            marginStart = dp(16)
+            marginEnd = dp(16)
+        }
+    }
+
+    private fun splitTitle(index: Int): String = playlistTitles.getOrNull(index)
+        ?.trim()
+        ?.takeIf { it.isNotBlank() }
+        ?: "Channel ${index + 1}"
+
+    private fun selectSplitPane(pane: Int) {
+        if (!splitActive) return
+        splitFocusedPane = pane.coerceIn(0, 1)
+        updateSplitPaneChrome()
+        updateNavigationUi()
+    }
+
+    private fun updateSplitPaneChrome() {
+        if (!::mainPane.isInitialized || !::secondaryPane.isInitialized) return
+        val activeStroke = withAlpha(accentColor, 0xE6)
+        mainPane.foreground = roundedRect(
+            Color.TRANSPARENT,
+            if (splitActive && splitFocusedPane == 0) activeStroke else Color.TRANSPARENT,
+            if (splitActive && splitFocusedPane == 0) 3 else 0,
+            0
+        )
+        secondaryPane.foreground = roundedRect(
+            Color.TRANSPARENT,
+            if (splitActive && splitFocusedPane == 1) activeStroke else 0x66596157,
+            if (splitActive && splitFocusedPane == 1) 3 else 1,
+            0
+        )
+        if (splitActive) {
+            mainPaneLabel.text = "${if (splitAudioOnSecondary) "MUTED" else "AUDIO"}  •  ${splitTitle(playlistIndex)}"
+            secondaryPaneLabel.text = "${if (splitAudioOnSecondary) "AUDIO" else "MUTED"}  •  ${splitTitle(secondaryIndex)}"
+        }
+    }
+
+    private fun updateSplitControls() {
+        if (!::splitButton.isInitialized) return
+        val active = splitActive
+        splitButton.text = if (active) "×\nExit split" else "▣\nSplit view"
+        splitButton.contentDescription = if (active) "Exit split view" else "Add split view"
+        swapAudioButton.visibility = if (active) View.VISIBLE else View.GONE
+        swapViewsButton.visibility = if (active) View.VISIBLE else View.GONE
+        closePaneButton.visibility = if (active) View.VISIBLE else View.GONE
+        subtitleButton.visibility = if (active) View.GONE else View.VISIBLE
+        audioButton.visibility = if (active) View.GONE else View.VISIBLE
+        qualityButton.visibility = if (active) View.GONE else View.VISIBLE
+        updateFocusGraph()
+    }
+
+    private fun showSplitChannelDialog(targetSecondary: Boolean = true) {
+        if (!isLive || playlistUrls.size <= 1) return
+        handler.removeCallbacks(hideControls)
+        val blockedIndex = if (targetSecondary) playlistIndex else secondaryIndex
+        val candidates = playlistUrls.indices.filter { it != blockedIndex }
+        val labels = candidates.map(::splitTitle).toTypedArray()
+        val title = if (targetSecondary) "Add a second channel" else {
+            if (splitFocusedPane == 0) "Change main channel" else "Change second channel"
+        }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(title)
+            .setItems(labels) { activeDialog, itemIndex ->
+                activeDialog.dismiss()
+                val selected = candidates[itemIndex]
+                if (targetSecondary || splitFocusedPane == 1) {
+                    openSecondary(selected)
+                } else {
+                    openPlaylistItem(selected)
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.window?.setBackgroundDrawable(
+                roundedRect(0xFF111511.toInt(), 0xFF596157.toInt(), 1, 18)
+            )
+        }
+        dialog.setOnDismissListener {
+            showControls()
+            splitButton.post { splitButton.requestFocus() }
+        }
+        dialog.show()
+    }
+
+    private fun openSecondary(index: Int) {
+        if (index !in playlistUrls.indices || index == playlistIndex) {
+            Toast.makeText(this, "That channel is already on the main screen.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        secondaryOpenGeneration += 1
+        secondaryRetryAttempt = 0
+        secondaryIndex = index
+        splitFocusedPane = 1
+        splitAudioOnSecondary = false
+        if (secondaryPlayer == null) {
+            secondaryPlayer = buildPlayer(::currentSecondarySourceIsRawTransportStream)
+                .also { splitPlayer ->
+                    splitPlayer.addListener(object : Player.Listener {
+                        override fun onPlaybackStateChanged(state: Int) {
+                            if (!splitActive || isInBackground) return
+                            when (state) {
+                                Player.STATE_BUFFERING -> showSecondaryStatus("Connecting second stream…")
+                                Player.STATE_READY -> if (splitPlayer.isPlaying) {
+                                    secondaryStatus.visibility = View.GONE
+                                }
+                                Player.STATE_ENDED -> retrySecondary("The second live feed ended.")
+                            }
+                        }
+
+                        override fun onIsPlayingChanged(isPlaying: Boolean) {
+                            if (isPlaying && splitActive) {
+                                secondaryStatus.visibility = View.GONE
+                                applySplitVolumes()
+                            }
+                        }
+
+                        override fun onRenderedFirstFrame() {
+                            if (splitActive) {
+                                secondaryStatus.visibility = View.GONE
+                                applySplitVolumes()
+                            }
+                        }
+
+                        override fun onPlayerError(error: PlaybackException) {
+                            if (splitActive && !isInBackground) {
+                                retrySecondary(friendlySecondaryError(error))
+                            }
+                        }
+                    })
+                }
+            secondaryPlayerView = PlayerView(this).apply {
+                layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+                setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
+                setUseController(false)
+                isFocusable = true
+                keepScreenOn = true
+                setKeepContentOnPlayerReset(true)
+                setOnFocusChangeListener { _, focused ->
+                    if (focused && splitActive) selectSplitPane(1)
+                }
+                player = secondaryPlayer
+            }
+            secondaryPane.addView(secondaryPlayerView, 0)
+        }
+        if (secondaryPane.parent == null) {
+            videoHost.addView(
+                secondaryPane,
+                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 0.34f)
+            )
+        }
+        secondaryPane.visibility = View.VISIBLE
+        mainPane.layoutParams = LinearLayout.LayoutParams(
+            0,
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            0.66f
+        )
+        secondaryPane.layoutParams = LinearLayout.LayoutParams(
+            0,
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            0.34f
+        ).apply { marginStart = dp(2) }
+        mainPaneLabel.visibility = View.VISIBLE
+        secondaryPaneLabel.visibility = View.VISIBLE
+        playSecondaryCurrent()
+        updateSplitControls()
+        updateSplitPaneChrome()
+        applySplitVolumes()
+        hideControls(force = true)
+        secondaryPlayerView?.requestFocus()
+    }
+
+    private fun playSecondaryCurrent(isRetry: Boolean = false) {
+        val splitPlayer = secondaryPlayer ?: return
+        if (secondaryIndex !in playlistUrls.indices || isInBackground) return
+        if (!isRetry) secondaryRetryAttempt = 0
+        showSecondaryStatus(
+            if (isRetry) "Reconnecting second stream…" else "Connecting second stream…"
+        )
+        splitPlayer.stop()
+        splitPlayer.volume = 0f
+        splitPlayer.setMediaItem(buildMediaItemForUrl(playlistUrls[secondaryIndex]))
+        splitPlayer.playWhenReady = true
+        splitPlayer.prepare()
+    }
+
+    private fun retrySecondary(message: String) {
+        if (!splitActive || isInBackground) return
+        if (secondaryRetryAttempt >= 2) {
+            showSecondaryStatus(message)
+            return
+        }
+        val generation = secondaryOpenGeneration
+        val delay = if (secondaryRetryAttempt++ == 0) 1_000L else 3_000L
+        showSecondaryStatus("Reconnecting second stream…")
+        handler.postDelayed({
+            if (splitActive && generation == secondaryOpenGeneration && !isInBackground) {
+                playSecondaryCurrent(isRetry = true)
+            }
+        }, delay)
+    }
+
+    private fun friendlySecondaryError(error: PlaybackException): String = when (responseCode(error)) {
+        401, 403 -> "The provider rejected the second connection."
+        429 -> "The provider allows fewer simultaneous streams."
+        else -> if (error.errorCodeName.contains("DECOD", ignoreCase = true)) {
+            "This TV could not decode two streams at once."
+        } else {
+            "The second stream could not be opened."
+        }
+    }
+
+    private fun showSecondaryStatus(message: String) {
+        if (!::secondaryStatus.isInitialized) return
+        secondaryStatus.text = message
+        secondaryStatus.visibility = View.VISIBLE
+    }
+
+    private fun applySplitVolumes() {
+        if (!::player.isInitialized) return
+        if (!splitActive) {
+            player.volume = if (keyboardMuted) 0f else volumeBeforeMute
+            return
+        }
+        player.volume = if (!splitAudioOnSecondary && !keyboardMuted) volumeBeforeMute else 0f
+        secondaryPlayer?.volume = if (splitAudioOnSecondary && !keyboardMuted) {
+            volumeBeforeMute
+        } else {
+            0f
+        }
+        updateSplitPaneChrome()
+    }
+
+    private fun toggleSplitAudio() {
+        if (!splitActive) return
+        splitAudioOnSecondary = !splitAudioOnSecondary
+        applySplitVolumes()
+        Toast.makeText(
+            this,
+            if (splitAudioOnSecondary) "Audio: second screen" else "Audio: main screen",
+            Toast.LENGTH_SHORT
+        ).show()
+    }
+
+    private fun swapSplitStreams() {
+        if (!splitActive) return
+        val oldMain = playlistIndex
+        val oldSecondary = secondaryIndex
+        secondaryOpenGeneration += 1
+        playlistIndex = oldSecondary
+        selectPreferredSource(playlistIndex)
+        secondaryIndex = oldMain
+        splitFocusedPane = 0
+        splitAudioOnSecondary = false
+        updateNavigationUi()
+        updateFavoriteUi()
+        updateSplitPaneChrome()
+        open()
+        playSecondaryCurrent()
+        applySplitVolumes()
+        updateSplitPaneChrome()
+        hideControls(force = true)
+        playerView.requestFocus()
+    }
+
+    private fun closeFocusedSplitPane() {
+        if (!splitActive) return
+        if (splitFocusedPane == 1) {
+            exitSplit()
+            return
+        }
+        // The large pane is being closed. Promote the surviving small stream
+        // into the normal player, then tear down only the second decoder.
+        val survivor = secondaryIndex
+        exitSplit(restoreMainAudio = false)
+        playlistIndex = survivor
+        selectPreferredSource(playlistIndex)
+        updateNavigationUi()
+        updateFavoriteUi()
+        open()
+        showControls(requestTransportFocus = true)
+    }
+
+    private fun changeFocusedSplitChannel(direction: Int) {
+        if (!splitActive || direction == 0) return
+        if (splitFocusedPane == 1) {
+            Media3PlaybackPolicy.nextSplitIndex(
+                secondaryIndex,
+                playlistIndex,
+                direction,
+                playlistUrls.size
+            )?.let(::openSecondary)
+        } else {
+            Media3PlaybackPolicy.nextSplitIndex(
+                playlistIndex,
+                secondaryIndex,
+                direction,
+                playlistUrls.size
+            )?.let { openPlaylistItem(it, direction) }
+        }
+    }
+
+    private fun exitSplit(restoreMainAudio: Boolean = true) {
+        secondaryOpenGeneration += 1
+        secondaryPlayerView?.player = null
+        secondaryPlayer?.release()
+        secondaryPlayer = null
+        secondaryPlayerView?.let { secondaryPane.removeView(it) }
+        secondaryPlayerView = null
+        secondaryIndex = -1
+        secondaryRetryAttempt = 0
+        splitFocusedPane = 0
+        splitAudioOnSecondary = false
+        if (::secondaryPane.isInitialized && secondaryPane.parent === videoHost) {
+            videoHost.removeView(secondaryPane)
+        }
+        secondaryPane.visibility = View.GONE
+        mainPane.layoutParams = LinearLayout.LayoutParams(
+            0,
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            1f
+        )
+        mainPaneLabel.visibility = View.GONE
+        secondaryPaneLabel.visibility = View.GONE
+        secondaryStatus.visibility = View.GONE
+        if (restoreMainAudio && ::player.isInitialized) applySplitVolumes()
+        updateSplitControls()
+        playerView.requestFocus()
     }
 
     private fun buildSeekFeedback(): TextView = TextView(this).apply {
@@ -868,6 +1318,22 @@ class Media3PlayerActivity : Activity() {
         qualityButton = toolButton("HD", "Quality", "Choose video quality") {
             showTrackDialog(C.TRACK_TYPE_VIDEO, "Quality", allowOff = false)
         }.apply { isEnabled = false }
+        splitButton = toolButton("▣", "Split view", "Add split view") {
+            if (splitActive) exitSplit() else showSplitChannelDialog()
+        }.apply {
+            visibility = if (
+                isTelevisionDevice && isLive && playlistUrls.size > 1
+            ) View.VISIBLE else View.GONE
+        }
+        swapAudioButton = toolButton("♪", "Swap audio", "Move audio to the other screen") {
+            toggleSplitAudio()
+        }.apply { visibility = View.GONE }
+        swapViewsButton = toolButton("⇄", "Swap views", "Make the second channel primary") {
+            swapSplitStreams()
+        }.apply { visibility = View.GONE }
+        closePaneButton = toolButton("×", "Close pane", "Close the selected screen") {
+            closeFocusedSplitPane()
+        }.apply { visibility = View.GONE }
         moreButton = toolButton("⋮", "More", "More playback options") {
             showMoreDialog()
         }
@@ -880,6 +1346,10 @@ class Media3PlayerActivity : Activity() {
         tools.addView(subtitleButton, transportParams(dp(92), dp(56), margin = 3))
         tools.addView(audioButton, transportParams(dp(92), dp(56), margin = 3))
         tools.addView(qualityButton, transportParams(dp(92), dp(56), margin = 3))
+        tools.addView(splitButton, transportParams(dp(92), dp(56), margin = 3))
+        tools.addView(swapAudioButton, transportParams(dp(92), dp(56), margin = 3))
+        tools.addView(swapViewsButton, transportParams(dp(92), dp(56), margin = 3))
+        tools.addView(closePaneButton, transportParams(dp(92), dp(56), margin = 3))
         tools.addView(moreButton, transportParams(dp(92), dp(56), margin = 3))
         // Match the shared Flutter player: transport owns a clear row above
         // the timeline, while secondary tools remain below it. Keeping these
@@ -1251,8 +1721,25 @@ class Media3PlayerActivity : Activity() {
 
     private fun updateNavigationUi() {
         if (!::previousButton.isInitialized) return
-        previousButton.isEnabled = playlistIndex > 0
-        nextButton.isEnabled = playlistIndex < playlistUrls.lastIndex
+        if (splitActive) {
+            val current = if (splitFocusedPane == 1) secondaryIndex else playlistIndex
+            val blocked = if (splitFocusedPane == 1) playlistIndex else secondaryIndex
+            previousButton.isEnabled = Media3PlaybackPolicy.nextSplitIndex(
+                current,
+                blocked,
+                -1,
+                playlistUrls.size
+            ) != null
+            nextButton.isEnabled = Media3PlaybackPolicy.nextSplitIndex(
+                current,
+                blocked,
+                1,
+                playlistUrls.size
+            ) != null
+        } else {
+            previousButton.isEnabled = playlistIndex > 0
+            nextButton.isEnabled = playlistIndex < playlistUrls.lastIndex
+        }
         val showPlaylistNavigation = Media3PlaybackPolicy.showPlaylistNavigation(
             isTelevisionDevice,
             playlistUrls.size
@@ -1268,6 +1755,11 @@ class Media3PlayerActivity : Activity() {
         playlistButton.isEnabled = playlistUrls.size > 1
         playlistButton.visibility = if (playlistUrls.size > 1) View.VISIBLE else View.GONE
         playlistButton.text = if (isLive) "▦\nChannels" else "▦\nEpisodes"
+        if (::splitButton.isInitialized) {
+            splitButton.visibility = if (
+                isTelevisionDevice && isLive && playlistUrls.size > 1
+            ) View.VISIBLE else View.GONE
+        }
         updateTitleUi()
         updateFocusGraph()
         updateErrorNavigationUi()
@@ -1280,6 +1772,10 @@ class Media3PlayerActivity : Activity() {
             subtitleButton,
             audioButton,
             qualityButton,
+            splitButton,
+            swapAudioButton,
+            swapViewsButton,
+            closePaneButton,
             moreButton
         ).filter {
             it.visibility == View.VISIBLE && it.isEnabled
@@ -1339,6 +1835,7 @@ class Media3PlayerActivity : Activity() {
         externalSubtitleName = ""
         updateNavigationUi()
         updateFavoriteUi()
+        updateSplitPaneChrome()
         open()
         showControls()
         if (!isLive && navigationDirection != 0) {
@@ -1369,12 +1866,13 @@ class Media3PlayerActivity : Activity() {
     private fun toggleKeyboardMute() {
         if (keyboardMuted) {
             keyboardMuted = false
-            player.volume = volumeBeforeMute.coerceAtLeast(0.1f)
+            volumeBeforeMute = volumeBeforeMute.coerceAtLeast(0.1f)
         } else {
-            if (player.volume > 0f) volumeBeforeMute = player.volume
+            val audible = if (splitAudioOnSecondary) secondaryPlayer?.volume else player.volume
+            if ((audible ?: 0f) > 0f) volumeBeforeMute = audible!!
             keyboardMuted = true
-            player.volume = 0f
         }
+        applySplitVolumes()
         Toast.makeText(
             this,
             if (keyboardMuted) "Muted" else "Sound on",
@@ -1503,11 +2001,32 @@ class Media3PlayerActivity : Activity() {
                 ?.takeIf { it.isNotBlank() }
                 ?: "$fallbackName ${index + 1}"
         }.toTypedArray()
+        val selectedIndex = if (splitActive && splitFocusedPane == 1) {
+            secondaryIndex
+        } else {
+            playlistIndex
+        }
         val dialog = AlertDialog.Builder(this)
-            .setTitle(if (isLive) "Channels" else "Episodes")
-            .setSingleChoiceItems(labels, playlistIndex) { activeDialog, index ->
+            .setTitle(
+                if (splitActive) {
+                    if (splitFocusedPane == 1) "Second-screen channel" else "Main-screen channel"
+                } else if (isLive) "Channels" else "Episodes"
+            )
+            .setSingleChoiceItems(labels, selectedIndex) { activeDialog, index ->
                 activeDialog.dismiss()
-                if (index != playlistIndex) openPlaylistItem(index)
+                if (splitActive && splitFocusedPane == 1) {
+                    if (index != secondaryIndex) openSecondary(index)
+                } else if (index != playlistIndex) {
+                    if (splitActive && index == secondaryIndex) {
+                        Toast.makeText(
+                            this,
+                            "That channel is already on the second screen.",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    } else {
+                        openPlaylistItem(index)
+                    }
+                }
             }
             .setNegativeButton("Cancel", null)
             .create()
@@ -1776,6 +2295,14 @@ class Media3PlayerActivity : Activity() {
         return builder.build()
     }
 
+    private fun buildMediaItemForUrl(itemUrl: String): MediaItem {
+        val builder = MediaItem.Builder().setUri(Uri.parse(itemUrl))
+        if (Uri.parse(itemUrl).path.orEmpty().endsWith(".m3u8", ignoreCase = true)) {
+            builder.setMimeType(MimeTypes.APPLICATION_M3U8)
+        }
+        return builder.build()
+    }
+
     private fun showTrackDialog(type: Int, title: String, allowOff: Boolean) {
         val choices = trackChoices(player.currentTracks, type)
         if (choices.isEmpty()) return
@@ -1901,7 +2428,7 @@ class Media3PlayerActivity : Activity() {
         titleBar.alpha = 1f
         controlsBar.alpha = 1f
         centerTransport.alpha = 1f
-        titleBar.visibility = View.VISIBLE
+        titleBar.visibility = if (splitActive) View.GONE else View.VISIBLE
         controlsBar.visibility = View.VISIBLE
         centerTransport.visibility = View.VISIBLE
         updateTransportUi()
@@ -1938,7 +2465,11 @@ class Media3PlayerActivity : Activity() {
         if (!force && (!::player.isInitialized || !player.isPlaying)) return
         handler.removeCallbacks(hideControls)
         controlsVisible = false
-        playerView.requestFocus()
+        if (splitActive && splitFocusedPane == 1) {
+            secondaryPlayerView?.requestFocus()
+        } else {
+            playerView.requestFocus()
+        }
         titleBar.animate().cancel()
         controlsBar.animate().cancel()
         centerTransport.animate().cancel()
@@ -2267,6 +2798,11 @@ class Media3PlayerActivity : Activity() {
                 hideControls(force = true)
                 return true
             }
+            if (splitActive) {
+                exitSplit()
+                showControls(requestTransportFocus = true)
+                return true
+            }
             finish()
             return true
         }
@@ -2339,12 +2875,22 @@ class Media3PlayerActivity : Activity() {
                 KeyEvent.KEYCODE_NUMPAD_ENTER -> if (
                     !controlsVisible || playerView.hasFocus()
                 ) {
+                    if (splitActive && splitFocusedPane == 1) {
+                        if (event.repeatCount == 0) swapSplitStreams()
+                        return true
+                    }
                     if (event.repeatCount == 0) togglePlayPause()
                     showControlsFromRemote()
                     scheduleControlsHide()
                     return true
                 }
                 KeyEvent.KEYCODE_DPAD_LEFT -> if (
+                    splitActive && !controlsVisible
+                ) {
+                    selectSplitPane(0)
+                    playerView.requestFocus()
+                    return true
+                } else if (
                     !isLive &&
                     (!controlsVisible || playerView.hasFocus())
                 ) {
@@ -2354,6 +2900,12 @@ class Media3PlayerActivity : Activity() {
                     return true
                 }
                 KeyEvent.KEYCODE_DPAD_RIGHT -> if (
+                    splitActive && !controlsVisible
+                ) {
+                    selectSplitPane(1)
+                    secondaryPlayerView?.requestFocus()
+                    return true
+                } else if (
                     !isLive &&
                     (!controlsVisible || playerView.hasFocus())
                 ) {
@@ -2387,12 +2939,14 @@ class Media3PlayerActivity : Activity() {
             when (event.keyCode) {
                 KeyEvent.KEYCODE_CHANNEL_UP,
                 KeyEvent.KEYCODE_MEDIA_NEXT -> {
-                    openPlaylistItem(playlistIndex + 1)
+                    if (splitActive) changeFocusedSplitChannel(1)
+                    else openPlaylistItem(playlistIndex + 1)
                     return true
                 }
                 KeyEvent.KEYCODE_CHANNEL_DOWN,
                 KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
-                    openPlaylistItem(playlistIndex - 1)
+                    if (splitActive) changeFocusedSplitChannel(-1)
+                    else openPlaylistItem(playlistIndex - 1)
                     return true
                 }
             }
@@ -2417,6 +2971,9 @@ class Media3PlayerActivity : Activity() {
             playerView.player = null
             player.release()
         }
+        secondaryPlayerView?.player = null
+        secondaryPlayer?.release()
+        secondaryPlayer = null
         super.onDestroy()
     }
 
