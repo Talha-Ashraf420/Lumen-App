@@ -138,9 +138,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   final Map<int, Widget> _pageCache = <int, Widget>{};
   bool _exitDialogOpen = false;
 
-  // Phones and larger screens share the same page map. The phone dock promotes
-  // the three catalog pages to first-class destinations, while the account and
-  // personal-library pages live in a compact utility hub.
+  // Phones and larger screens share the same page map. Guide remains a
+  // television/desktop destination; the phone dock promotes only the three
+  // playable catalogs while personal pages live in a compact utility hub.
   static const _pageCount = 9;
 
   bool _allows(int page) => _capabilities.allows(page);
@@ -543,6 +543,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
 
   void _select(int i, {bool rememberCurrent = true, bool focusContent = true}) {
     if (!_allows(i)) return;
+    if (i == 8 && DeviceProfile.isMobileApp) return;
     if (i == _index) {
       if (focusContent) _focusPageContent(i);
       return;
@@ -704,11 +705,19 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
 
   // ---- mobile: floating bottom nav ----
   Widget _mobileLayout(List<Widget> pages) {
+    // A desktop window can be resized while Guide is active. Never leave the
+    // narrow layout pointing at a destination that mobile intentionally hides.
+    final mobileIndex = _index == 8 && DeviceProfile.isMobileApp ? 0 : _index;
+    if (_index == 8 && DeviceProfile.isMobileApp) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _index == 8) _select(0, rememberCurrent: false);
+      });
+    }
     return Stack(
       children: [
         SafeArea(
           bottom: false,
-          child: IndexedStack(index: _index, children: pages),
+          child: IndexedStack(index: mobileIndex, children: pages),
         ),
         if (_index == 0)
           Positioned(
@@ -716,36 +725,35 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
             right: 16,
             child: SafeArea(bottom: false, child: _mobileUtilityButton()),
           ),
-        if (_index != 8)
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: SafeArea(
-              top: false,
-              // Draw the page edge-to-edge, but keep every navigation target
-              // above Android's gesture handle or three-button navigation bar.
-              minimum: const EdgeInsets.fromLTRB(16, 0, 16, 22),
-              child:
-                  Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 7,
-                          vertical: 7,
-                        ),
-                        decoration: BoxDecoration(
-                          color: surface.withValues(alpha: 0.96),
-                          borderRadius: BorderRadius.circular(lumenCorner(24)),
-                          border: Border.all(color: line),
-                          boxShadow: glow(Colors.black, blur: 26, y: 12),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [for (final nav in _mobileDock) _item(nav)],
-                        ),
-                      )
-                      .animate()
-                      .fadeIn(delay: 150.ms)
-                      .slideY(begin: 0.6, end: 0, curve: Curves.easeOutBack),
-            ),
+        Align(
+          alignment: Alignment.bottomCenter,
+          child: SafeArea(
+            top: false,
+            // Draw the page edge-to-edge, but keep every navigation target
+            // above Android's gesture handle or three-button navigation bar.
+            minimum: const EdgeInsets.fromLTRB(16, 0, 16, 22),
+            child:
+                Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 7,
+                      ),
+                      decoration: BoxDecoration(
+                        color: surface.withValues(alpha: 0.96),
+                        borderRadius: BorderRadius.circular(lumenCorner(24)),
+                        border: Border.all(color: line),
+                        boxShadow: glow(Colors.black, blur: 26, y: 12),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [for (final nav in _mobileDock) _item(nav)],
+                      ),
+                    )
+                    .animate()
+                    .fadeIn(delay: 150.ms)
+                    .slideY(begin: 0.6, end: 0, curve: Curves.easeOutBack),
           ),
+        ),
       ],
     );
   }
@@ -757,7 +765,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     if (_capabilities.series)
       const _Nav(Icons.amp_stories_rounded, 'Series', 5),
     if (_capabilities.live) const _Nav(Icons.sensors_rounded, 'Live', 6),
-    if (_capabilities.live)
+    if (_capabilities.live && !DeviceProfile.isMobileApp)
       const _Nav(Icons.calendar_view_week_rounded, 'Guide', 8),
     const _Nav(Icons.search_rounded, 'Search', 1),
   ];
@@ -1139,7 +1147,11 @@ class _SignalDock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final main = _mainDock
-        .where((nav) => capabilities.allows(nav.page))
+        .where(
+          (nav) =>
+              capabilities.allows(nav.page) &&
+              !(nav.page == 8 && DeviceProfile.isMobileApp),
+        )
         .toList();
     final ordered = <_Nav>[...main, ..._utilityDock];
 

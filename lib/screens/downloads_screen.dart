@@ -295,7 +295,9 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                       ? 'Save films and episodes for moments without a connection.'
                       : '$ready ready offline${totalBytes > 0 ? ' · ${_bytes(totalBytes)}' : ''}',
                   icon: Icons.download_done_rounded,
-                  onBack: canBack ? () => Navigator.of(context).pop() : null,
+                  onBack: canBack
+                      ? () => Navigator.of(context).maybePop()
+                      : null,
                   trailing: Downloads.instance.folderPath == null
                       ? null
                       : RemoteTap(

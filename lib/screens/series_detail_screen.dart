@@ -260,7 +260,7 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
                         message:
                             'The provider did not return episode information. Go back or refresh the catalog and try again.',
                         actionLabel: 'Go back',
-                        onAction: () => Navigator.of(context).pop(),
+                        onAction: () => Navigator.of(context).maybePop(),
                       ),
                     )
                   else if (loading)
@@ -301,7 +301,7 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
                     padding: const EdgeInsets.all(10),
                     child: LumenBackButton(
                       key: const ValueKey('series-detail-back'),
-                      onTap: () => Navigator.of(context).pop(),
+                      onTap: () => Navigator.of(context).maybePop(),
                     ),
                   ),
                 ),

@@ -71,7 +71,7 @@ class _StatsScreenState extends State<StatsScreen> {
                           ? 'Your activity becomes a private story, kept only on this device.'
                           : '${s.titleCount} ${s.titleCount == 1 ? 'title' : 'titles'} across films, series and live TV',
                       icon: Icons.insights_rounded,
-                      onBack: () => Navigator.of(context).pop(),
+                      onBack: () => Navigator.of(context).maybePop(),
                       trailing: s.total > 0
                           ? RemoteTap(
                               onTap: s.reset,

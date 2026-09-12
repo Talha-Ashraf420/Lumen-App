@@ -490,7 +490,9 @@ class SearchScreenState extends State<SearchScreen>
       return KeyEventResult.handled;
     }
     if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-      if (_browse && _section == 'live') _guideFocus.requestFocus();
+      if (_browse && _section == 'live' && _epgEnabled) {
+        _guideFocus.requestFocus();
+      }
       return KeyEventResult.handled;
     }
     return KeyEventResult.ignored;
@@ -1087,7 +1089,7 @@ class SearchScreenState extends State<SearchScreen>
       _cacheSignatures[pageKey] = signature;
       _stalePages.remove(pageKey);
     });
-    if (section == 'live') {
+    if (section == 'live' && _epgEnabled) {
       final visible = _liveByCat[cat] ?? const <LiveStream>[];
       unawaited(_epg.primeVisible(visible.take(16)));
     }
@@ -1153,6 +1155,7 @@ class SearchScreenState extends State<SearchScreen>
   }
 
   void _openGuide() {
+    if (!_epgEnabled) return;
     final channels = _liveByCat[_cat] ?? const <LiveStream>[];
     if (channels.isEmpty) return;
     _push(
@@ -1195,6 +1198,8 @@ class SearchScreenState extends State<SearchScreen>
   // Dedicated browse mode (Movies / Series / Live sidebar entries): a titled
   // catalog page — no search bar or section chips, just category + sort + grid.
   bool get _browse => widget.initialSection != null;
+  bool get _epgEnabled => !DeviceProfile.isMobileApp;
+
   String get _sectionTitle => switch (_section) {
     'movie' => 'Movies',
     'series' => 'Series',
@@ -1262,7 +1267,7 @@ class SearchScreenState extends State<SearchScreen>
               padding: const EdgeInsets.only(right: 2),
               child: IconButton(
                 autofocus: true,
-                onPressed: () => Navigator.of(context).pop(),
+                onPressed: () => Navigator.of(context).maybePop(),
                 icon: Icon(Icons.arrow_back_rounded, color: textHi),
               ),
             ),
@@ -1296,7 +1301,7 @@ class SearchScreenState extends State<SearchScreen>
           ),
           const SizedBox(width: 12),
           _sortButton(),
-          if (_section == 'live') ...[
+          if (_section == 'live' && _epgEnabled) ...[
             const SizedBox(width: 8),
             OutlinedButton.icon(
               focusNode: _guideFocus,
@@ -1895,6 +1900,7 @@ class SearchScreenState extends State<SearchScreen>
     }
 
     final more = _hasMore[pageKey] ?? false;
+    final showEpg = live && _epgEnabled;
     return LayoutBuilder(
       builder: (context, constraints) {
         final columns = gridColumns(
@@ -1913,7 +1919,7 @@ class SearchScreenState extends State<SearchScreen>
             if (more && notification.metrics.extentAfter < 900) {
               _loadNext(_section, catId);
             }
-            if (live && notification.metrics.axis == Axis.vertical) {
+            if (showEpg && notification.metrics.axis == Axis.vertical) {
               final firstRow = (notification.metrics.pixels / rowExtent)
                   .floor()
                   .clamp(0, math.max(0, (chans.length / columns).ceil() - 1));
@@ -1970,7 +1976,9 @@ class SearchScreenState extends State<SearchScreen>
                           onFocusChange: (focused) {
                             if (focused) {
                               _lastGridIndex = i;
-                              unawaited(_epg.primeChannel(chans[i]));
+                              if (showEpg) {
+                                unawaited(_epg.primeChannel(chans[i]));
+                              }
                             }
                           },
                           onKeyEvent: (_, event) => _moveGridFocus(
@@ -1984,16 +1992,24 @@ class SearchScreenState extends State<SearchScreen>
                           logo: items[i].image,
                           backupLogo: items[i].fallbackImage,
                           favoriteRef: items[i].favoriteRef,
-                          nowTitle:
-                              _epg.nowNextFor(chans[i].streamId).now?.title ??
-                              '',
-                          nextTitle:
-                              _epg.nowNextFor(chans[i].streamId).next?.title ??
-                              '',
-                          programmeProgress: _epgProgress(
-                            _epg.nowNextFor(chans[i].streamId).now,
-                          ),
-                          epgLoading: _epg.isLoading(chans[i].streamId),
+                          nowTitle: showEpg
+                              ? _epg.nowNextFor(chans[i].streamId).now?.title ??
+                                    ''
+                              : '',
+                          nextTitle: showEpg
+                              ? _epg
+                                        .nowNextFor(chans[i].streamId)
+                                        .next
+                                        ?.title ??
+                                    ''
+                              : '',
+                          programmeProgress: showEpg
+                              ? _epgProgress(
+                                  _epg.nowNextFor(chans[i].streamId).now,
+                                )
+                              : null,
+                          epgLoading:
+                              showEpg && _epg.isLoading(chans[i].streamId),
                           index: i,
                           onTap: items[i].onTap,
                         )
@@ -2027,6 +2043,7 @@ class SearchScreenState extends State<SearchScreen>
 
   Widget _group(String id, String title, List<_Res> items) {
     final focusNodes = _searchResultFocus[id]!;
+    final showEpg = _epgEnabled;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2056,16 +2073,24 @@ class SearchScreenState extends State<SearchScreen>
                       logo: items[i].image,
                       backupLogo: items[i].fallbackImage,
                       favoriteRef: items[i].favoriteRef,
-                      nowTitle:
-                          _epg.nowNextFor(items[i].liveStreamId).now?.title ??
-                          '',
-                      nextTitle:
-                          _epg.nowNextFor(items[i].liveStreamId).next?.title ??
-                          '',
-                      programmeProgress: _epgProgress(
-                        _epg.nowNextFor(items[i].liveStreamId).now,
-                      ),
-                      epgLoading: _epg.isLoading(items[i].liveStreamId),
+                      nowTitle: showEpg
+                          ? _epg.nowNextFor(items[i].liveStreamId).now?.title ??
+                                ''
+                          : '',
+                      nextTitle: showEpg
+                          ? _epg
+                                    .nowNextFor(items[i].liveStreamId)
+                                    .next
+                                    ?.title ??
+                                ''
+                          : '',
+                      programmeProgress: showEpg
+                          ? _epgProgress(
+                              _epg.nowNextFor(items[i].liveStreamId).now,
+                            )
+                          : null,
+                      epgLoading:
+                          showEpg && _epg.isLoading(items[i].liveStreamId),
                       index: i,
                       onTap: items[i].onTap,
                     )

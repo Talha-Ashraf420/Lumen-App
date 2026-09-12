@@ -260,7 +260,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                 padding: const EdgeInsets.all(10),
                 child: LumenBackButton(
                   key: const ValueKey('movie-detail-back'),
-                  onTap: () => Navigator.of(context).pop(),
+                  onTap: () => Navigator.of(context).maybePop(),
                 ),
               ),
             ),

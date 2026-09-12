@@ -18,6 +18,14 @@ class DeviceProfile {
 
   static bool isTelevision = false;
 
+  /// True for the installed phone/tablet application. Android TV is kept
+  /// separate even though it shares Android as its operating system.
+  static bool get isMobileApp =>
+      !kIsWeb &&
+      !isTelevision &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS);
+
   /// Native panel mode rather than Flutter's render-surface size. Several 4K
   /// Android TVs render applications into a 1080p surface, so MediaQuery alone
   /// cannot tell that their density needs normalising.

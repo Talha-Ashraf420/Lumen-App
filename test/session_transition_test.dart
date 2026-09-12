@@ -143,4 +143,26 @@ void main() {
       isTrue,
     );
   });
+
+  testWidgets('Back on the root login cannot leave a black navigator', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(theme: buildTheme(darkPalette), home: const SessionGate()),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.byType(LoginScreen), findsOneWidget);
+
+    await tester.binding.handlePopRoute();
+    await tester.pump();
+
+    expect(find.byType(LoginScreen), findsOneWidget);
+    expect(find.text('Exit Lumen?'), findsOneWidget);
+    await tester.tap(find.widgetWithText(TextButton, 'No'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byType(LoginScreen), findsOneWidget);
+    expect(find.text('Exit Lumen?'), findsNothing);
+  });
 }

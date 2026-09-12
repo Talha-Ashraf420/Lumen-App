@@ -284,6 +284,7 @@ class _SessionGateState extends State<SessionGate> {
   bool _loading = true;
   String _loadingLabel = 'RESTORING YOUR SESSION';
   int _sessionChange = 0;
+  bool _exitDialogOpen = false;
 
   @override
   void initState() {
@@ -479,12 +480,17 @@ class _SessionGateState extends State<SessionGate> {
       builder: (context, mode, _) {
         resolvePalette(mode, MediaQuery.platformBrightnessOf(context));
         if (_loading) {
-          return SessionLoading(message: _loadingLabel);
+          return PopScope(
+            canPop: false,
+            child: SessionLoading(message: _loadingLabel),
+          );
         }
         if (!_legalAccepted) {
-          return LegalWelcomeScreen(onAccepted: _acceptLegal);
+          return _rootExitGuard(LegalWelcomeScreen(onAccepted: _acceptLegal));
         }
-        if (_creds == null) return LoginScreen(onLogin: _onLogin);
+        if (_creds == null) {
+          return _rootExitGuard(LoginScreen(onLogin: _onLogin));
+        }
         _client ??= XtreamClient(_creds!);
         activeClient = _client; // expose to the app-level player (split picker)
         // Key by the active profile so switching fully remounts all tabs with
@@ -497,5 +503,21 @@ class _SessionGateState extends State<SessionGate> {
         );
       },
     );
+  }
+
+  Widget _rootExitGuard(Widget child) => PopScope(
+    canPop: false,
+    onPopInvokedWithResult: (didPop, _) {
+      if (!didPop) unawaited(_requestRootExit());
+    },
+    child: child,
+  );
+
+  Future<void> _requestRootExit() async {
+    if (_exitDialogOpen || !mounted) return;
+    _exitDialogOpen = true;
+    final shouldExit = await showHomeExitConfirmation(context);
+    _exitDialogOpen = false;
+    if (shouldExit && mounted) await SystemNavigator.pop();
   }
 }

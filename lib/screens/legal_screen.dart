@@ -137,7 +137,7 @@ class LegalScreen extends StatelessWidget {
                   subtitle:
                       'Plain-language details about what Lumen does, stores and connects to.',
                   icon: Icons.shield_outlined,
-                  onBack: () => Navigator.of(context).pop(),
+                  onBack: () => Navigator.of(context).maybePop(),
                 ),
                 Expanded(
                   child: LayoutBuilder(

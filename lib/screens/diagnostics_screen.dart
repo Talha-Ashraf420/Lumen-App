@@ -161,7 +161,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
         RemoteTap(
           autofocus: true,
           semanticLabel: 'Back from diagnostics',
-          onTap: () => Navigator.of(context).pop(),
+          onTap: () => Navigator.of(context).maybePop(),
           focusRadius: 14,
           child: Container(
             width: 46,

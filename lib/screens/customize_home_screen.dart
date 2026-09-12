@@ -71,7 +71,7 @@ class _CustomizeHomeScreenState extends State<CustomizeHomeScreen> {
                         ? '${HomeConfig.instance.shelves.length} shelves will appear in this order on Home.'
                         : 'Choose the collections that deserve a place on Home.',
                     icon: Icons.dashboard_customize_rounded,
-                    onBack: () => Navigator.of(context).pop(),
+                    onBack: () => Navigator.of(context).maybePop(),
                     trailing: HomeConfig.instance.isCustom
                         ? RemoteTap(
                             onTap: () {

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' hide Category;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -213,6 +214,8 @@ void main() {
   testWidgets('live-only M3U hides unavailable movie and series destinations', (
     tester,
   ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(1280, 900);
     addTearDown(tester.view.resetDevicePixelRatio);
@@ -240,6 +243,7 @@ void main() {
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
+    debugDefaultTargetPlatformOverride = null;
   });
 
   testWidgets('full catalog has no Discover destination', (tester) async {
@@ -585,6 +589,8 @@ void main() {
   testWidgets('every TV destination has stable content and top-bar routes', (
     tester,
   ) async {
+    DeviceProfile.isTelevision = true;
+    addTearDown(() => DeviceProfile.isTelevision = false);
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(1920, 1080);
     addTearDown(tester.view.resetDevicePixelRatio);
@@ -941,9 +947,11 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
   });
 
-  testWidgets('phone dock promotes each supported catalog destination', (
+  testWidgets('phone dock hides Guide and Back safely returns to Home', (
     tester,
   ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(390, 844);
     addTearDown(tester.view.resetDevicePixelRatio);
@@ -974,23 +982,24 @@ void main() {
     expect(find.text('Movies'), findsOneWidget);
     expect(find.text('Series'), findsOneWidget);
     expect(find.text('Live'), findsOneWidget);
-    expect(find.text('Guide'), findsOneWidget);
+    expect(find.byTooltip('Guide'), findsNothing);
     expect(find.text('Search'), findsOneWidget);
     expect(find.text('My List'), findsNothing);
     expect(find.text('Profile'), findsNothing);
     expect(find.text('Discover'), findsNothing);
     expect(tester.takeException(), isNull);
 
-    await tester.tap(find.byTooltip('Guide'));
+    await tester.tap(find.byTooltip('Live'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.byTooltip('Guide'), findsNothing);
-    expect(find.byTooltip('Back from guide'), findsOneWidget);
+    expect(find.byTooltip('You & library'), findsNothing);
 
-    await tester.tap(find.byTooltip('Back from guide'));
+    await tester.binding.handlePopRoute();
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
-    expect(find.byTooltip('Guide'), findsOneWidget);
+    expect(find.byTooltip('You & library'), findsOneWidget);
+    expect(find.byTooltip('Guide'), findsNothing);
 
     final utilityRect = tester.getRect(find.byTooltip('You & library'));
     expect(utilityRect.top, lessThan(100));
@@ -1008,5 +1017,49 @@ void main() {
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
+    debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets('Android tablet rail also hides Guide', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    DeviceProfile.isTelevision = false;
+    addTearDown(() {
+      debugDefaultTargetPlatformOverride = null;
+      DeviceProfile.isTelevision = false;
+    });
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1280, 900);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    final client = _FullCatalogClient();
+    await tester.runAsync(
+      () => Future.wait([
+        CatalogCache.instance.vod(client, priority: true),
+        CatalogCache.instance.series(client, priority: true),
+        CatalogCache.instance.live(client, priority: true),
+      ]),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildTheme(darkPalette),
+        home: HomeShell(
+          client: client,
+          onLogout: () async {},
+          onSwitch: (_) {},
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 2));
+
+    expect(find.byTooltip('Home'), findsOneWidget);
+    expect(find.byTooltip('Live'), findsOneWidget);
+    expect(find.byTooltip('Guide'), findsNothing);
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    debugDefaultTargetPlatformOverride = null;
   });
 }

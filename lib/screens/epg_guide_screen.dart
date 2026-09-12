@@ -341,8 +341,8 @@ class _EpgGuideScreenState extends State<EpgGuideScreen> {
       final externalTarget = widget.externalLeftFocusNode;
       if (externalTarget != null) {
         externalTarget.requestFocus();
-      } else if (widget.showBackButton) {
-        Navigator.of(context).pop();
+      } else if (widget.showBackButton && event is KeyDownEvent) {
+        unawaited(Navigator.of(context).maybePop());
       }
       return KeyEventResult.handled;
     }
@@ -608,7 +608,7 @@ class _EpgGuideScreenState extends State<EpgGuideScreen> {
             focusNode: _backFocus,
             icon: Icons.arrow_back_rounded,
             label: 'Live',
-            onTap: () => Navigator.of(context).pop(),
+            onTap: () => Navigator.of(context).maybePop(),
             onDown: () => _requestChannel(0),
           ),
           const SizedBox(width: 14),
