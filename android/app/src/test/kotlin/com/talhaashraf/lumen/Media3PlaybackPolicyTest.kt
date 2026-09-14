@@ -136,6 +136,16 @@ class Media3PlaybackPolicyTest {
     }
 
     @Test
+    fun televisionSplitKeepsTheSecondaryPaneAtAUsableWidth() {
+        val weights = Media3PlaybackPolicy.splitPaneWeights()
+
+        assertEquals(1f, weights.primary + weights.secondary, 0.001f)
+        assertEquals(0.64f, weights.primary, 0.001f)
+        assertEquals(0.36f, weights.secondary, 0.001f)
+        assertTrue(weights.secondary >= 0.36f)
+    }
+
+    @Test
     fun onDemandResumesFromTheNewestKnownPositionWhileLiveStartsAtEdge() {
         assertEquals(
             420_000L,

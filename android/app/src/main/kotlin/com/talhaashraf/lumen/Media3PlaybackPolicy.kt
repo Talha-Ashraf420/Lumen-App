@@ -9,6 +9,11 @@ internal data class Media3BufferDurations(
     val retainBackBufferFromKeyframe: Boolean
 )
 
+internal data class Media3SplitPaneWeights(
+    val primary: Float,
+    val secondary: Float
+)
+
 internal enum class Media3PlaybackMode {
     BALANCED,
     STABLE,
@@ -30,6 +35,11 @@ internal enum class SeekFeedbackSide { LEFT, CENTER, RIGHT }
  * so the behavior can be covered by fast JVM tests.
  */
 internal object Media3PlaybackPolicy {
+    private val televisionSplitWeights = Media3SplitPaneWeights(
+        primary = 0.64f,
+        secondary = 0.36f
+    )
+
     private val onDemand = Media3BufferDurations(
         minBufferMs = 45_000,
         maxBufferMs = 120_000,
@@ -99,6 +109,8 @@ internal object Media3PlaybackPolicy {
 
     fun showSeekNavigation(isTelevision: Boolean, isLive: Boolean): Boolean =
         isTelevision && !isLive
+
+    fun splitPaneWeights(): Media3SplitPaneWeights = televisionSplitWeights
 
     fun resumePositionMs(
         isLive: Boolean,

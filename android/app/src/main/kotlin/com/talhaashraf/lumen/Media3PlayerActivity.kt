@@ -431,6 +431,7 @@ class Media3PlayerActivity : Activity() {
             // The native SurfaceView remains in charge of video rendering, but
             // Lumen owns every visible control and every D-pad focus edge.
             setUseController(false)
+            resizeMode = selectedResizeMode
             isFocusable = true
             keepScreenOn = true
             setKeepContentOnPlayerReset(true)
@@ -462,6 +463,7 @@ class Media3PlayerActivity : Activity() {
 
         videoHost = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
+            weightSum = 1f
             setBackgroundColor(Color.BLACK)
             addView(
                 mainPane,
@@ -993,6 +995,10 @@ class Media3PlayerActivity : Activity() {
                 )
                 setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
                 setUseController(false)
+                // Split view must use the same aspect-ratio policy as the
+                // primary surface. Media3 otherwise falls back to its own
+                // default and makes the second feed look shrunken.
+                resizeMode = selectedResizeMode
                 isFocusable = true
                 keepScreenOn = true
                 setKeepContentOnPlayerReset(true)
@@ -1004,22 +1010,30 @@ class Media3PlayerActivity : Activity() {
             secondaryPane.addView(secondaryPlayerView, 0)
         }
         if (secondaryPane.parent == null) {
+            val weights = Media3PlaybackPolicy.splitPaneWeights()
             videoHost.addView(
                 secondaryPane,
-                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 0.34f)
+                LinearLayout.LayoutParams(
+                    0,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    weights.secondary
+                )
             )
         }
         secondaryPane.visibility = View.VISIBLE
+        val weights = Media3PlaybackPolicy.splitPaneWeights()
         mainPane.layoutParams = LinearLayout.LayoutParams(
             0,
             ViewGroup.LayoutParams.MATCH_PARENT,
-            0.66f
+            weights.primary
         )
         secondaryPane.layoutParams = LinearLayout.LayoutParams(
             0,
             ViewGroup.LayoutParams.MATCH_PARENT,
-            0.34f
+            weights.secondary
         ).apply { marginStart = dp(2) }
+        applyResizeModeToPlayerViews()
+        videoHost.requestLayout()
         mainPaneLabel.visibility = View.VISIBLE
         secondaryPaneLabel.visibility = View.VISIBLE
         playSecondaryCurrent()
@@ -2141,7 +2155,7 @@ class Media3PlayerActivity : Activity() {
             .setItems(labels) { activeDialog, index ->
                 if (index < modes.size) {
                     selectedResizeMode = modes[index]
-                    playerView.resizeMode = selectedResizeMode
+                    applyResizeModeToPlayerViews()
                 } else {
                     playlistFavoriteStates[playlistIndex] = !saved
                     updateFavoriteUi()
@@ -2165,6 +2179,13 @@ class Media3PlayerActivity : Activity() {
             moreButton.post { moreButton.requestFocus() }
         }
         dialog.show()
+    }
+
+    private fun applyResizeModeToPlayerViews() {
+        playerView.resizeMode = selectedResizeMode
+        secondaryPlayerView?.resizeMode = selectedResizeMode
+        playerView.requestLayout()
+        secondaryPlayerView?.requestLayout()
     }
 
     private fun updateFavoriteUi() {
