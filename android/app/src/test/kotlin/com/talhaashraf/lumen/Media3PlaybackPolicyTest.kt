@@ -136,6 +136,56 @@ class Media3PlaybackPolicyTest {
     }
 
     @Test
+    fun onDemandResumesFromTheNewestKnownPositionWhileLiveStartsAtEdge() {
+        assertEquals(
+            420_000L,
+            Media3PlaybackPolicy.resumePositionMs(
+                isLive = false,
+                savedPositionMs = 300_000L,
+                sessionPositionMs = 420_000L
+            )
+        )
+        assertEquals(
+            300_000L,
+            Media3PlaybackPolicy.resumePositionMs(
+                isLive = false,
+                savedPositionMs = 300_000L,
+                sessionPositionMs = 10_000L
+            )
+        )
+        assertEquals(
+            0L,
+            Media3PlaybackPolicy.resumePositionMs(
+                isLive = true,
+                savedPositionMs = 300_000L,
+                sessionPositionMs = 420_000L
+            )
+        )
+    }
+
+    @Test
+    fun liveHubPrioritizesCurrentRecentAndSavedChannelsWithoutDuplicates() {
+        assertEquals(
+            listOf(3, 1, 4, 2, 0, 5),
+            Media3PlaybackPolicy.orderedLiveHubIndices(
+                currentIndex = 3,
+                recentIndices = listOf(1, 3, 4, 99),
+                favoriteStates = listOf(false, false, true, false, true, false),
+                itemCount = 6
+            )
+        )
+        assertEquals(
+            emptyList<Int>(),
+            Media3PlaybackPolicy.orderedLiveHubIndices(
+                currentIndex = 0,
+                recentIndices = emptyList(),
+                favoriteStates = emptyList(),
+                itemCount = 0
+            )
+        )
+    }
+
+    @Test
     fun onDemandRemoteWakeReturnsFocusToCentralTransport() {
         assertTrue(
             Media3PlaybackPolicy.focusTransportOnRemoteInput(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../library.dart';
+import '../focus_return.dart';
 import '../models.dart';
 import '../responsive.dart';
 import '../theme.dart';
@@ -189,7 +190,7 @@ class _MyListScreenState extends State<MyListScreen> {
             client: widget.client,
             movie: VodStream(r.id, r.name, r.image, '', 'mp4', 0, ''),
           );
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => w));
+    pushWithFocusReturn(context, w);
   }
 
   List<MediaRef> _visible(List<MediaRef> items) => _filter == 'all'

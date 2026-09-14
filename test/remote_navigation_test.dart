@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen_tv/device_profile.dart';
 import 'package:lumen_tv/downloads.dart';
+import 'package:lumen_tv/focus_return.dart';
 import 'package:lumen_tv/library.dart';
 import 'package:lumen_tv/models.dart';
 import 'package:lumen_tv/widgets.dart';
@@ -246,6 +247,62 @@ void main() {
     await tester.pumpAndSettle();
     expect(controller.offset, greaterThan(0));
     expect(FocusManager.instance.primaryFocus?.context, isNotNull);
+  });
+
+  testWidgets('horizontal shelf remains clipped while D-pad scrolls it', (
+    tester,
+  ) async {
+    final controller = ScrollController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FocusTraversalGroup(
+          policy: RemoteFocusTraversalPolicy(),
+          child: Scaffold(
+            body: SizedBox(
+              width: 260,
+              height: 90,
+              child: HorizontalShelfViewport(
+                child: ListView.separated(
+                  controller: controller,
+                  scrollDirection: Axis.horizontal,
+                  clipBehavior: Clip.none,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 8,
+                  ),
+                  itemCount: 8,
+                  separatorBuilder: (_, _) => const SizedBox(width: 16),
+                  itemBuilder: (_, index) => RemoteTap(
+                    autofocus: index == 0,
+                    semanticLabel: 'Shelf tile $index',
+                    onTap: () {},
+                    child: const SizedBox(width: 190, height: 70),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byWidgetPredicate(
+        (widget) => widget is ClipRect && widget.child is ShaderMask,
+      ),
+      findsOneWidget,
+    );
+    expect(find.byType(ShaderMask), findsOneWidget);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pumpAndSettle();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pumpAndSettle();
+
+    expect(controller.offset, greaterThan(0));
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('D-pad stays in a lazy grid and reveals the next row', (
@@ -844,5 +901,53 @@ void main() {
 
     expect(spaceReachedTextInput, isTrue);
     expect(focusNode.hasFocus, isTrue);
+  });
+
+  testWidgets('closing a temporary route restores its exact launching tile', (
+    tester,
+  ) async {
+    final firstFocus = FocusNode(debugLabel: 'first tile');
+    final launchFocus = FocusNode(debugLabel: 'launch tile');
+    addTearDown(firstFocus.dispose);
+    addTearDown(launchFocus.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: Row(
+              children: [
+                TextButton(
+                  focusNode: firstFocus,
+                  onPressed: () {},
+                  child: const Text('First'),
+                ),
+                TextButton(
+                  focusNode: launchFocus,
+                  onPressed: () => pushWithFocusReturn(
+                    context,
+                    const Scaffold(body: Text('Details')),
+                  ),
+                  child: const Text('Open details'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    launchFocus.requestFocus();
+    await tester.pump();
+    await tester.tap(find.text('Open details'));
+    await tester.pumpAndSettle();
+    expect(find.text('Details'), findsOneWidget);
+
+    firstFocus.requestFocus();
+    await tester.pump();
+    Navigator.of(tester.element(find.text('Details'))).pop();
+    await tester.pumpAndSettle();
+
+    expect(launchFocus.hasFocus, isTrue);
   });
 }

@@ -104,6 +104,100 @@ class RemoteFocusTraversalPolicy extends ReadingOrderTraversalPolicy {
   }
 }
 
+/// A bounded viewport for horizontally scrolling media shelves.
+///
+/// Home rails sit beside the persistent navigation dock. Without an explicit
+/// visual boundary, cards that scroll off-screen appear to travel underneath
+/// that dock, and focus scaling can paint outside the content canvas. This
+/// viewport clips the rail to its own geometry and adds a small, dynamic edge
+/// fade only while more content exists in that direction.
+class HorizontalShelfViewport extends StatefulWidget {
+  const HorizontalShelfViewport({
+    super.key,
+    required this.child,
+    this.fadeExtent = 22,
+  });
+
+  final Widget child;
+  final double fadeExtent;
+
+  @override
+  State<HorizontalShelfViewport> createState() =>
+      _HorizontalShelfViewportState();
+}
+
+class _HorizontalShelfViewportState extends State<HorizontalShelfViewport> {
+  bool _fadeStart = false;
+  bool _fadeEnd = false;
+  bool _updateScheduled = false;
+  bool _nextFadeStart = false;
+  bool _nextFadeEnd = false;
+
+  void _updateEdges(ScrollMetrics metrics) {
+    _nextFadeStart = metrics.extentBefore > 1;
+    _nextFadeEnd = metrics.extentAfter > 1;
+    if (_nextFadeStart == _fadeStart && _nextFadeEnd == _fadeEnd) return;
+    if (_updateScheduled) return;
+    _updateScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _updateScheduled = false;
+      if (!mounted) return;
+      if (_fadeStart == _nextFadeStart && _fadeEnd == _nextFadeEnd) return;
+      setState(() {
+        _fadeStart = _nextFadeStart;
+        _fadeEnd = _nextFadeEnd;
+      });
+    });
+  }
+
+  bool _onScroll(ScrollNotification notification) {
+    if (notification.metrics.axis == Axis.horizontal) {
+      _updateEdges(notification.metrics);
+    }
+    return false;
+  }
+
+  bool _onMetrics(ScrollMetricsNotification notification) {
+    if (notification.metrics.axis == Axis.horizontal) {
+      _updateEdges(notification.metrics);
+    }
+    return false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final fadeFraction = width.isFinite && width > 0
+            ? (widget.fadeExtent / width).clamp(0.0, .16)
+            : 0.04;
+        return NotificationListener<ScrollMetricsNotification>(
+          onNotification: _onMetrics,
+          child: NotificationListener<ScrollNotification>(
+            onNotification: _onScroll,
+            child: ClipRect(
+              child: ShaderMask(
+                blendMode: BlendMode.dstIn,
+                shaderCallback: (bounds) => LinearGradient(
+                  colors: [
+                    _fadeStart ? Colors.transparent : Colors.white,
+                    Colors.white,
+                    Colors.white,
+                    _fadeEnd ? Colors.transparent : Colors.white,
+                  ],
+                  stops: [0, fadeFraction, 1 - fadeFraction, 1],
+                ).createShader(bounds),
+                child: widget.child,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
 /// Keeps standard Material controls visible too (IconButton, Slider, switch,
 /// dialog buttons), not only Lumen's custom remote widgets.
 class RemoteFocusVisibility extends StatefulWidget {

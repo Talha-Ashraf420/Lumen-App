@@ -17,6 +17,7 @@ import '../pip.dart';
 import '../playback.dart';
 import '../session.dart';
 import '../split.dart';
+import 'live_control_hub.dart';
 import 'split_picker.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -36,6 +37,7 @@ enum PlayerKeyboardCommand {
   volumeDown,
   toggleMute,
   toggleFullscreen,
+  openLiveHub,
   stop,
 }
 
@@ -173,6 +175,9 @@ PlayerKeyboardCommand? playerKeyboardCommandFor(
   }
   if (key == LogicalKeyboardKey.keyF) {
     return PlayerKeyboardCommand.toggleFullscreen;
+  }
+  if (key == LogicalKeyboardKey.keyG) {
+    return PlayerKeyboardCommand.openLiveHub;
   }
   if (key == LogicalKeyboardKey.keyS || key == LogicalKeyboardKey.mediaStop) {
     return PlayerKeyboardCommand.stop;
@@ -434,9 +439,9 @@ class _PlayerHostState extends State<PlayerHost> {
       _pcPlaySub = _scPlaySub = null;
       _promotingSplitItem = true;
       await sc.close();
-      pc.stop();
+      pc.stop(preserveReturnFocus: true);
       _splitMainIsPc = true;
-      pc.open([survivor], 0);
+      pc.open([survivor], 0, captureReturnFocus: false);
       pc.player?.setVolume(_muted ? 0 : _curVol);
       if (!survivor.isLive && resumeAt > Duration.zero) {
         unawaited(_resumePromotedSplitItem(survivor, resumeAt));
@@ -485,6 +490,38 @@ class _PlayerHostState extends State<PlayerHost> {
         _panelFocusScope.nextFocus();
       }
     });
+  }
+
+  void _openLiveHub() {
+    if (!_isLive) return;
+    _hideTimer?.cancel();
+    setState(() {
+      _controls = true;
+      _panelKind = 'live-hub';
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _panelFocusScope.requestFocus();
+        _panelFocusScope.nextFocus();
+      }
+    });
+  }
+
+  void _selectLiveHubItem(PlayerItem item, int? playlistIndex) {
+    _closePanel();
+    if (playlistIndex != null) {
+      _go(playlistIndex);
+      return;
+    }
+    final selectedKey = item.favRef?.key ?? item.url;
+    final next = <PlayerItem>[
+      item,
+      for (final candidate in pc.items)
+        if ((candidate.favRef?.key ?? candidate.url) != selectedKey) candidate,
+    ];
+    pc.open(next, 0);
+    setState(() => _controls = true);
+    _scheduleHide();
   }
 
   Widget _splitSmallBtn(
@@ -949,7 +986,7 @@ class _PlayerHostState extends State<PlayerHost> {
   void _close() {
     if (sc.active) sc.close();
     _exitFullscreen();
-    pc.stop();
+    pc.stop(restoreFocus: true);
     _focus.unfocus();
   }
 
@@ -1512,6 +1549,8 @@ class _PlayerHostState extends State<PlayerHost> {
           );
         case PlayerKeyboardCommand.toggleFullscreen:
           _toggleFullscreen();
+        case PlayerKeyboardCommand.openLiveHub:
+          _openLiveHub();
         case PlayerKeyboardCommand.stop:
           _close();
       }
@@ -2533,6 +2572,13 @@ class _PlayerHostState extends State<PlayerHost> {
                       ),
                     const Spacer(),
                     if (_isLive)
+                      _bottomIcon(
+                        Icons.view_sidebar_rounded,
+                        _openLiveHub,
+                        tooltip: 'Live control hub (G)',
+                        compact: compact,
+                      ),
+                    if (_isLive)
                       Padding(
                         padding: EdgeInsets.only(right: compact ? 2 : 8),
                         child: const Row(
@@ -2870,7 +2916,14 @@ class _PlayerHostState extends State<PlayerHost> {
                             textColor: Colors.white,
                             iconColor: Colors.white,
                           ),
-                          child: _panelKind == 'split'
+                          child: _panelKind == 'live-hub'
+                              ? LiveControlHub(
+                                  controller: pc,
+                                  client: activeClient,
+                                  onSelect: _selectLiveHubItem,
+                                  onClose: _closePanel,
+                                )
+                              : _panelKind == 'split'
                               ? (activeClient == null
                                     ? const Center(
                                         child: Text(

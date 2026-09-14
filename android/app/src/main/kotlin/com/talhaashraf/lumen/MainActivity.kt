@@ -85,6 +85,10 @@ class MainActivity : FlutterActivity() {
                     val playlistTitles = ArrayList<String>()
                     val playlistFavoriteKeys = ArrayList<String>()
                     val playlistFavoriteStates = ArrayList<Boolean>()
+                    val playlistProgressKeys = ArrayList<String>()
+                    val playlistPosters = ArrayList<String>()
+                    val playlistExtensions = ArrayList<String>()
+                    val playlistResumePositionsMs = ArrayList<Long>()
                     (args["playlist"] as? List<*>)?.forEach { rawItem ->
                         val item = rawItem as? Map<*, *> ?: return@forEach
                         val itemUrl = item["url"] as? String
@@ -99,6 +103,14 @@ class MainActivity : FlutterActivity() {
                             )
                             playlistFavoriteStates.add(
                                 item["favorite"] as? Boolean ?: false
+                            )
+                            playlistProgressKeys.add(
+                                item["progressKey"] as? String ?: ""
+                            )
+                            playlistPosters.add(item["poster"] as? String ?: "")
+                            playlistExtensions.add(item["ext"] as? String ?: "")
+                            playlistResumePositionsMs.add(
+                                (item["resumePositionMs"] as? Number)?.toLong() ?: 0L
                             )
                         }
                     }
@@ -141,6 +153,22 @@ class MainActivity : FlutterActivity() {
                         putExtra(
                             Media3PlayerActivity.EXTRA_PLAYLIST_FAVORITE_STATES,
                             playlistFavoriteStates.toBooleanArray()
+                        )
+                        putStringArrayListExtra(
+                            Media3PlayerActivity.EXTRA_PLAYLIST_PROGRESS_KEYS,
+                            playlistProgressKeys
+                        )
+                        putStringArrayListExtra(
+                            Media3PlayerActivity.EXTRA_PLAYLIST_POSTERS,
+                            playlistPosters
+                        )
+                        putStringArrayListExtra(
+                            Media3PlayerActivity.EXTRA_PLAYLIST_EXTENSIONS,
+                            playlistExtensions
+                        )
+                        putExtra(
+                            Media3PlayerActivity.EXTRA_PLAYLIST_RESUME_POSITIONS_MS,
+                            playlistResumePositionsMs.toLongArray()
                         )
                         putExtra(
                             Media3PlayerActivity.EXTRA_INITIAL_INDEX,
@@ -346,7 +374,19 @@ class MainActivity : FlutterActivity() {
                     "favoriteStates" to
                         (data?.getBooleanArrayExtra(
                             Media3PlayerActivity.EXTRA_PLAYLIST_FAVORITE_STATES
-                        )?.toList() ?: emptyList<Boolean>())
+                        )?.toList() ?: emptyList<Boolean>()),
+                    "progressTouched" to
+                        (data?.getBooleanArrayExtra(
+                            Media3PlayerActivity.EXTRA_PLAYLIST_PROGRESS_TOUCHED
+                        )?.toList() ?: emptyList<Boolean>()),
+                    "progressPositionsMs" to
+                        (data?.getLongArrayExtra(
+                            Media3PlayerActivity.EXTRA_PLAYLIST_PROGRESS_POSITIONS_MS
+                        )?.toList() ?: emptyList<Long>()),
+                    "progressDurationsMs" to
+                        (data?.getLongArrayExtra(
+                            Media3PlayerActivity.EXTRA_PLAYLIST_PROGRESS_DURATIONS_MS
+                        )?.toList() ?: emptyList<Long>())
                 )
             )
             return

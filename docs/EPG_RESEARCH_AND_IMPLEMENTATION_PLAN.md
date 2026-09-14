@@ -23,7 +23,7 @@ The recommended first release is:
 - Offline use of the last successful guide.
 - No reminders, recording, automatic fuzzy channel matching, or provider-wide EPG polling in version one.
 
-## Implementation status — 12 September 2026
+## Implementation status — 14 September 2026
 
 The first usable EPG release described in Milestones 1–4 is implemented:
 
@@ -35,8 +35,12 @@ The first usable EPG release described in Milestones 1–4 is implemented:
 - A virtualized guide with pinned channel/time headers, merged duration cells, a Now line and a fixed detail panel.
 - Explicit D-pad navigation by temporal overlap, plus phone agenda and tablet/desktop grid layouts.
 - Deterministic ID/name matching and reuse of cached XMLTV channel metadata for missing logos.
+- Account-scoped manual XMLTV source and guide time correction, stored privately and applied without rewriting provider timestamps.
+- A Profile → TV guide setup screen with manual refresh, per-account cache clearing, safe cache/source diagnostics and D-pad traversal.
+- Account-scoped manual channel mapping for unresolved or incorrect matches, using cached live/guide indexes without provider-wide requests.
+- Redacted EPG health fields in the existing support report; credential-bearing source URLs never appear in diagnostics.
 
-The remaining EPG work belongs to the operational milestone: manual channel mapping, a per-account time offset, guide diagnostics/clear-cache controls, and catch-up actions. Moving XML event parsing to a worker isolate and adding a 500-channel performance fixture are also recommended hardening tasks before calling the guide subsystem fully production-tuned; the current parser is memory-bounded and yields at each database batch, but runs on the application isolate.
+The remaining EPG product work is catch-up actions. Moving XML event parsing to a worker isolate and adding a 500-channel performance fixture are also recommended hardening tasks before calling the guide subsystem fully production-tuned; the current parser is memory-bounded and yields at each database batch, but runs on the application isolate.
 
 ## What Lumen already has
 
@@ -494,9 +498,9 @@ This milestone has no new guide UI and is the safest next implementation step.
 
 ### Milestone 5 — Operational controls
 
-- Manual guide URL and profile time offset.
-- Manual channel mapping.
-- Guide diagnostics, refresh and clear-cache controls.
+- Manual guide URL and profile time offset. **Implemented.**
+- Manual channel mapping. **Implemented.**
+- Guide diagnostics, refresh and clear-cache controls. **Implemented.**
 - Catch-up integration where provider data is reliable.
 
 ## Product decisions and recommended defaults

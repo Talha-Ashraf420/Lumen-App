@@ -82,7 +82,7 @@ class Progress {
   );
 }
 
-/// Persistent user library: favourites, continue-watching, recently-watched.
+/// Persistent user library: favourites, continue-watching, recent channels.
 class Library extends ChangeNotifier {
   Library._();
   static final Library instance = Library._();
@@ -90,10 +90,12 @@ class Library extends ChangeNotifier {
   static const _kFav = 'lib_favourites';
   static const _kProg = 'lib_progress';
   static const _kRecent = 'lib_recent';
+  static const _kWatched = 'lib_watched';
 
   final List<MediaRef> favourites = [];
   final Map<String, Progress> progress = {};
   final List<MediaRef> recent = [];
+  final Set<String> watched = <String>{};
   String? _scope;
   int _activation = 0;
 
@@ -106,6 +108,7 @@ class Library extends ChangeNotifier {
     favourites.clear();
     recent.clear();
     progress.clear();
+    watched.clear();
     notifyListeners();
     final scope = _scope;
     if (scope == null) return;
@@ -113,21 +116,25 @@ class Library extends ChangeNotifier {
     var fav = await Store.readPrivate('${_kFav}_$scope');
     var rec = await Store.readPrivate('${_kRecent}_$scope');
     var pr = await Store.readPrivate('${_kProg}_$scope');
+    var seen = await Store.readPrivate('${_kWatched}_$scope');
 
     // Preserve existing users' data by assigning the one-time unscoped state
     // to the first profile opened after this upgrade.
-    if (fav == null && rec == null && pr == null) {
+    if (fav == null && rec == null && pr == null && seen == null) {
       fav = await Store.readPrivate(_kFav);
       rec = await Store.readPrivate(_kRecent);
       pr = await Store.readPrivate(_kProg);
-      if (fav != null || rec != null || pr != null) {
+      seen = await Store.readPrivate(_kWatched);
+      if (fav != null || rec != null || pr != null || seen != null) {
         await Future.wait([
           if (fav != null) Store.writePrivate('${_kFav}_$scope', fav),
           if (rec != null) Store.writePrivate('${_kRecent}_$scope', rec),
           if (pr != null) Store.writePrivate('${_kProg}_$scope', pr),
+          if (seen != null) Store.writePrivate('${_kWatched}_$scope', seen),
           Store.deletePrivate(_kFav),
           Store.deletePrivate(_kRecent),
           Store.deletePrivate(_kProg),
+          Store.deletePrivate(_kWatched),
         ]);
       }
     }
@@ -141,6 +148,11 @@ class Library extends ChangeNotifier {
             (v as Map).cast<String, dynamic>(),
           ),
         );
+      } catch (_) {}
+    }
+    if (seen != null) {
+      try {
+        watched.addAll((jsonDecode(seen) as List).whereType<String>());
       } catch (_) {}
     }
     notifyListeners();
@@ -165,10 +177,12 @@ class Library extends ChangeNotifier {
     final fav = jsonEncode(favourites.map((e) => e.toJson()).toList());
     final rec = jsonEncode(recent.map((e) => e.toJson()).toList());
     final prog = jsonEncode(progress.map((k, v) => MapEntry(k, v.toJson())));
+    final seen = jsonEncode(watched.toList());
     await Future.wait([
       Store.writePrivate('${_kFav}_$scope', fav),
       Store.writePrivate('${_kRecent}_$scope', rec),
       Store.writePrivate('${_kProg}_$scope', prog),
+      Store.writePrivate('${_kWatched}_$scope', seen),
     ]);
   }
 
@@ -199,8 +213,10 @@ class Library extends ChangeNotifier {
     // drop items that are essentially finished
     if (pr.duration > 0 && pr.position / pr.duration > 0.95) {
       progress.remove(pr.key);
+      watched.add(pr.key);
     } else if (pr.position > 10) {
       progress[pr.key] = pr;
+      watched.remove(pr.key);
     } else {
       return;
     }
@@ -209,11 +225,23 @@ class Library extends ChangeNotifier {
   }
 
   void clearProgress(String key) {
-    if (progress.remove(key) != null) {
-      notifyListeners();
-      _save();
-    }
+    final removedProgress = progress.remove(key) != null;
+    final removedWatched = watched.remove(key);
+    if (!removedProgress && !removedWatched) return;
+    notifyListeners();
+    _save();
   }
+
+  void markWatched(String key) {
+    final removedProgress = progress.remove(key) != null;
+    final addedToWatched = watched.add(key);
+    final changed = removedProgress || addedToWatched;
+    if (!changed) return;
+    notifyListeners();
+    _save();
+  }
+
+  bool isWatched(String key) => watched.contains(key);
 
   List<Progress> continueWatching() {
     final l = progress.values
@@ -223,20 +251,32 @@ class Library extends ChangeNotifier {
     return l;
   }
 
-  /// Clear watch history: Continue-watching progress + Recently-watched.
+  /// Clear watch history: Continue-watching progress + recent channels.
   /// Favourites are kept.
   void clearHistory() {
     recent.clear();
     progress.clear();
+    watched.clear();
     notifyListeners();
     _save();
   }
 
-  // ---- recently watched ----
+  // ---- recent channels ----
   void addRecent(MediaRef ref) {
+    // VOD resume state lives in [progress]. Keeping this list live-only avoids
+    // mixing channels with partially watched films and episodes on Home.
+    if (!ref.isLive) return;
     recent.removeWhere((e) => e.key == ref.key);
     recent.insert(0, ref);
     if (recent.length > 24) recent.removeRange(24, recent.length);
+    notifyListeners();
+    _save();
+  }
+
+  void removeRecent(String key) {
+    final before = recent.length;
+    recent.removeWhere((item) => item.key == key);
+    if (recent.length == before) return;
     notifyListeners();
     _save();
   }

@@ -1,5 +1,8 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lumen_tv/library.dart';
+import 'package:lumen_tv/playback.dart';
+import 'package:lumen_tv/screens/live_control_hub.dart';
 import 'package:lumen_tv/screens/player_host.dart';
 
 void main() {
@@ -278,5 +281,49 @@ void main() {
       playerKeyboardCommandFor(LogicalKeyboardKey.keyF, isTelevision: false),
       PlayerKeyboardCommand.toggleFullscreen,
     );
+    expect(
+      playerKeyboardCommandFor(LogicalKeyboardKey.keyG, isTelevision: false),
+      PlayerKeyboardCommand.openLiveHub,
+    );
+    expect(
+      playerKeyboardCommandFor(LogicalKeyboardKey.keyG, isTelevision: true),
+      PlayerKeyboardCommand.openLiveHub,
+    );
+  });
+
+  test('live hub sections preserve order and remove duplicate channels', () {
+    const one = MediaRef(
+      kind: 'live',
+      id: 1,
+      name: 'One',
+      url: 'https://example.test/1.ts',
+    );
+    const two = MediaRef(
+      kind: 'live',
+      id: 2,
+      name: 'Two',
+      url: 'https://example.test/2.ts',
+    );
+    const movie = MediaRef(kind: 'movie', id: 3, name: 'Movie');
+    PlayerItem fromRef(MediaRef ref) =>
+        PlayerItem(ref.url, ref.name, isLive: ref.isLive, favRef: ref);
+
+    final recent = liveHubItemsFor(
+      section: LiveHubSection.recent,
+      playlist: const [],
+      recent: const [one, one, movie, two],
+      favourites: const [],
+      fromRef: fromRef,
+    );
+    expect(recent.map((item) => item.favRef?.id), [1, 2]);
+
+    final channels = liveHubItemsFor(
+      section: LiveHubSection.channels,
+      playlist: [fromRef(one), fromRef(one), fromRef(two)],
+      recent: const [],
+      favourites: const [],
+      fromRef: fromRef,
+    );
+    expect(channels.map((item) => item.favRef?.id), [1, 2]);
   });
 }

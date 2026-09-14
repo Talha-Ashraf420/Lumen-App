@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'dart:async';
 import '../catalog_cache.dart';
 import '../device_profile.dart';
+import '../focus_return.dart';
 import '../library.dart';
 import '../models.dart';
 import '../playback.dart';
@@ -14,7 +15,6 @@ import '../tmdb.dart';
 import '../widgets.dart';
 import '../xtream.dart';
 import 'movie_detail_screen.dart';
-import 'series_detail_screen.dart';
 
 String _year(String s) => RegExp(r'(19|20)\d{2}').firstMatch(s)?.group(0) ?? '';
 
@@ -110,6 +110,8 @@ class _HomeScreenState extends State<HomeScreen>
   _HomeData? _visibleData;
   int _loadGeneration = 0;
   Timer? _catalogRevisionDebounce;
+  final Map<String, FocusNode> _continueFocus = <String, FocusNode>{};
+  final Map<String, FocusNode> _channelFocus = <String, FocusNode>{};
 
   @override
   bool get wantKeepAlive => true;
@@ -127,6 +129,9 @@ class _HomeScreenState extends State<HomeScreen>
     _catalogRevisionDebounce?.cancel();
     contentRefresh.removeListener(_onRefresh);
     CatalogCache.instance.revision.removeListener(_onCatalogRevision);
+    for (final node in [..._continueFocus.values, ..._channelFocus.values]) {
+      node.dispose();
+    }
     super.dispose();
   }
 
@@ -173,74 +178,211 @@ class _HomeScreenState extends State<HomeScreen>
     });
   }
 
-  void _push(Widget w) =>
-      Navigator.of(context).push(MaterialPageRoute(builder: (_) => w));
+  Future<void> _push(Widget w) async {
+    await pushWithFocusReturn(context, w);
+  }
 
-  /// Re-open a recently-watched item by reconstructing its destination.
-  void _openRecent(MediaRef r) {
-    switch (r.kind) {
-      case 'movie':
-        _push(
-          MovieDetailScreen(
-            client: widget.client,
-            movie: VodStream(r.id, r.name, r.image, '', 'mp4', 0, ''),
-          ),
-        );
-      case 'series':
-        _push(
-          SeriesDetailScreen(
-            client: widget.client,
-            seriesId: r.id,
-            title: r.name,
-          ),
-        );
-      case 'live':
-        PlaybackController.instance.open([
-          PlayerItem(
-            r.url,
-            r.name,
-            isLive: true,
-            poster: r.image,
-            httpHeaders: widget.client.streamHeaders(r.id),
-            favRef: r,
-          ),
-        ], 0);
+  FocusNode _continueNode(String key) => _continueFocus.putIfAbsent(
+    key,
+    () => FocusNode(debugLabel: 'Continue watching $key'),
+  );
+
+  FocusNode _channelNode(String key) => _channelFocus.putIfAbsent(
+    key,
+    () => FocusNode(debugLabel: 'Recent channel $key'),
+  );
+
+  void _openProgress(Progress progress) {
+    PlaybackController.instance.open([
+      PlayerItem(
+        progress.url,
+        progress.title,
+        progressKey: progress.key,
+        poster: progress.poster,
+        ext: progress.ext,
+      ),
+    ], 0);
+  }
+
+  void _openRecentChannel(MediaRef channel) {
+    PlaybackController.instance.open([
+      PlayerItem(
+        channel.url,
+        channel.name,
+        isLive: true,
+        poster: channel.image,
+        httpHeaders: widget.client.streamHeaders(channel.id),
+        favRef: channel,
+      ),
+    ], 0);
+  }
+
+  Future<void> _showContinueActions(Progress progress) async {
+    final action = await showDialog<_ContinueAction>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(
+          progress.title,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        contentPadding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _HistoryDialogOption(
+              autofocus: true,
+              icon: Icons.play_arrow_rounded,
+              label: 'Resume',
+              onTap: () => Navigator.pop(dialogContext, _ContinueAction.resume),
+            ),
+            _HistoryDialogOption(
+              icon: Icons.replay_rounded,
+              label: 'Start from beginning',
+              onTap: () =>
+                  Navigator.pop(dialogContext, _ContinueAction.restart),
+            ),
+            _HistoryDialogOption(
+              icon: Icons.check_circle_outline_rounded,
+              label: 'Mark as watched',
+              onTap: () =>
+                  Navigator.pop(dialogContext, _ContinueAction.watched),
+            ),
+            _HistoryDialogOption(
+              icon: Icons.remove_circle_outline_rounded,
+              label: 'Remove from row',
+              onTap: () => Navigator.pop(dialogContext, _ContinueAction.remove),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || action == null) return;
+    switch (action) {
+      case _ContinueAction.resume:
+        _openProgress(progress);
+      case _ContinueAction.restart:
+        Library.instance.clearProgress(progress.key);
+        _openProgress(progress);
+      case _ContinueAction.watched:
+        Library.instance.markWatched(progress.key);
+      case _ContinueAction.remove:
+        Library.instance.clearProgress(progress.key);
     }
   }
 
-  /// A single recently-watched shelf, rebuilt when the library changes.
-  Widget _lastPlayedRow() {
-    final recent = Library.instance.recent;
-    if (recent.isEmpty) return const SizedBox.shrink();
+  Future<void> _showChannelActions(MediaRef channel) async {
+    final remove = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(channel.name, maxLines: 2, overflow: TextOverflow.ellipsis),
+        contentPadding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _HistoryDialogOption(
+              autofocus: true,
+              icon: Icons.play_arrow_rounded,
+              label: 'Watch live',
+              onTap: () => Navigator.pop(dialogContext, false),
+            ),
+            _HistoryDialogOption(
+              icon: Icons.remove_circle_outline_rounded,
+              label: 'Remove from recent channels',
+              onTap: () => Navigator.pop(dialogContext, true),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || remove == null) return;
+    if (remove) {
+      Library.instance.removeRecent(channel.key);
+    } else {
+      _openRecentChannel(channel);
+    }
+  }
+
+  Widget _historyRows() {
+    final continuing = Library.instance.continueWatching();
+    final channels = Library.instance.recent
+        .where((item) => item.isLive && item.url.isNotEmpty)
+        .take(16)
+        .toList();
+    if (continuing.isEmpty && channels.isEmpty) {
+      return const SizedBox.shrink();
+    }
     final cardWidth = DeviceProfile.isTelevision ? 310.0 : 260.0;
     final cardHeight = DeviceProfile.isTelevision ? 112.0 : 96.0;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Padding(
-          padding: EdgeInsets.only(top: 24),
-          child: SectionHeader(title: 'Last played'),
-        ),
-        SizedBox(
-          height: cardHeight,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: EdgeInsets.symmetric(
-              horizontal: DeviceProfile.isTelevision ? 28 : 16,
-            ),
-            itemCount: recent.length,
-            separatorBuilder: (_, _) =>
-                SizedBox(width: DeviceProfile.isTelevision ? 16 : 14),
-            // Uniform 2:3 cards for movies, series and channels.
-            itemBuilder: (_, i) => _RecentCard(
-              item: recent[i],
-              index: i,
-              width: cardWidth,
-              height: cardHeight,
-              onTap: () => _openRecent(recent[i]),
+        if (continuing.isNotEmpty) ...[
+          const Padding(
+            padding: EdgeInsets.only(top: 24),
+            child: SectionHeader(title: 'Continue watching'),
+          ),
+          SizedBox(
+            height: cardHeight + 16,
+            child: HorizontalShelfViewport(
+              key: const ValueKey('home-continue-watching-viewport'),
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                clipBehavior: Clip.none,
+                padding: EdgeInsets.symmetric(
+                  horizontal: DeviceProfile.isTelevision ? 28 : 20,
+                  vertical: 8,
+                ),
+                itemCount: continuing.length,
+                separatorBuilder: (_, _) =>
+                    SizedBox(width: DeviceProfile.isTelevision ? 16 : 14),
+                itemBuilder: (_, i) => _ContinueWatchingCard(
+                  key: ValueKey(continuing[i].key),
+                  progress: continuing[i],
+                  index: i,
+                  width: cardWidth,
+                  height: cardHeight,
+                  focusNode: _continueNode(continuing[i].key),
+                  onTap: () => _openProgress(continuing[i]),
+                  onLongPress: () => _showContinueActions(continuing[i]),
+                ),
+              ),
             ),
           ),
-        ),
+        ],
+        if (channels.isNotEmpty) ...[
+          const Padding(
+            padding: EdgeInsets.only(top: 24),
+            child: SectionHeader(title: 'Recent channels'),
+          ),
+          SizedBox(
+            height: cardHeight + 16,
+            child: HorizontalShelfViewport(
+              key: const ValueKey('home-recent-channels-viewport'),
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                clipBehavior: Clip.none,
+                padding: EdgeInsets.symmetric(
+                  horizontal: DeviceProfile.isTelevision ? 28 : 20,
+                  vertical: 8,
+                ),
+                itemCount: channels.length,
+                separatorBuilder: (_, _) =>
+                    SizedBox(width: DeviceProfile.isTelevision ? 16 : 14),
+                itemBuilder: (_, i) => _RecentChannelCard(
+                  key: ValueKey(channels[i].key),
+                  item: channels[i],
+                  index: i,
+                  width: cardWidth,
+                  height: cardHeight,
+                  focusNode: _channelNode(channels[i].key),
+                  onTap: () => _openRecentChannel(channels[i]),
+                  onLongPress: () => _showChannelActions(channels[i]),
+                ),
+              ),
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -296,7 +438,7 @@ class _HomeScreenState extends State<HomeScreen>
         );
         final lastPlayed = AnimatedBuilder(
           animation: Library.instance,
-          builder: (_, __) => _lastPlayedRow(),
+          builder: (_, __) => _historyRows(),
         );
 
         if (isWide(context)) {
@@ -718,24 +860,31 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
           const SizedBox(height: 18),
           SizedBox(
             height: 96,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              clipBehavior: Clip.none,
-              itemCount: _items.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 12),
-              itemBuilder: (_, i) {
-                final it = _items[i];
-                final p = _meta[it.streamId]?.poster;
-                final img = (p != null && p.isNotEmpty) ? p : it.icon;
-                return _RailThumb(
-                  image: img,
-                  number: i + 1,
-                  selected: i == _index,
-                  focusNode: _railFocusNodes[i],
-                  onKeyEvent: (event) => _handleRailKey(i, event),
-                  onTap: () => _select(i),
-                );
-              },
+            child: HorizontalShelfViewport(
+              key: const ValueKey('home-spotlight-compact-viewport'),
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                clipBehavior: Clip.none,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 6,
+                ),
+                itemCount: _items.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 12),
+                itemBuilder: (_, i) {
+                  final it = _items[i];
+                  final p = _meta[it.streamId]?.poster;
+                  final img = (p != null && p.isNotEmpty) ? p : it.icon;
+                  return _RailThumb(
+                    image: img,
+                    number: i + 1,
+                    selected: i == _index,
+                    focusNode: _railFocusNodes[i],
+                    onKeyEvent: (event) => _handleRailKey(i, event),
+                    onTap: () => _select(i),
+                  );
+                },
+              ),
             ),
           ),
         ],
@@ -969,28 +1118,35 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
                 right: 28,
                 bottom: 20,
                 height: DeviceProfile.isTelevision ? 108 : 78,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  clipBehavior: Clip.none,
-                  itemCount: _items.length,
-                  separatorBuilder: (_, _) =>
-                      SizedBox(width: DeviceProfile.isTelevision ? 12 : 10),
-                  itemBuilder: (_, i) {
-                    final it = _items[i];
-                    final p = _meta[it.streamId]?.poster;
-                    final img = (p != null && p.isNotEmpty) ? p : it.icon;
-                    return _RailThumb(
-                      image: img,
-                      label: _clean(it.name),
-                      number: i + 1,
-                      selected: i == _index,
-                      width: DeviceProfile.isTelevision ? 158 : 122,
-                      focusNode: _railFocusNodes[i],
-                      onKeyEvent: (event) => _handleRailKey(i, event),
-                      onFocus: () => _select(i),
-                      onTap: () => widget.onOpen(it),
-                    );
-                  },
+                child: HorizontalShelfViewport(
+                  key: const ValueKey('home-spotlight-wide-viewport'),
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    clipBehavior: Clip.none,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: DeviceProfile.isTelevision ? 22 : 18,
+                      vertical: DeviceProfile.isTelevision ? 7 : 5,
+                    ),
+                    itemCount: _items.length,
+                    separatorBuilder: (_, _) =>
+                        SizedBox(width: DeviceProfile.isTelevision ? 12 : 10),
+                    itemBuilder: (_, i) {
+                      final it = _items[i];
+                      final p = _meta[it.streamId]?.poster;
+                      final img = (p != null && p.isNotEmpty) ? p : it.icon;
+                      return _RailThumb(
+                        image: img,
+                        label: _clean(it.name),
+                        number: i + 1,
+                        selected: i == _index,
+                        width: DeviceProfile.isTelevision ? 158 : 122,
+                        focusNode: _railFocusNodes[i],
+                        onKeyEvent: (event) => _handleRailKey(i, event),
+                        onFocus: () => _select(i),
+                        onTap: () => widget.onOpen(it),
+                      );
+                    },
+                  ),
                 ),
               ),
               Positioned.fill(
@@ -1148,31 +1304,245 @@ class _RailThumb extends StatelessWidget {
   }
 }
 
-/// A compact landscape resume card so recent playback remains visible below
-/// the cinematic hero on television-sized viewports.
-class _RecentCard extends StatelessWidget {
-  final MediaRef item;
-  final int index;
-  final double width;
-  final double height;
-  final VoidCallback onTap;
-  const _RecentCard({
-    required this.item,
-    required this.index,
-    this.width = 280,
-    this.height = 104,
+enum _ContinueAction { resume, restart, watched, remove }
+
+class _HistoryDialogOption extends StatelessWidget {
+  const _HistoryDialogOption({
+    required this.icon,
+    required this.label,
     required this.onTap,
+    this.autofocus = false,
   });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool autofocus;
 
   @override
   Widget build(BuildContext context) {
-    final live = item.isLive;
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: FocusableTap(
+        autofocus: autofocus,
+        onTap: onTap,
+        builder: (_, active) => AnimatedContainer(
+          duration: lumenMotionFast,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+          decoration: BoxDecoration(
+            color: active ? surfaceRaised : surfaceHi,
+            borderRadius: BorderRadius.circular(lumenCorner(13)),
+            border: Border.all(color: active ? accentInk : line),
+          ),
+          child: Row(
+            children: [
+              Icon(icon, size: 20, color: active ? accentInk : muted),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    color: textHi,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+String _remainingLabel(Progress progress) {
+  final remaining = (progress.duration - progress.position)
+      .clamp(0, progress.duration)
+      .toInt();
+  final duration = Duration(seconds: remaining);
+  if (duration.inHours > 0) {
+    final minutes = duration.inMinutes.remainder(60);
+    return '${duration.inHours}h ${minutes == 0 ? '' : '${minutes}m '}left'
+        .replaceAll('  ', ' ');
+  }
+  return '${duration.inMinutes.clamp(1, 999)}m left';
+}
+
+/// A true resume card backed by durable VOD playback position.
+class _ContinueWatchingCard extends StatelessWidget {
+  const _ContinueWatchingCard({
+    super.key,
+    required this.progress,
+    required this.index,
+    required this.width,
+    required this.height,
+    required this.focusNode,
+    required this.onTap,
+    required this.onLongPress,
+  });
+
+  final Progress progress;
+  final int index;
+  final double width;
+  final double height;
+  final FocusNode focusNode;
+  final VoidCallback onTap;
+  final VoidCallback onLongPress;
+
+  @override
+  Widget build(BuildContext context) {
+    final episode = progress.key.startsWith('ep:');
     return SizedBox(
       width: width,
       height: height,
       child:
           FocusableTap(
+                focusNode: focusNode,
                 onTap: onTap,
+                onLongPress: onLongPress,
+                builder: (context, active) => AnimatedContainer(
+                  duration: lumenMotionFast,
+                  decoration: BoxDecoration(
+                    color: active ? surfaceHi : surface,
+                    borderRadius: BorderRadius.circular(lumenCorner(16)),
+                    border: Border.all(color: active ? accent : line),
+                    boxShadow: active
+                        ? glow(accent, blur: 18, y: 7, a: .28)
+                        : null,
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: Stack(
+                    children: [
+                      Row(
+                        children: [
+                          SizedBox(
+                            width: height * 1.05,
+                            height: height,
+                            child: progress.poster.isNotEmpty
+                                ? MediaImage(
+                                    source: progress.poster,
+                                    fit: BoxFit.cover,
+                                    memCacheWidth:
+                                        (height *
+                                                1.5 *
+                                                MediaQuery.devicePixelRatioOf(
+                                                  context,
+                                                ))
+                                            .round()
+                                            .clamp(240, 600),
+                                  )
+                                : ColoredBox(
+                                    color: surfaceHi,
+                                    child: Icon(
+                                      episode
+                                          ? Icons.video_library_rounded
+                                          : Icons.movie_rounded,
+                                      color: muted,
+                                      size: 30,
+                                    ),
+                                  ),
+                          ),
+                          Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(13, 9, 10, 10),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          progress.title,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            color: textHi,
+                                            fontSize: DeviceProfile.isTelevision
+                                                ? 14
+                                                : 13,
+                                            fontWeight: FontWeight.w800,
+                                            height: 1.15,
+                                          ),
+                                        ),
+                                      ),
+                                      Icon(
+                                        Icons.more_horiz_rounded,
+                                        size: 18,
+                                        color: active ? accentInk : muted,
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 7),
+                                  Text(
+                                    '${episode ? 'Episode' : 'Film'} · ${_remainingLabel(progress)}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: active ? accentInk : muted,
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        height: 4,
+                        child: LinearProgressIndicator(
+                          value: progress.fraction,
+                          color: accent,
+                          backgroundColor: line,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+              .animate()
+              .fadeIn(duration: 320.ms, delay: (index.clamp(0, 12) * 30).ms)
+              .slideY(begin: 0.1, end: 0, curve: Curves.easeOutCubic),
+    );
+  }
+}
+
+/// A separate live-history card; channels never enter Continue Watching.
+class _RecentChannelCard extends StatelessWidget {
+  final MediaRef item;
+  final int index;
+  final double width;
+  final double height;
+  final FocusNode focusNode;
+  final VoidCallback onTap;
+  final VoidCallback onLongPress;
+  const _RecentChannelCard({
+    super.key,
+    required this.item,
+    required this.index,
+    this.width = 280,
+    this.height = 104,
+    required this.focusNode,
+    required this.onTap,
+    required this.onLongPress,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: width,
+      height: height,
+      child:
+          FocusableTap(
+                focusNode: focusNode,
+                onTap: onTap,
+                onLongPress: onLongPress,
                 builder: (context, active) => AnimatedContainer(
                   duration: lumenMotionFast,
                   decoration: BoxDecoration(
@@ -1195,10 +1565,10 @@ class _RecentCard extends StatelessWidget {
                             ColoredBox(color: surfaceHi),
                             if (item.image.isNotEmpty)
                               Padding(
-                                padding: EdgeInsets.all(live ? 14 : 0),
+                                padding: const EdgeInsets.all(14),
                                 child: MediaImage(
                                   source: item.image,
-                                  fit: live ? BoxFit.contain : BoxFit.cover,
+                                  fit: BoxFit.contain,
                                   memCacheWidth:
                                       (height *
                                               1.5 *
@@ -1209,31 +1579,30 @@ class _RecentCard extends StatelessWidget {
                                           .clamp(240, 600),
                                 ),
                               ),
-                            if (live)
-                              Positioned(
-                                left: 8,
-                                top: 8,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 6,
-                                    vertical: 3,
+                            Positioned(
+                              left: 8,
+                              top: 8,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 3,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFF3B41),
+                                  borderRadius: BorderRadius.circular(
+                                    lumenCorner(6),
                                   ),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFFF3B41),
-                                    borderRadius: BorderRadius.circular(
-                                      lumenCorner(6),
-                                    ),
-                                  ),
-                                  child: const Text(
-                                    'LIVE',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 9,
-                                      fontWeight: FontWeight.w900,
-                                    ),
+                                ),
+                                child: const Text(
+                                  'LIVE',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w900,
                                   ),
                                 ),
                               ),
+                            ),
                           ],
                         ),
                       ),
@@ -1268,7 +1637,7 @@ class _RecentCard extends StatelessWidget {
                                   const SizedBox(width: 6),
                                   Expanded(
                                     child: Text(
-                                      live ? 'Watch live' : 'Play again',
+                                      'Watch live',
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: TextStyle(

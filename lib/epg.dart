@@ -42,20 +42,23 @@ class EpgProgramme {
   bool overlaps(DateTime start, DateTime end) =>
       startUtc.isBefore(end) && stopUtc.isAfter(start);
 
-  EpgProgramme copyWith({DateTime? stopUtc, bool? stopInferred}) =>
-      EpgProgramme(
-        channelKey: channelKey,
-        startUtc: startUtc,
-        stopUtc: stopUtc ?? this.stopUtc,
-        title: title,
-        subtitle: subtitle,
-        description: description,
-        categories: categories,
-        icon: icon,
-        hasArchive: hasArchive,
-        catchupId: catchupId,
-        stopInferred: stopInferred ?? this.stopInferred,
-      );
+  EpgProgramme copyWith({
+    DateTime? startUtc,
+    DateTime? stopUtc,
+    bool? stopInferred,
+  }) => EpgProgramme(
+    channelKey: channelKey,
+    startUtc: startUtc ?? this.startUtc,
+    stopUtc: stopUtc ?? this.stopUtc,
+    title: title,
+    subtitle: subtitle,
+    description: description,
+    categories: categories,
+    icon: icon,
+    hasArchive: hasArchive,
+    catchupId: catchupId,
+    stopInferred: stopInferred ?? this.stopInferred,
+  );
 }
 
 class EpgChannel {
@@ -110,6 +113,26 @@ class EpgSourceState {
   final DateTime? validUntil;
   final String lastError;
   final DateTime? nextRetryAt;
+}
+
+class EpgChannelMapping {
+  const EpgChannelMapping({
+    required this.liveStreamId,
+    required this.sourceKey,
+    required this.epgChannelKey,
+    required this.matchMethod,
+    required this.confidence,
+    required this.userOverride,
+    required this.updatedAt,
+  });
+
+  final int liveStreamId;
+  final String sourceKey;
+  final String epgChannelKey;
+  final String matchMethod;
+  final double confidence;
+  final bool userOverride;
+  final DateTime updatedAt;
 }
 
 class EpgParseException implements Exception {

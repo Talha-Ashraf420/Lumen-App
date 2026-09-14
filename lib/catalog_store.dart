@@ -24,6 +24,13 @@ class CatalogPage<T> {
   final bool hasMore;
 }
 
+class EpgCacheCounts {
+  const EpgCacheCounts({required this.channels, required this.programmes});
+
+  final int channels;
+  final int programmes;
+}
+
 /// Account-scoped SQLite catalog.
 ///
 /// Provider responses can contain tens of thousands of entries. Persisting
@@ -853,12 +860,27 @@ class CatalogStore {
       limit: 1,
     );
     if (rows.isEmpty) return null;
-    final row = rows.first;
+    return _decodeEpgSourceState(rows.first);
+  }
+
+  Future<List<EpgSourceState>> epgSourceStates(String scope) async {
+    if (_disabledForWidgetTests) return const [];
+    final db = await _database();
+    final rows = await db.query(
+      'epg_sources',
+      where: 'profile_scope = ?',
+      whereArgs: [scope],
+      orderBy: 'fetched_at DESC',
+    );
+    return [for (final row in rows) _decodeEpgSourceState(row)];
+  }
+
+  EpgSourceState _decodeEpgSourceState(Map<String, Object?> row) {
     DateTime? optionalTime(Object? value) => value is int
         ? DateTime.fromMillisecondsSinceEpoch(value, isUtc: true)
         : null;
     return EpgSourceState(
-      sourceKey: sourceKey,
+      sourceKey: row['source_key'] as String,
       activeGeneration: row['active_generation'] as int,
       etag: row['etag'] as String,
       lastModified: row['last_modified'] as String,
@@ -872,6 +894,43 @@ class CatalogStore {
       lastError: row['last_error'] as String,
       nextRetryAt: optionalTime(row['next_retry_at']),
     );
+  }
+
+  Future<EpgCacheCounts> epgCacheCounts(String scope) async {
+    if (_disabledForWidgetTests) {
+      return const EpgCacheCounts(channels: 0, programmes: 0);
+    }
+    final db = await _database();
+    Future<int> count(String table) async {
+      final rows = await db.rawQuery(
+        '''
+        SELECT COUNT(*) AS total
+        FROM $table AS item
+        INNER JOIN epg_sources AS source
+          ON source.profile_scope = item.profile_scope
+         AND source.source_key = item.source_key
+         AND source.active_generation = item.generation
+        WHERE item.profile_scope = ?
+      ''',
+        [scope],
+      );
+      return (rows.first['total'] as int?) ?? 0;
+    }
+
+    return EpgCacheCounts(
+      channels: await count('epg_channels'),
+      programmes: await count('epg_programmes'),
+    );
+  }
+
+  Future<void> clearEpgProfile(String scope) async {
+    if (_disabledForWidgetTests) return;
+    final db = await _database();
+    await db.transaction((txn) async {
+      for (final table in ['epg_programmes', 'epg_channels', 'epg_sources']) {
+        await txn.delete(table, where: 'profile_scope = ?', whereArgs: [scope]);
+      }
+    });
   }
 
   Future<void> markEpgNotModified(
@@ -961,6 +1020,74 @@ class CatalogStore {
           icon: row['icon'] as String,
         ),
     ];
+  }
+
+  Future<List<EpgChannelMapping>> epgChannelMappings(String scope) async {
+    if (_disabledForWidgetTests) return const [];
+    final db = await _database();
+    final rows = await db.query(
+      'epg_channel_map',
+      where: 'profile_scope = ? AND user_override = 1',
+      whereArgs: [scope],
+      orderBy: 'updated_at DESC',
+    );
+    return [
+      for (final row in rows)
+        EpgChannelMapping(
+          liveStreamId: row['live_stream_id'] as int,
+          sourceKey: row['source_key'] as String,
+          epgChannelKey: row['epg_channel_key'] as String,
+          matchMethod: row['match_method'] as String,
+          confidence: (row['confidence'] as num).toDouble(),
+          userOverride: row['user_override'] == 1,
+          updatedAt: DateTime.fromMillisecondsSinceEpoch(
+            row['updated_at'] as int,
+            isUtc: true,
+          ),
+        ),
+    ];
+  }
+
+  Future<void> setManualEpgChannelMapping(
+    String scope, {
+    required int liveStreamId,
+    required String sourceKey,
+    required String epgChannelKey,
+  }) async {
+    if (_disabledForWidgetTests) return;
+    final db = await _database();
+    await db.transaction((txn) async {
+      // A channel can have only one explicit guide choice. Removing an older
+      // source prevents two schedules from being merged for the same channel.
+      await txn.delete(
+        'epg_channel_map',
+        where: 'profile_scope = ? AND live_stream_id = ?',
+        whereArgs: [scope, liveStreamId],
+      );
+      await txn.insert('epg_channel_map', {
+        'profile_scope': scope,
+        'live_stream_id': liveStreamId,
+        'source_key': sourceKey,
+        'epg_channel_key': epgChannelKey,
+        'match_method': 'manual',
+        'confidence': 1.0,
+        'user_override': 1,
+        'updated_at': DateTime.now().toUtc().millisecondsSinceEpoch,
+      });
+    });
+  }
+
+  Future<void> clearManualEpgChannelMapping(
+    String scope,
+    int liveStreamId,
+  ) async {
+    if (_disabledForWidgetTests) return;
+    final db = await _database();
+    await db.delete(
+      'epg_channel_map',
+      where: 'profile_scope = ? AND live_stream_id = ?',
+      whereArgs: [scope, liveStreamId],
+    );
   }
 
   /// Replace the small rolling guide window for one Xtream channel.

@@ -7,6 +7,7 @@ import 'catalog_store.dart';
 import 'channel_logos.dart';
 import 'epg.dart';
 import 'epg_loader.dart';
+import 'epg_settings.dart';
 import 'models.dart';
 import 'store.dart';
 import 'xtream.dart';
@@ -32,7 +33,9 @@ class EpgRepository extends ChangeNotifier {
     DateTime Function()? clock,
   }) : store = store ?? CatalogStore.instance,
        _clock = clock ?? DateTime.now,
-       profileScope = Store.profileScope(client.creds);
+       profileScope = Store.profileScope(client.creds) {
+    epgConfigurationRevision.addListener(_onConfigurationChanged);
+  }
 
   static const int maxConcurrentShortRequests = 2;
   static const Duration shortFreshness = Duration(minutes: 10);
@@ -49,6 +52,9 @@ class EpgRepository extends ChangeNotifier {
   final Map<int, DateTime> _freshUntil = <int, DateTime>{};
   final Map<int, List<EpgProgramme>> _programmes = <int, List<EpgProgramme>>{};
   Future<void>? _guideSync;
+  Future<void>? _settingsLoad;
+  EpgSettings? _settings;
+  Duration _guideOffset = Duration.zero;
   int _visibleRevision = 0;
   bool _disposed = false;
   bool _guideRefreshing = false;
@@ -60,8 +66,36 @@ class EpgRepository extends ChangeNotifier {
 
   bool isLoading(int streamId) => _loading.contains(streamId);
 
+  Future<void> _ensureSettings() =>
+      _settingsLoad ??= EpgSettings.load(client.creds).then((settings) {
+        _settings = settings;
+        _guideOffset = Duration(minutes: settings.offsetMinutes);
+      });
+
+  Future<List<Uri>> _guideUrls() async {
+    await _ensureSettings();
+    final settings = _settings ?? const EpgSettings();
+    final values = <Uri>[
+      if (settings.manualUrl.isNotEmpty) Uri.parse(settings.manualUrl),
+      ...await client.epgGuideUrls(),
+    ];
+    final seen = <String>{};
+    return [
+      for (final value in values)
+        if (seen.add('$value')) value,
+    ];
+  }
+
+  EpgProgramme _shiftProgramme(EpgProgramme value) {
+    if (_guideOffset == Duration.zero) return value;
+    return value.copyWith(
+      startUtc: value.startUtc.add(_guideOffset),
+      stopUtc: value.stopUtc.add(_guideOffset),
+    );
+  }
+
   EpgNowNext nowNextFor(int streamId, {DateTime? at}) {
-    final time = (at ?? _clock()).toUtc();
+    final time = (at ?? _clock()).toUtc().subtract(_guideOffset);
     final values = _programmes[streamId] ?? const <EpgProgramme>[];
     EpgProgramme? current;
     EpgProgramme? next;
@@ -76,7 +110,10 @@ class EpgRepository extends ChangeNotifier {
         next = programme;
       }
     }
-    return EpgNowNext(now: current, next: next);
+    return EpgNowNext(
+      now: current == null ? null : _shiftProgramme(current),
+      next: next == null ? null : _shiftProgramme(next),
+    );
   }
 
   /// Prime cached rows and enqueue only the supplied visible/overscan window.
@@ -95,6 +132,8 @@ class EpgRepository extends ChangeNotifier {
 
   Future<void> _prime(List<LiveStream> channels, {int? visibleRevision}) async {
     if (channels.isEmpty || _disposed) return;
+
+    await _ensureSettings();
 
     final now = _clock().toUtc();
     try {
@@ -249,7 +288,7 @@ class EpgRepository extends ChangeNotifier {
     _guideStatus = '';
     notifyListeners();
     try {
-      final urls = await client.epgGuideUrls();
+      final urls = await _guideUrls();
       if (urls.isEmpty) {
         _guideStatus = 'No guide source was provided.';
         return;
@@ -297,22 +336,39 @@ class EpgRepository extends ChangeNotifier {
     required DateTime startUtc,
     required DateTime endUtc,
   }) async {
+    await _ensureSettings();
     final output = <int, List<EpgProgramme>>{
       for (final channel in channels)
         channel.streamId: <EpgProgramme>[...?_programmes[channel.streamId]],
     };
-    final urls = await client.epgGuideUrls();
+    final urls = await _guideUrls();
+    final rawStartUtc = startUtc.subtract(_guideOffset);
+    final rawEndUtc = endUtc.subtract(_guideOffset);
+    final manualMappings = await store.epgChannelMappings(profileScope);
+    final manuallyOwnedIds = manualMappings
+        .map((mapping) => mapping.liveStreamId)
+        .toSet();
     for (final uri in urls.take(3)) {
       final sourceKey = epgSourceKey(uri);
       final guideChannels = await store.epgChannels(profileScope, sourceKey);
       final mapping = matchEpgChannels(channels, guideChannels);
+      mapping.removeWhere((streamId, _) => manuallyOwnedIds.contains(streamId));
+      final availableKeys = guideChannels
+          .map((channel) => channel.channelKey)
+          .toSet();
+      for (final manual in manualMappings) {
+        if (manual.sourceKey == sourceKey &&
+            availableKeys.contains(manual.epgChannelKey)) {
+          mapping[manual.liveStreamId] = manual.epgChannelKey;
+        }
+      }
       if (mapping.isEmpty) continue;
       final programmes = await store.epgWindow(
         profileScope,
         sourceKey,
         channelKeys: mapping.values.toSet().toList(growable: false),
-        startUtc: startUtc,
-        endUtc: endUtc,
+        startUtc: rawStartUtc,
+        endUtc: rawEndUtc,
       );
       final reverse = <String, List<int>>{};
       for (final entry in mapping.entries) {
@@ -332,13 +388,62 @@ class EpgRepository extends ChangeNotifier {
           '${programme.startUtc.millisecondsSinceEpoch}:${programme.title}',
         ),
       );
+      if (_guideOffset != Duration.zero) {
+        for (var index = 0; index < values.length; index++) {
+          values[index] = _shiftProgramme(values[index]);
+        }
+      }
     }
     return output;
+  }
+
+  Future<EpgCacheDiagnostics> diagnostics() =>
+      EpgCacheDiagnostics.load(client.creds, store: store);
+
+  Future<List<EpgChannelMapping>> manualMappings() =>
+      store.epgChannelMappings(profileScope);
+
+  Future<void> setManualMapping({
+    required int liveStreamId,
+    required String sourceKey,
+    required String epgChannelKey,
+  }) async {
+    await store.setManualEpgChannelMapping(
+      profileScope,
+      liveStreamId: liveStreamId,
+      sourceKey: sourceKey,
+      epgChannelKey: epgChannelKey,
+    );
+    notifyEpgConfigurationChanged();
+  }
+
+  Future<void> clearManualMapping(int liveStreamId) async {
+    await store.clearManualEpgChannelMapping(profileScope, liveStreamId);
+    notifyEpgConfigurationChanged();
+  }
+
+  Future<void> clearCache() async {
+    await store.clearEpgProfile(profileScope);
+    notifyEpgConfigurationChanged();
+  }
+
+  void _onConfigurationChanged() {
+    _settingsLoad = null;
+    _settings = null;
+    _guideOffset = Duration.zero;
+    _guideStatus = '';
+    _programmes.clear();
+    _freshUntil.clear();
+    _queue.clear();
+    _queued.clear();
+    _visibleRevision++;
+    if (!_disposed) notifyListeners();
   }
 
   @override
   void dispose() {
     _disposed = true;
+    epgConfigurationRevision.removeListener(_onConfigurationChanged);
     _queue.clear();
     super.dispose();
   }

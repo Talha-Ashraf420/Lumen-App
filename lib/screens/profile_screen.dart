@@ -16,6 +16,7 @@ import '../widgets.dart';
 import '../xtream.dart';
 import 'downloads_screen.dart';
 import 'diagnostics_screen.dart';
+import 'epg_settings_screen.dart';
 import 'login_screen.dart';
 import 'legal_screen.dart';
 import 'update_dialog.dart';
@@ -53,6 +54,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _insightsFocus = FocusNode(debugLabel: 'Watch insights');
   final _downloadsFocus = FocusNode(debugLabel: 'Downloads');
   final _refreshFocus = FocusNode(debugLabel: 'Refresh library');
+  final _guideSettingsFocus = FocusNode(debugLabel: 'TV guide setup');
   final _historyFocus = FocusNode(debugLabel: 'Clear watch history');
   final _diagnosticsFocus = FocusNode(debugLabel: 'Diagnostics & feedback');
   final _communityFocus = FocusNode(debugLabel: 'Lumen community');
@@ -354,7 +356,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         backgroundColor: surface,
         title: const Text('Clear watch history?'),
         content: const Text(
-          'This removes Continue watching and Recently watched. Your favourites and downloads are kept.',
+          'This removes Continue watching and Recent channels. Your favourites and downloads are kept.',
         ),
         actions: [
           TextButton(
@@ -528,6 +530,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _insightsFocus.dispose();
     _downloadsFocus.dispose();
     _refreshFocus.dispose();
+    _guideSettingsFocus.dispose();
     _historyFocus.dispose();
     _diagnosticsFocus.dispose();
     _communityFocus.dispose();
@@ -1054,8 +1057,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _divider(),
       _actionRow(
         focusNode: _refreshFocus,
-        onKeyEvent: (_, event) =>
-            _moveVertically(event, up: _downloadsFocus, down: _historyFocus),
+        onKeyEvent: (_, event) => _moveVertically(
+          event,
+          up: _downloadsFocus,
+          down: DeviceProfile.isMobileApp ? _historyFocus : _guideSettingsFocus,
+        ),
         icon: Icons.refresh_rounded,
         title: 'Refresh library',
         subtitle: 'Reload channels, films and series',
@@ -1071,14 +1077,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
             );
         },
       ),
+      if (!DeviceProfile.isMobileApp) ...[
+        _divider(),
+        _actionRow(
+          focusNode: _guideSettingsFocus,
+          onKeyEvent: (_, event) =>
+              _moveVertically(event, up: _refreshFocus, down: _historyFocus),
+          icon: Icons.calendar_view_week_outlined,
+          title: 'TV guide setup',
+          subtitle: 'Manage EPG source, timing, refresh and cache',
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => EpgSettingsScreen(client: widget.client),
+            ),
+          ),
+        ),
+      ],
       _divider(),
       _actionRow(
         focusNode: _historyFocus,
-        onKeyEvent: (_, event) =>
-            _moveVertically(event, up: _refreshFocus, down: _diagnosticsFocus),
+        onKeyEvent: (_, event) => _moveVertically(
+          event,
+          up: DeviceProfile.isMobileApp ? _refreshFocus : _guideSettingsFocus,
+          down: _diagnosticsFocus,
+        ),
         icon: Icons.history_rounded,
         title: 'Clear watch history',
-        subtitle: 'Remove Continue watching and Recent',
+        subtitle: 'Remove Continue watching and Recent channels',
         onTap: _clearHistory,
         danger: true,
         showChevron: false,

@@ -7,6 +7,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:share_plus/share_plus.dart';
 
 import 'device_profile.dart';
+import 'epg_settings.dart';
 import 'models.dart';
 import 'network_path.dart';
 import 'playback.dart';
@@ -69,6 +70,12 @@ class AppDiagnostics {
     final playback = PlaybackController.instance;
     final now = DateTime.now().toUtc();
     final notes = redactDiagnosticText(userNotes).trim();
+    EpgCacheDiagnostics? guide;
+    try {
+      guide = await EpgCacheDiagnostics.load(credentials);
+    } catch (_) {
+      // Diagnostics must remain available if the local guide database fails.
+    }
 
     final lines = <String>[
       'LUMEN DIAGNOSTIC REPORT',
@@ -94,6 +101,23 @@ class AppDiagnostics {
       'LIBRARY',
       'Source type: ${sourceLabel(credentials)}',
     ];
+
+    if (guide != null) {
+      lines.addAll([
+        '',
+        'TV GUIDE',
+        'Manual source configured: ${guide.manualSourceConfigured ? 'Yes' : 'No'}',
+        'Time correction: ${guide.offsetMinutes} minutes',
+        'Cached sources: ${guide.sourceCount}',
+        'Ready sources: ${guide.readySourceCount}',
+        'Indexed channels: ${guide.channelCount}',
+        'Indexed programmes: ${guide.programmeCount}',
+        'Manual channel mappings: ${guide.manualMappingCount}',
+        'Last refresh: ${guide.lastFetchedAt?.toIso8601String() ?? 'Never'}',
+        if (guide.lastError.isNotEmpty)
+          'Last guide error: ${redactDiagnosticText(guide.lastError)}',
+      ]);
+    }
 
     if (playback.hasMedia || playback.diagnosticEvents.isNotEmpty) {
       lines.addAll([

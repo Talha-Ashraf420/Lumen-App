@@ -172,6 +172,7 @@ class Store {
     // generation tombstone prevents any older in-flight provider request from
     // recreating rows after this point.
     await CatalogStore.instance.deleteProfile(profileScope(c));
+    await deletePrivate(scopedKey('lumen_epg_settings', c));
     return profiles;
   }
 

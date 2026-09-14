@@ -77,6 +77,13 @@ class Media3PlayerActivity : Activity() {
         const val EXTRA_PLAYLIST_TITLES = "playlistTitles"
         const val EXTRA_PLAYLIST_FAVORITE_KEYS = "playlistFavoriteKeys"
         const val EXTRA_PLAYLIST_FAVORITE_STATES = "playlistFavoriteStates"
+        const val EXTRA_PLAYLIST_PROGRESS_KEYS = "playlistProgressKeys"
+        const val EXTRA_PLAYLIST_POSTERS = "playlistPosters"
+        const val EXTRA_PLAYLIST_EXTENSIONS = "playlistExtensions"
+        const val EXTRA_PLAYLIST_RESUME_POSITIONS_MS = "playlistResumePositionsMs"
+        const val EXTRA_PLAYLIST_PROGRESS_TOUCHED = "playlistProgressTouched"
+        const val EXTRA_PLAYLIST_PROGRESS_POSITIONS_MS = "playlistProgressPositionsMs"
+        const val EXTRA_PLAYLIST_PROGRESS_DURATIONS_MS = "playlistProgressDurationsMs"
         const val EXTRA_INITIAL_INDEX = "initialIndex"
         const val EXTRA_LAST_INDEX = "lastIndex"
         const val RESULT_USE_EMBEDDED_ENGINE = Activity.RESULT_FIRST_USER + 20
@@ -155,7 +162,16 @@ class Media3PlayerActivity : Activity() {
     private var playlistTitles = listOf<String>()
     private var playlistFavoriteKeys = listOf<String>()
     private var playlistFavoriteStates = mutableListOf<Boolean>()
+    private var playlistProgressKeys = listOf<String>()
+    private var playlistPosters = listOf<String>()
+    private var playlistExtensions = listOf<String>()
+    private var playlistResumePositionsMs = listOf<Long>()
+    private var playlistProgressTouched = mutableListOf<Boolean>()
+    private var playlistProgressPositionsMs = mutableListOf<Long>()
+    private var playlistProgressDurationsMs = mutableListOf<Long>()
     private var playlistIndex = 0
+    private var loadedPlaylistIndex = -1
+    private val recentPlaylistIndices = mutableListOf<Int>()
     private var alternateUrl = ""
     private var usingAlternateSource = false
     private var openedAtMs = 0L
@@ -349,6 +365,19 @@ class Media3PlayerActivity : Activity() {
             .getBooleanArrayExtra(EXTRA_PLAYLIST_FAVORITE_STATES)
             ?.toMutableList()
             ?: mutableListOf()
+        playlistProgressKeys = intent
+            .getStringArrayListExtra(EXTRA_PLAYLIST_PROGRESS_KEYS)
+            .orEmpty()
+        playlistPosters = intent
+            .getStringArrayListExtra(EXTRA_PLAYLIST_POSTERS)
+            .orEmpty()
+        playlistExtensions = intent
+            .getStringArrayListExtra(EXTRA_PLAYLIST_EXTENSIONS)
+            .orEmpty()
+        playlistResumePositionsMs = intent
+            .getLongArrayExtra(EXTRA_PLAYLIST_RESUME_POSITIONS_MS)
+            ?.toList()
+            .orEmpty()
         if (playlistUrls.isEmpty()) {
             playlistUrls = listOf(url)
             playlistAlternateUrls = listOf("")
@@ -363,8 +392,24 @@ class Media3PlayerActivity : Activity() {
         if (playlistFavoriteStates.size != playlistUrls.size) {
             playlistFavoriteStates = MutableList(playlistUrls.size) { false }
         }
+        if (playlistProgressKeys.size != playlistUrls.size) {
+            playlistProgressKeys = List(playlistUrls.size) { "" }
+        }
+        if (playlistPosters.size != playlistUrls.size) {
+            playlistPosters = List(playlistUrls.size) { "" }
+        }
+        if (playlistExtensions.size != playlistUrls.size) {
+            playlistExtensions = List(playlistUrls.size) { "" }
+        }
+        if (playlistResumePositionsMs.size != playlistUrls.size) {
+            playlistResumePositionsMs = List(playlistUrls.size) { 0L }
+        }
+        playlistProgressTouched = MutableList(playlistUrls.size) { false }
+        playlistProgressPositionsMs = MutableList(playlistUrls.size) { 0L }
+        playlistProgressDurationsMs = MutableList(playlistUrls.size) { 0L }
         playlistIndex = intent.getIntExtra(EXTRA_INITIAL_INDEX, 0)
             .coerceIn(0, playlistUrls.lastIndex)
+        rememberPlaylistIndex(playlistIndex)
         selectPreferredSource(playlistIndex)
         if (url.isBlank()) {
             finish()
@@ -1304,8 +1349,8 @@ class Media3PlayerActivity : Activity() {
 
         playlistButton = toolButton(
             "▦",
-            if (isLive) "Channels" else "Episodes",
-            if (isLive) "Choose a channel" else "Choose an episode"
+            if (isLive) "Live hub" else "Episodes",
+            if (isLive) "Open the live control hub" else "Choose an episode"
         ) {
             showPlaylistDialog()
         }
@@ -1754,7 +1799,7 @@ class Media3PlayerActivity : Activity() {
         forwardButton.visibility = if (showSeekNavigation) View.VISIBLE else View.GONE
         playlistButton.isEnabled = playlistUrls.size > 1
         playlistButton.visibility = if (playlistUrls.size > 1) View.VISIBLE else View.GONE
-        playlistButton.text = if (isLive) "▦\nChannels" else "▦\nEpisodes"
+        playlistButton.text = if (isLive) "▦\nLive hub" else "▦\nEpisodes"
         if (::splitButton.isInitialized) {
             splitButton.visibility = if (
                 isTelevisionDevice && isLive && playlistUrls.size > 1
@@ -1824,12 +1869,14 @@ class Media3PlayerActivity : Activity() {
 
     private fun openPlaylistItem(index: Int, navigationDirection: Int = 0) {
         if (index !in playlistUrls.indices || index == playlistIndex) return
+        recordCurrentProgress()
         handler.removeCallbacks(recoverAfterNetworkChange)
         pendingDefaultNetwork = null
         retryAttempt = 0
         retryScheduled = false
         terminalError = false
         playlistIndex = index
+        rememberPlaylistIndex(index)
         selectPreferredSource(index)
         externalSubtitleUri = null
         externalSubtitleName = ""
@@ -1995,25 +2042,47 @@ class Media3PlayerActivity : Activity() {
         if (playlistUrls.size <= 1) return
         handler.removeCallbacks(hideControls)
         val fallbackName = if (isLive) "Channel" else "Episode"
-        val labels = playlistUrls.indices.map { index ->
-            playlistTitles.getOrNull(index)
-                ?.trim()
-                ?.takeIf { it.isNotBlank() }
-                ?: "$fallbackName ${index + 1}"
-        }.toTypedArray()
         val selectedIndex = if (splitActive && splitFocusedPane == 1) {
             secondaryIndex
         } else {
             playlistIndex
         }
+        val orderedIndices = if (!isLive) {
+            playlistUrls.indices.toList()
+        } else {
+            Media3PlaybackPolicy.orderedLiveHubIndices(
+                currentIndex = selectedIndex,
+                recentIndices = recentPlaylistIndices,
+                favoriteStates = playlistFavoriteStates,
+                itemCount = playlistUrls.size
+            )
+        }
+        val labels = orderedIndices.map { index ->
+            val name = playlistTitles.getOrNull(index)
+                ?.trim()
+                ?.takeIf { it.isNotBlank() }
+                ?: "$fallbackName ${index + 1}"
+            if (!isLive) return@map name
+            val status = when {
+                index == selectedIndex -> "●  NOW"
+                playlistFavoriteStates.getOrNull(index) == true -> "★  MY LIST"
+                recentPlaylistIndices.contains(index) -> "↺  RECENT"
+                else -> "LIVE"
+            }
+            "$status   $name"
+        }.toTypedArray()
         val dialog = AlertDialog.Builder(this)
             .setTitle(
                 if (splitActive) {
                     if (splitFocusedPane == 1) "Second-screen channel" else "Main-screen channel"
-                } else if (isLive) "Channels" else "Episodes"
+                } else if (isLive) "Live control hub" else "Episodes"
             )
-            .setSingleChoiceItems(labels, selectedIndex) { activeDialog, index ->
+            .setSingleChoiceItems(
+                labels,
+                orderedIndices.indexOf(selectedIndex)
+            ) { activeDialog, position ->
                 activeDialog.dismiss()
+                val index = orderedIndices[position]
                 if (splitActive && splitFocusedPane == 1) {
                     if (index != secondaryIndex) openSecondary(index)
                 } else if (index != playlistIndex) {
@@ -2040,6 +2109,15 @@ class Media3PlayerActivity : Activity() {
             playlistButton.post { playlistButton.requestFocus() }
         }
         dialog.show()
+    }
+
+    private fun rememberPlaylistIndex(index: Int) {
+        if (index !in playlistUrls.indices) return
+        recentPlaylistIndices.remove(index)
+        recentPlaylistIndices.add(0, index)
+        if (recentPlaylistIndices.size > 8) {
+            recentPlaylistIndices.subList(8, recentPlaylistIndices.size).clear()
+        }
     }
 
     private fun showMoreDialog() {
@@ -2624,6 +2702,7 @@ class Media3PlayerActivity : Activity() {
 
     private fun open() {
         if (isInBackground) return
+        recordCurrentProgress()
         terminalError = false
         openedAtMs = SystemClock.elapsedRealtime()
         lastProgressAtMs = openedAtMs
@@ -2632,7 +2711,13 @@ class Media3PlayerActivity : Activity() {
         hasRenderedVideoFrame = false
         player.stop()
         player.volume = 0f
-        player.setMediaItem(buildMediaItem())
+        val resumePosition = Media3PlaybackPolicy.resumePositionMs(
+            isLive = isLive,
+            savedPositionMs = playlistResumePositionsMs.getOrElse(playlistIndex) { 0L },
+            sessionPositionMs = playlistProgressPositionsMs.getOrElse(playlistIndex) { 0L }
+        )
+        player.setMediaItem(buildMediaItem(), resumePosition)
+        loadedPlaylistIndex = playlistIndex
         player.playWhenReady = true
         player.prepare()
         showBufferingStatus(if (isLive) "Building live buffer…" else "Opening video…")
@@ -2651,6 +2736,23 @@ class Media3PlayerActivity : Activity() {
         hasStarted = true
         lastProgressAtMs = now
         lastPositionMs = position
+    }
+
+    private fun recordCurrentProgress() {
+        if (
+            isLive ||
+            !::player.isInitialized ||
+            loadedPlaylistIndex !in playlistProgressKeys.indices ||
+            playlistProgressKeys[loadedPlaylistIndex].isBlank()
+        ) {
+            return
+        }
+        val duration = player.duration
+        val position = player.currentPosition.coerceAtLeast(0L)
+        if (duration <= 0L || position <= 0L) return
+        playlistProgressTouched[loadedPlaylistIndex] = true
+        playlistProgressPositionsMs[loadedPlaylistIndex] = position.coerceAtMost(duration)
+        playlistProgressDurationsMs[loadedPlaylistIndex] = duration
     }
 
     private fun scheduleRetry(message: String) {
@@ -2734,6 +2836,7 @@ class Media3PlayerActivity : Activity() {
 
     override fun finish() {
         if (!returningToEmbeddedEngine && playlistUrls.isNotEmpty()) {
+            recordCurrentProgress()
             setResult(
                 RESULT_OK,
                 Intent().apply {
@@ -2745,6 +2848,18 @@ class Media3PlayerActivity : Activity() {
                     putExtra(
                         EXTRA_PLAYLIST_FAVORITE_STATES,
                         playlistFavoriteStates.toBooleanArray()
+                    )
+                    putExtra(
+                        EXTRA_PLAYLIST_PROGRESS_TOUCHED,
+                        playlistProgressTouched.toBooleanArray()
+                    )
+                    putExtra(
+                        EXTRA_PLAYLIST_PROGRESS_POSITIONS_MS,
+                        playlistProgressPositionsMs.toLongArray()
+                    )
+                    putExtra(
+                        EXTRA_PLAYLIST_PROGRESS_DURATIONS_MS,
+                        playlistProgressDurationsMs.toLongArray()
                     )
                 }
             )
@@ -2868,6 +2983,12 @@ class Media3PlayerActivity : Activity() {
                 }
                 KeyEvent.KEYCODE_M -> {
                     if (event.repeatCount == 0) toggleKeyboardMute()
+                    return true
+                }
+                KeyEvent.KEYCODE_G -> {
+                    if (event.repeatCount == 0 && isLive && playlistUrls.size > 1) {
+                        showPlaylistDialog()
+                    }
                     return true
                 }
                 KeyEvent.KEYCODE_DPAD_CENTER,

@@ -5,6 +5,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'android_compatibility_player.dart';
 import 'device_profile.dart';
+import 'focus_return.dart';
 import 'library.dart';
 import 'network_path.dart';
 import 'playback_mode.dart';
@@ -578,6 +579,7 @@ class PlaybackController extends ChangeNotifier {
   Timer? _networkRecoveryTimer;
   int _lastNetworkRecoveryMs = 0;
   bool _networkWasOffline = false;
+  final FocusReturnTarget _returnFocus = FocusReturnTarget();
 
   // ---- auto-reconnect state ----
   /// Active reconnect configuration (can be overridden by the user).
@@ -686,8 +688,13 @@ class PlaybackController extends ChangeNotifier {
     );
   }
 
-  void open(List<PlayerItem> newItems, int i) {
+  void open(
+    List<PlayerItem> newItems,
+    int i, {
+    bool captureReturnFocus = true,
+  }) {
     if (newItems.isEmpty) return;
+    if (captureReturnFocus) _returnFocus.capture();
     final safeIndex = i.clamp(0, newItems.length - 1);
     if (DeviceProfile.isTelevision && AndroidCompatibilityPlayer.isAvailable) {
       // A native SurfaceView avoids the audio-only/black-frame failure seen
@@ -714,11 +721,18 @@ class PlaybackController extends ChangeNotifier {
         for (final item in newItems)
           () {
             final sources = playbackSourceCandidates(item);
+            final saved = item.progressKey == null
+                ? null
+                : Library.instance.progress[item.progressKey];
             return AndroidCompatibilityPlaylistItem(
               url: sources.first,
               title: item.title,
               alternateUrl: sources.length > 1 ? sources[1] : null,
               favoriteRef: item.favRef,
+              progressKey: item.progressKey,
+              poster: item.poster,
+              ext: item.ext,
+              resumePositionSeconds: saved?.position ?? 0,
             );
           }(),
       ],
@@ -729,7 +743,11 @@ class PlaybackController extends ChangeNotifier {
         ...selected.httpHeaders,
       },
     );
-    if (!opened) _openEmbedded(newItems, safeIndex);
+    if (opened) {
+      _returnFocus.restore();
+    } else {
+      _openEmbedded(newItems, safeIndex);
+    }
   }
 
   void _openEmbedded(List<PlayerItem> newItems, int safeIndex) {
@@ -1313,6 +1331,7 @@ class PlaybackController extends ChangeNotifier {
     if (!hasMedia) return;
     minimized = true;
     notifyListeners();
+    _returnFocus.restore(clearAfterRestore: false);
   }
 
   void expand() {
@@ -1320,7 +1339,7 @@ class PlaybackController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void stop() {
+  void stop({bool restoreFocus = false, bool preserveReturnFocus = false}) {
     persistProgress();
     _networkRecoveryTimer?.cancel();
     _networkRecoveryTimer = null;
@@ -1358,5 +1377,10 @@ class PlaybackController extends ChangeNotifier {
     index = 0;
     minimized = false;
     notifyListeners();
+    if (restoreFocus) {
+      _returnFocus.restore();
+    } else if (!preserveReturnFocus) {
+      _returnFocus.clear();
+    }
   }
 }

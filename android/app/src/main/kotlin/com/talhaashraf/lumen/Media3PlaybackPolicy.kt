@@ -100,6 +100,37 @@ internal object Media3PlaybackPolicy {
     fun showSeekNavigation(isTelevision: Boolean, isLive: Boolean): Boolean =
         isTelevision && !isLive
 
+    fun resumePositionMs(
+        isLive: Boolean,
+        savedPositionMs: Long,
+        sessionPositionMs: Long
+    ): Long = if (isLive) {
+        0L
+    } else {
+        maxOf(savedPositionMs, sessionPositionMs).coerceAtLeast(0L)
+    }
+
+    /**
+     * Keeps the current channel first, then the channels visited in this
+     * player session, saved channels, and finally the untouched playlist.
+     * Invalid/stale indexes are discarded and each channel appears once.
+     */
+    fun orderedLiveHubIndices(
+        currentIndex: Int,
+        recentIndices: List<Int>,
+        favoriteStates: List<Boolean>,
+        itemCount: Int
+    ): List<Int> {
+        if (itemCount <= 0) return emptyList()
+        val candidates = buildList {
+            add(currentIndex)
+            addAll(recentIndices)
+            addAll((0 until itemCount).filter { favoriteStates.getOrNull(it) == true })
+            addAll(0 until itemCount)
+        }
+        return candidates.filter { it in 0 until itemCount }.distinct()
+    }
+
     fun focusTransportOnRemoteInput(
         isLive: Boolean,
         controlsVisible: Boolean,

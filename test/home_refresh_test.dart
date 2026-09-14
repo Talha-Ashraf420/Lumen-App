@@ -31,6 +31,8 @@ void main() {
     activePalette = darkPalette;
     CatalogCache.instance.clear();
     Library.instance.recent.clear();
+    Library.instance.progress.clear();
+    Library.instance.watched.clear();
   });
 
   test('Home spotlight prefers a clean English movies category', () {
@@ -100,7 +102,9 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
   });
 
-  testWidgets('Home exposes the most recently played item', (tester) async {
+  testWidgets('Home exposes a recently played live channel separately', (
+    tester,
+  ) async {
     Library.instance.addRecent(
       const MediaRef(
         kind: 'live',
@@ -123,8 +127,63 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Last played'), findsOneWidget);
+    expect(find.text('Recent channels'), findsOneWidget);
     expect(find.text('Evening News'), findsOneWidget);
     expect(find.text('Watch live'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('home-recent-channels-viewport')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('home-recent-channels-viewport')),
+        matching: find.byWidgetPredicate(
+          (widget) => widget is ClipRect && widget.child is ShaderMask,
+        ),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('Home separates resumable VOD from recent live channels', (
+    tester,
+  ) async {
+    Library.instance.progress['movie:42'] = Progress(
+      key: 'movie:42',
+      title: 'A Half Watched Film',
+      poster: '',
+      url: 'https://stream.example/movie.mp4',
+      ext: 'mp4',
+      position: 1200,
+      duration: 3600,
+      updatedAt: DateTime.now().millisecondsSinceEpoch,
+    );
+    Library.instance.recent.add(
+      const MediaRef(
+        kind: 'live',
+        id: 9,
+        name: 'Live Sports',
+        url: 'https://stream.example/live.ts',
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildTheme(darkPalette),
+        home: HomeScreen(
+          client: _RefreshClient(),
+          onBrowse: () {},
+          categoryLoader: () async => <Category>[],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Continue watching'), findsOneWidget);
+    expect(find.text('A Half Watched Film'), findsOneWidget);
+    expect(find.text('Film · 40m left'), findsOneWidget);
+    expect(find.byType(LinearProgressIndicator), findsOneWidget);
+    expect(find.text('Recent channels'), findsOneWidget);
+    expect(find.text('Live Sports'), findsOneWidget);
   });
 }

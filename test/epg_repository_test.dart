@@ -7,14 +7,17 @@ import 'package:lumen_tv/catalog_store.dart';
 import 'package:lumen_tv/epg.dart';
 import 'package:lumen_tv/epg_repository.dart';
 import 'package:lumen_tv/epg_loader.dart';
+import 'package:lumen_tv/epg_settings.dart';
 import 'package:lumen_tv/models.dart';
 import 'package:lumen_tv/store.dart';
 import 'package:lumen_tv/xtream.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   final store = CatalogStore.instance;
 
   setUp(() async {
+    SharedPreferences.setMockInitialValues({});
     await store.useInMemoryForTests();
   });
 
@@ -219,6 +222,167 @@ https://stream.example/news.m3u8
       repository.dispose();
     },
   );
+
+  test('manual XMLTV source is refreshed before the provider source', () async {
+    final calls = <Uri>[];
+    final transport = MockClient((request) async {
+      calls.add(request.url);
+      if (request.url.host == 'guide.example') {
+        return http.Response('''
+<?xml version="1.0" encoding="UTF-8"?>
+<tv>
+  <channel id="news.example"><display-name>World News</display-name></channel>
+  <programme channel="news.example" start="20260912100000 +0000" stop="20260912110000 +0000">
+    <title>Manual guide show</title>
+  </programme>
+</tv>
+''', 200);
+      }
+      return http.Response('Provider guide unavailable', 503);
+    });
+    final client = XtreamClient(
+      const XtreamCredentials(
+        baseUrl: 'https://tv.example',
+        username: 'user',
+        password: 'pass',
+      ),
+      httpClient: transport,
+    );
+    await EpgSettings.save(
+      client.creds,
+      manualUrl: 'https://guide.example/custom.xml',
+      offsetMinutes: 0,
+    );
+    final repository = EpgRepository(
+      client: client,
+      store: store,
+      clock: () => DateTime.utc(2026, 9, 12, 10, 30),
+    );
+
+    await repository.ensureFullGuide(force: true);
+
+    expect(calls.first.host, 'guide.example');
+    expect(
+      await store.epgSourceState(
+        repositoryScope(client),
+        epgSourceKey(Uri.parse('https://guide.example/custom.xml')),
+      ),
+      isNotNull,
+    );
+    repository.dispose();
+  });
+
+  test(
+    'time correction shifts display results without rewriting cache',
+    () async {
+      final fixedNow = DateTime.utc(2026, 9, 12, 10, 30);
+      final client = XtreamClient(
+        const XtreamCredentials(
+          baseUrl: 'https://tv.example',
+          username: 'user',
+          password: 'pass',
+        ),
+        httpClient: MockClient((_) async => http.Response('', 200)),
+      );
+      final uri = (await client.epgGuideUrls()).single;
+      final source = epgSourceKey(uri);
+      await store.beginEpgImport(repositoryScope(client), source, 1);
+      await store.appendEpgChannels(repositoryScope(client), source, 1, const [
+        EpgChannel(channelKey: 'news.example', displayNames: ['World News']),
+      ]);
+      await store.appendEpgProgrammes(repositoryScope(client), source, 1, [
+        EpgProgramme(
+          channelKey: 'news.example',
+          startUtc: DateTime.utc(2026, 9, 12, 9),
+          stopUtc: DateTime.utc(2026, 9, 12, 10),
+          title: 'Shifted show',
+        ),
+      ]);
+      await store.completeEpgImport(repositoryScope(client), source, 1);
+      await EpgSettings.save(client.creds, manualUrl: '', offsetMinutes: 60);
+      final repository = EpgRepository(
+        client: client,
+        store: store,
+        clock: () => fixedNow,
+      );
+      final channel = LiveStream(
+        1,
+        'World News',
+        '',
+        'News',
+        epgId: 'news.example',
+      );
+
+      final result = await repository.guideWindow(
+        [channel],
+        startUtc: DateTime.utc(2026, 9, 12, 9, 30),
+        endUtc: DateTime.utc(2026, 9, 12, 11, 30),
+      );
+      final raw = await store.epgWindow(
+        repositoryScope(client),
+        source,
+        channelKeys: const ['news.example'],
+        startUtc: DateTime.utc(2026, 9, 12, 8),
+        endUtc: DateTime.utc(2026, 9, 12, 11),
+      );
+
+      expect(result[1]!.single.startUtc, DateTime.utc(2026, 9, 12, 10));
+      expect(raw.single.startUtc, DateTime.utc(2026, 9, 12, 9));
+      repository.dispose();
+    },
+  );
+
+  test('manual mapping overrides an otherwise valid automatic match', () async {
+    final client = XtreamClient(
+      const XtreamCredentials(
+        baseUrl: 'https://tv.example',
+        username: 'user',
+        password: 'pass',
+      ),
+      httpClient: MockClient((_) async => http.Response('', 200)),
+    );
+    final uri = (await client.epgGuideUrls()).single;
+    final source = epgSourceKey(uri);
+    final scope = repositoryScope(client);
+    await store.beginEpgImport(scope, source, 1);
+    await store.appendEpgChannels(scope, source, 1, const [
+      EpgChannel(channelKey: 'news.auto', displayNames: ['World News']),
+      EpgChannel(channelKey: 'news.manual', displayNames: ['Other News']),
+    ]);
+    await store.appendEpgProgrammes(scope, source, 1, [
+      EpgProgramme(
+        channelKey: 'news.auto',
+        startUtc: DateTime.utc(2026, 9, 12, 9),
+        stopUtc: DateTime.utc(2026, 9, 12, 11),
+        title: 'Automatic programme',
+      ),
+      EpgProgramme(
+        channelKey: 'news.manual',
+        startUtc: DateTime.utc(2026, 9, 12, 9),
+        stopUtc: DateTime.utc(2026, 9, 12, 11),
+        title: 'Manually selected programme',
+      ),
+    ]);
+    await store.completeEpgImport(scope, source, 1);
+    await store.setManualEpgChannelMapping(
+      scope,
+      liveStreamId: 9,
+      sourceKey: source,
+      epgChannelKey: 'news.manual',
+    );
+    final repository = EpgRepository(client: client, store: store);
+
+    final guide = await repository.guideWindow(
+      [LiveStream(9, 'World News', '', 'News')],
+      startUtc: DateTime.utc(2026, 9, 12, 9, 30),
+      endUtc: DateTime.utc(2026, 9, 12, 10, 30),
+    );
+
+    expect(guide[9]!.map((programme) => programme.title), [
+      'Manually selected programme',
+    ]);
+    repository.dispose();
+  });
 }
 
 String repositoryScope(XtreamClient client) => Store.profileScope(client.creds);

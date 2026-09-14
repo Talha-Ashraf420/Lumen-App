@@ -161,4 +161,62 @@ void main() {
     );
     expect(values.map((item) => item.title), ['New one', 'Channel two']);
   });
+
+  test(
+    'reports active cache counts and clears only the selected profile',
+    () async {
+      for (final scope in ['profile-a', 'profile-b']) {
+        await store.beginEpgImport(scope, 'source', 1);
+        await store.appendEpgChannels(scope, 'source', 1, const [
+          EpgChannel(channelKey: 'news.example', displayNames: ['World News']),
+        ]);
+        await store.appendEpgProgrammes(scope, 'source', 1, [
+          programme('News', 9),
+        ]);
+        await store.completeEpgImport(scope, 'source', 1);
+      }
+
+      final before = await store.epgCacheCounts('profile-a');
+      expect(before.channels, 1);
+      expect(before.programmes, 1);
+      expect(await store.epgSourceStates('profile-a'), hasLength(1));
+
+      await store.clearEpgProfile('profile-a');
+
+      expect((await store.epgCacheCounts('profile-a')).programmes, 0);
+      expect(await store.epgSourceStates('profile-a'), isEmpty);
+      expect((await store.epgCacheCounts('profile-b')).programmes, 1);
+    },
+  );
+
+  test(
+    'manual mappings replace older choices and survive cache clearing',
+    () async {
+      await store.setManualEpgChannelMapping(
+        'profile',
+        liveStreamId: 7,
+        sourceKey: 'source-one',
+        epgChannelKey: 'news.one',
+      );
+      await store.setManualEpgChannelMapping(
+        'profile',
+        liveStreamId: 7,
+        sourceKey: 'source-two',
+        epgChannelKey: 'news.two',
+      );
+
+      var mappings = await store.epgChannelMappings('profile');
+      expect(mappings, hasLength(1));
+      expect(mappings.single.sourceKey, 'source-two');
+      expect(mappings.single.epgChannelKey, 'news.two');
+      expect(mappings.single.userOverride, isTrue);
+
+      await store.clearEpgProfile('profile');
+      mappings = await store.epgChannelMappings('profile');
+      expect(mappings, hasLength(1));
+
+      await store.clearManualEpgChannelMapping('profile', 7);
+      expect(await store.epgChannelMappings('profile'), isEmpty);
+    },
+  );
 }

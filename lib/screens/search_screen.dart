@@ -7,6 +7,7 @@ import '../catalog_cache.dart';
 import '../device_profile.dart';
 import '../epg.dart';
 import '../epg_repository.dart';
+import '../focus_return.dart';
 import '../library.dart';
 import '../refresh.dart';
 import '../responsive.dart';
@@ -1168,8 +1169,9 @@ class SearchScreenState extends State<SearchScreen>
     );
   }
 
-  void _push(Widget w) =>
-      Navigator.of(context).push(MaterialPageRoute(builder: (_) => w));
+  Future<void> _push(Widget w) async {
+    await pushWithFocusReturn(context, w);
+  }
 
   List<Category> get _curCats => switch (_section) {
     'movie' => _movieCats,
