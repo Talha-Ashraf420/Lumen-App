@@ -27,6 +27,7 @@ class Store {
     'watch_stats_v1',
     'lumen_downloads_index',
     'lumen_epg_settings',
+    'lumen_catalog_organization_v1',
   ];
   static final bool _useSecure =
       !kIsWeb && (Platform.isAndroid || Platform.isIOS);
@@ -50,6 +51,22 @@ class Store {
       hash = (hash * 0x01000193) & 0xffffffff;
     }
     return hash.toRadixString(16).padLeft(8, '0');
+  }
+
+  /// Stable cache namespace for one combined set of provider profiles.
+  ///
+  /// This deliberately cannot equal an individual [profileScope]. Combined
+  /// catalog rows contain namespaced IDs and source labels, so storing them in
+  /// a provider's raw cache would make the next refresh namespace them again.
+  static String combinedCatalogScope(Iterable<XtreamCredentials> credentials) {
+    final scopes = credentials.map(profileScope).toSet().toList()..sort();
+    var hash = 0x811c9dc5;
+    final identity = 'combined-catalog-v2|${scopes.join('|')}';
+    for (final byte in utf8.encode(identity)) {
+      hash ^= byte;
+      hash = (hash * 0x01000193) & 0xffffffff;
+    }
+    return 'multi_${hash.toRadixString(16).padLeft(8, '0')}';
   }
 
   static String scopedKey(String key, XtreamCredentials credentials) =>
@@ -264,6 +281,11 @@ class Store {
     XtreamCredentials replacement,
   ) {
     var migrated = value;
+    final oldScope = profileScope(previous);
+    final newScope = profileScope(replacement);
+    if (oldScope != newScope) {
+      migrated = migrated.replaceAll(oldScope, newScope);
+    }
     final oldBase = previous.baseUrl.trim();
     final newBase = replacement.baseUrl.trim();
     if (oldBase.isNotEmpty && newBase.isNotEmpty && oldBase != newBase) {

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../catalog_cache.dart';
+import '../catalog_organization.dart';
 import '../device_profile.dart';
 import '../epg_repository.dart';
 import '../models.dart';
@@ -41,6 +42,9 @@ class _GuideTabScreenState extends State<GuideTabScreen>
     with AutomaticKeepAliveClientMixin {
   late final EpgRepository _repository;
   final Map<String, FocusNode> _categoryFocus = <String, FocusNode>{};
+  final FocusNode _sourceFocus = FocusNode(debugLabel: 'Guide service filter');
+  final GlobalKey<PopupMenuButtonState<String>> _sourceMenuKey = GlobalKey();
+  List<Category> _rawCategories = const [];
   List<Category> _categories = const [];
   List<LiveStream> _channels = const [];
   String? _selectedId;
@@ -49,6 +53,8 @@ class _GuideTabScreenState extends State<GuideTabScreen>
   bool _loadingChannels = false;
   String _error = '';
   int _generation = 0;
+  String _sourceScope = 'all';
+  CatalogOrganization _organization = CatalogOrganization();
 
   @override
   bool get wantKeepAlive => true;
@@ -57,14 +63,23 @@ class _GuideTabScreenState extends State<GuideTabScreen>
   void initState() {
     super.initState();
     _repository = EpgRepository(client: widget.client);
+    _sourceFocus.onKeyEvent = _sourceKey;
     contentRefresh.addListener(_reload);
+    CatalogOrganizationStore.instance.revision.addListener(
+      _onOrganizationRevision,
+    );
     unawaited(_loadCategories());
   }
 
   @override
   void dispose() {
     contentRefresh.removeListener(_reload);
+    CatalogOrganizationStore.instance.revision.removeListener(
+      _onOrganizationRevision,
+    );
     _repository.dispose();
+    _sourceFocus.onKeyEvent = null;
+    _sourceFocus.dispose();
     for (final node in _categoryFocus.values) {
       node.dispose();
     }
@@ -94,6 +109,23 @@ class _GuideTabScreenState extends State<GuideTabScreen>
     unawaited(_loadCategories(preferredId: _selectedId));
   }
 
+  void _onOrganizationRevision() =>
+      unawaited(_loadCategories(preferredId: _selectedId));
+
+  List<(String, String)> get _sources {
+    final sources = <String, String>{};
+    for (final category in _rawCategories) {
+      if (category.sourceScope.isEmpty) continue;
+      sources[category.sourceScope] = category.sourceLabel.isEmpty
+          ? 'IPTV service'
+          : category.sourceLabel;
+    }
+    return sources.entries.map((entry) => (entry.key, entry.value)).toList()
+      ..sort((a, b) => a.$2.toLowerCase().compareTo(b.$2.toLowerCase()));
+  }
+
+  bool get _hasMultipleSources => _sources.length > 1;
+
   Future<void> _loadCategories({String? preferredId}) async {
     final generation = ++_generation;
     if (mounted) {
@@ -107,9 +139,19 @@ class _GuideTabScreenState extends State<GuideTabScreen>
         widget.client,
         priority: true,
       );
+      final organization = await CatalogOrganizationStore.instance.load(
+        widget.client.creds,
+      );
       if (!mounted || generation != _generation) return;
-      if (categories.isEmpty) {
+      final organized = organization.apply(
+        'live',
+        categories,
+        sourceScope: _sourceScope,
+      );
+      if (organized.isEmpty) {
         setState(() {
+          _rawCategories = List.unmodifiable(categories);
+          _organization = organization;
           _categories = const [];
           _channels = const [];
           _loadingCategories = false;
@@ -117,12 +159,14 @@ class _GuideTabScreenState extends State<GuideTabScreen>
         });
         return;
       }
-      final selected = categories.firstWhere(
+      final selected = organized.firstWhere(
         (category) => category.id == preferredId,
-        orElse: () => categories.first,
+        orElse: () => organized.first,
       );
       setState(() {
-        _categories = List.unmodifiable(categories);
+        _rawCategories = List.unmodifiable(categories);
+        _organization = organization;
+        _categories = List.unmodifiable(organized);
         _loadingCategories = false;
       });
       await _selectCategory(selected, generation: generation);
@@ -145,11 +189,20 @@ class _GuideTabScreenState extends State<GuideTabScreen>
       _error = '';
     });
     try {
-      final channels = await CatalogCache.instance.liveStreams(
-        widget.client,
-        category.id,
-        priority: true,
+      final batches = await Future.wait(
+        category.effectiveMemberIds.map(
+          (id) => CatalogCache.instance.liveStreams(
+            widget.client,
+            id,
+            priority: true,
+          ),
+        ),
       );
+      final channels = <LiveStream>[
+        for (final batch in batches)
+          for (final channel in batch)
+            if (!_organization.isHidden('live', channel.categoryId)) channel,
+      ];
       if (!mounted || requestGeneration != _generation) return;
       setState(() {
         _channels = List.unmodifiable(channels);
@@ -167,7 +220,28 @@ class _GuideTabScreenState extends State<GuideTabScreen>
     }
   }
 
-  KeyEventResult _categoryKey(FocusNode _, KeyEvent event) {
+  KeyEventResult _categoryKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+      widget.shellRailFocusNode?.requestFocus();
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+      if (_hasMultipleSources &&
+          _categories.isNotEmpty &&
+          identical(node, _nodeFor(_categories.first.id, 0))) {
+        _sourceFocus.requestFocus();
+        return KeyEventResult.handled;
+      }
+      widget.shellTopFocusNode?.requestFocus();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  KeyEventResult _sourceKey(FocusNode _, KeyEvent event) {
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
     }
@@ -179,7 +253,18 @@ class _GuideTabScreenState extends State<GuideTabScreen>
       widget.shellTopFocusNode?.requestFocus();
       return KeyEventResult.handled;
     }
+    if (event.logicalKey == LogicalKeyboardKey.arrowDown &&
+        _categories.isNotEmpty) {
+      _nodeFor(_categories.first.id, 0).requestFocus();
+      return KeyEventResult.handled;
+    }
     return KeyEventResult.ignored;
+  }
+
+  void _selectSource(String value) {
+    if (value == _sourceScope) return;
+    setState(() => _sourceScope = value);
+    unawaited(_loadCategories());
   }
 
   @override
@@ -248,14 +333,21 @@ class _GuideTabScreenState extends State<GuideTabScreen>
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(18, 22, 14, 12),
-          child: Text(
-            'CHANNEL GROUPS',
-            style: TextStyle(
-              color: muted,
-              fontSize: 10,
-              letterSpacing: 1.4,
-              fontWeight: FontWeight.w800,
-            ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'CHANNEL GROUPS',
+                  style: TextStyle(
+                    color: muted,
+                    fontSize: 10,
+                    letterSpacing: 1.4,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              if (_hasMultipleSources) _sourcePicker(compact: true),
+            ],
           ),
         ),
         Expanded(
@@ -359,9 +451,72 @@ class _GuideTabScreenState extends State<GuideTabScreen>
             ),
           ),
         ),
+        if (_hasMultipleSources) ...[
+          const SizedBox(width: 8),
+          _sourcePicker(compact: true),
+        ],
       ],
     ),
   );
+
+  Widget _sourcePicker({bool compact = false}) => FocusableActionDetector(
+    focusNode: _sourceFocus,
+    shortcuts: const <ShortcutActivator, Intent>{
+      SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
+      SingleActivator(LogicalKeyboardKey.numpadEnter): ActivateIntent(),
+      SingleActivator(LogicalKeyboardKey.select): ActivateIntent(),
+      SingleActivator(LogicalKeyboardKey.gameButtonA): ActivateIntent(),
+    },
+    actions: <Type, Action<Intent>>{
+      ActivateIntent: CallbackAction<ActivateIntent>(
+        onInvoke: (_) {
+          _sourceMenuKey.currentState?.showButtonMenu();
+          return null;
+        },
+      ),
+    },
+    child: ExcludeFocus(
+      child: PopupMenuButton<String>(
+        key: _sourceMenuKey,
+        tooltip: 'Filter guide by service',
+        onSelected: _selectSource,
+        itemBuilder: (_) => [
+          _sourceItem('all', 'All services'),
+          for (final source in _sources) _sourceItem(source.$1, source.$2),
+        ],
+        child: Container(
+          padding: EdgeInsets.symmetric(
+            horizontal: compact ? 9 : 12,
+            vertical: 9,
+          ),
+          decoration: BoxDecoration(
+            color: _sourceFocus.hasFocus
+                ? accent.withValues(alpha: .2)
+                : surface,
+            borderRadius: BorderRadius.circular(lumenCorner(11)),
+            border: Border.all(color: _sourceFocus.hasFocus ? accentInk : line),
+          ),
+          child: Icon(Icons.dns_outlined, color: accentInk, size: 18),
+        ),
+      ),
+    ),
+  );
+
+  PopupMenuItem<String> _sourceItem(String value, String label) =>
+      PopupMenuItem(
+        value: value,
+        child: Row(
+          children: [
+            Icon(
+              value == _sourceScope ? Icons.check_rounded : Icons.dns_outlined,
+              color: value == _sourceScope ? accentInk : muted,
+              size: 18,
+            ),
+            const SizedBox(width: 10),
+            Flexible(child: Text(label, overflow: TextOverflow.ellipsis)),
+          ],
+        ),
+      );
 
   Widget _message(String value) => Center(
     child: Padding(

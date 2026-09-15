@@ -324,6 +324,45 @@ void main() {
     await tester.pump();
   });
 
+  testWidgets('TV dock fits a 540dp viewport with system safe-area insets', (
+    tester,
+  ) async {
+    DeviceProfile.isTelevision = true;
+    addTearDown(() => DeviceProfile.isTelevision = false);
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(960, 540);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    final client = _FullCatalogClient();
+    addTearDown(client.close);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildTheme(darkPalette),
+        home: MediaQuery(
+          data: const MediaQueryData(
+            size: Size(960, 540),
+            padding: EdgeInsets.only(top: 24, bottom: 24),
+          ),
+          child: HomeShell(
+            client: client,
+            onLogout: () async {},
+            onSwitch: (_) {},
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 2));
+
+    expect(find.byTooltip('Home'), findsOneWidget);
+    expect(find.byTooltip('Profile'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+  });
+
   testWidgets('focusing Search in the TV rail does not steal focus', (
     tester,
   ) async {

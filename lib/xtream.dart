@@ -295,6 +295,12 @@ class XtreamClient {
     : _http = httpClient ?? http.Client(),
       _ownsHttpClient = httpClient == null;
 
+  /// Durable browse-cache partition owned by this client.
+  ///
+  /// Ordinary clients use their provider profile. Facades may override this
+  /// when their returned records are transformed or combine several sources.
+  String get catalogScope => Store.profileScope(creds);
+
   bool get supportsMovieCatalog => !creds.isM3u;
   bool get supportsSeriesCatalog => !creds.isM3u;
   bool supportsShortEpg(int streamId) => !creds.isDemo && !creds.isM3u;

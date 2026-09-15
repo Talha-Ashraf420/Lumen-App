@@ -115,7 +115,20 @@ class Category {
   final String name;
   final String sourceScope;
   final String sourceLabel;
-  Category(this.id, this.name, {this.sourceScope = '', this.sourceLabel = ''});
+
+  /// Provider category ids represented by this row. Normally this is empty
+  /// and [id] is used. Locally merged categories populate it so the UI can
+  /// fetch each member only after the viewer opens the group.
+  final List<String> memberIds;
+  Category(
+    this.id,
+    this.name, {
+    this.sourceScope = '',
+    this.sourceLabel = '',
+    this.memberIds = const [],
+  });
+
+  List<String> get effectiveMemberIds => memberIds.isEmpty ? [id] : memberIds;
   factory Category.fromJson(Map<String, dynamic> j) => Category(
     _toStr(j['category_id']),
     _toStr(j['category_name']),

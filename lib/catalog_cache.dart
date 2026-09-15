@@ -4,7 +4,6 @@ import 'package:flutter/foundation.dart' show ValueNotifier;
 
 import 'catalog_store.dart';
 import 'models.dart';
-import 'store.dart';
 import 'xtream.dart';
 
 /// Shared catalog cache used by Home, Search, browse pages and details.
@@ -220,7 +219,7 @@ class CatalogCache {
     ]).toString();
     if (!_logoEnrichments.add(signature)) return;
     final epoch = _epoch;
-    final scope = Store.profileScope(client.creds);
+    final scope = client.catalogScope;
     unawaited(() async {
       try {
         final enriched = await client.enrichLiveLogos(channels);
@@ -247,7 +246,7 @@ class CatalogCache {
     required void Function(List<Category>) setMemory,
     bool priority = false,
   }) async {
-    final scope = Store.profileScope(client.creds);
+    final scope = client.catalogScope;
     final epoch = _epoch;
     final cached = await CatalogStore.instance.categories(scope, kind);
     if (cached.isNotEmpty) {
@@ -321,7 +320,7 @@ class CatalogCache {
     required void Function(List<T>) setMemory,
     required bool priority,
   }) async {
-    final scope = Store.profileScope(client.creds);
+    final scope = client.catalogScope;
     final epoch = _epoch;
     final cached = await read(scope);
     Future<List<T>> refresh({bool notify = true}) async {
@@ -366,7 +365,7 @@ class CatalogCache {
   }) async {
     _ensureOwner(client);
     final bucket = categoryId ?? '*';
-    final scope = Store.profileScope(client.creds);
+    final scope = client.catalogScope;
     final cached = await CatalogStore.instance.vodPage(
       scope,
       bucket: bucket,
@@ -491,7 +490,7 @@ class CatalogCache {
   }) async {
     _ensureOwner(client);
     final bucket = categoryId ?? '*';
-    final scope = Store.profileScope(client.creds);
+    final scope = client.catalogScope;
     final cached = await CatalogStore.instance.seriesPage(
       scope,
       bucket: bucket,
@@ -559,7 +558,7 @@ class CatalogCache {
   }) async {
     _ensureOwner(client);
     final bucket = categoryId ?? '*';
-    final scope = Store.profileScope(client.creds);
+    final scope = client.catalogScope;
     final cached = await CatalogStore.instance.livePage(
       scope,
       bucket: bucket,

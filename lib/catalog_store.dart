@@ -59,7 +59,7 @@ class CatalogStore {
       return override.openDatabase(
         _pathOverride ?? inMemoryDatabasePath,
         options: OpenDatabaseOptions(
-          version: 4,
+          version: 5,
           onCreate: _create,
           onUpgrade: _upgrade,
         ),
@@ -87,7 +87,7 @@ class CatalogStore {
     return factory.openDatabase(
       '${databases.path}/lumen_catalog.sqlite',
       options: OpenDatabaseOptions(
-        version: 4,
+        version: 5,
         onCreate: _create,
         onUpgrade: _upgrade,
       ),
@@ -101,6 +101,8 @@ class CatalogStore {
         media_kind TEXT NOT NULL,
         item_id TEXT NOT NULL,
         name TEXT NOT NULL,
+        source_scope TEXT NOT NULL,
+        source_label TEXT NOT NULL,
         sort_name TEXT NOT NULL,
         generation INTEGER NOT NULL,
         updated_at INTEGER NOT NULL,
@@ -176,6 +178,28 @@ class CatalogStore {
       await _createOrderIndex(db);
     }
     if (oldVersion < 4) await _createEpgTables(db);
+    if (oldVersion < 5) {
+      await db.execute(
+        'ALTER TABLE catalog_categories '
+        "ADD COLUMN source_scope TEXT NOT NULL DEFAULT ''",
+      );
+      await db.execute(
+        'ALTER TABLE catalog_categories '
+        "ADD COLUMN source_label TEXT NOT NULL DEFAULT ''",
+      );
+      // v1 of combined libraries reused the primary provider scope. Remove
+      // only transformed rows; EPG data and clean per-provider cache remain.
+      await db.delete(
+        'catalog_categories',
+        where: "item_id LIKE '%::%' AND profile_scope NOT LIKE 'multi_%'",
+      );
+      await db.delete(
+        'catalog_items',
+        where:
+            "payload LIKE '%\"_lumen_source_scope\"%' "
+            "AND profile_scope NOT LIKE 'multi_%'",
+      );
+    }
   }
 
   Future<void> _createEpgTables(Database db) async {
@@ -296,14 +320,19 @@ class CatalogStore {
       final db = await _database();
       final rows = await db.query(
         'catalog_categories',
-        columns: ['item_id', 'name'],
+        columns: ['item_id', 'name', 'source_scope', 'source_label'],
         where: 'profile_scope = ? AND media_kind = ?',
         whereArgs: [scope, kind],
         orderBy: 'sort_name ASC',
       );
       return [
         for (final row in rows)
-          Category(row['item_id'] as String, row['name'] as String),
+          Category(
+            row['item_id'] as String,
+            row['name'] as String,
+            sourceScope: row['source_scope'] as String,
+            sourceLabel: row['source_label'] as String,
+          ),
       ];
     } catch (_) {
       // Persistence must never prevent a provider request from working.
@@ -337,6 +366,8 @@ class CatalogStore {
             'media_kind': kind,
             'item_id': category.id,
             'name': category.name,
+            'source_scope': category.sourceScope,
+            'source_label': category.sourceLabel,
             'sort_name': _sortName(category.name),
             'generation': generation,
             'updated_at': now,

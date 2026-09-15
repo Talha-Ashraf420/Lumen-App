@@ -20,12 +20,18 @@ class MultiSourceXtreamClient extends XtreamClient {
       _entryByCode[entry.code] = entry;
       _entryByScope[entry.scope] = entry;
     }
+    catalogScope = Store.combinedCatalogScope(
+      _entries.map((entry) => entry.credentials),
+    );
   }
 
   final List<_SourceEntry> _entries;
   final Map<int, _SourceEntry> _entryByCode = {};
   final Map<String, _SourceEntry> _entryByScope = {};
   final Map<String, _SourceEntry> _guideOwners = {};
+
+  @override
+  late final String catalogScope;
 
   bool get combinesSources => _entries.length > 1;
   int get sourceCount => _entries.length;
@@ -139,8 +145,21 @@ class MultiSourceXtreamClient extends XtreamClient {
       );
       return fresh;
     } catch (_) {
-      return CatalogStore.instance.categories(source.scope, kind);
+      final cached = await CatalogStore.instance.categories(source.scope, kind);
+      // Builds before the dedicated combined cache scope could write tagged
+      // category rows over the primary provider's raw cache. Ignore those
+      // legacy rows while offline; a successful provider refresh replaces
+      // them atomically with clean records.
+      return cached
+          .where((value) => !_isNamespacedCategory(value.id))
+          .toList(growable: false);
     }
+  }
+
+  bool _isNamespacedCategory(String id) {
+    final separator = id.indexOf('::');
+    return separator > 0 &&
+        _entryByScope.containsKey(id.substring(0, separator));
   }
 
   Future<List<LiveStream>> _sourceLive(
@@ -158,11 +177,18 @@ class MultiSourceXtreamClient extends XtreamClient {
       );
       return fresh;
     } catch (_) {
-      return (await CatalogStore.instance.livePage(
+      final cached = (await CatalogStore.instance.livePage(
         source.scope,
         bucket: bucket,
         limit: 1000000,
       )).items;
+      return cached
+          .where(
+            (value) =>
+                value.sourceScope.isEmpty &&
+                !_isNamespacedCategory(value.categoryId),
+          )
+          .toList(growable: false);
     }
   }
 
@@ -181,11 +207,18 @@ class MultiSourceXtreamClient extends XtreamClient {
       );
       return fresh;
     } catch (_) {
-      return (await CatalogStore.instance.vodPage(
+      final cached = (await CatalogStore.instance.vodPage(
         source.scope,
         bucket: bucket,
         limit: 1000000,
       )).items;
+      return cached
+          .where(
+            (value) =>
+                value.sourceScope.isEmpty &&
+                !_isNamespacedCategory(value.categoryId),
+          )
+          .toList(growable: false);
     }
   }
 
@@ -204,11 +237,18 @@ class MultiSourceXtreamClient extends XtreamClient {
       );
       return fresh;
     } catch (_) {
-      return (await CatalogStore.instance.seriesPage(
+      final cached = (await CatalogStore.instance.seriesPage(
         source.scope,
         bucket: bucket,
         limit: 1000000,
       )).items;
+      return cached
+          .where(
+            (value) =>
+                value.sourceScope.isEmpty &&
+                !_isNamespacedCategory(value.categoryId),
+          )
+          .toList(growable: false);
     }
   }
 

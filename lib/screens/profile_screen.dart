@@ -15,6 +15,7 @@ import '../updater.dart';
 import '../widgets.dart';
 import '../xtream.dart';
 import 'downloads_screen.dart';
+import 'catalog_organization_screen.dart';
 import 'diagnostics_screen.dart';
 import 'epg_settings_screen.dart';
 import 'login_screen.dart';
@@ -61,6 +62,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _insightsFocus = FocusNode(debugLabel: 'Watch insights');
   final _downloadsFocus = FocusNode(debugLabel: 'Downloads');
   final _refreshFocus = FocusNode(debugLabel: 'Refresh library');
+  final _organizeFocus = FocusNode(debugLabel: 'Organize library');
   final _guideSettingsFocus = FocusNode(debugLabel: 'TV guide setup');
   final _historyFocus = FocusNode(debugLabel: 'Clear watch history');
   final _diagnosticsFocus = FocusNode(debugLabel: 'Diagnostics & feedback');
@@ -634,6 +636,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _insightsFocus.dispose();
     _downloadsFocus.dispose();
     _refreshFocus.dispose();
+    _organizeFocus.dispose();
     _guideSettingsFocus.dispose();
     _historyFocus.dispose();
     _diagnosticsFocus.dispose();
@@ -1209,11 +1212,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _divider(),
       _actionRow(
         focusNode: _refreshFocus,
-        onKeyEvent: (_, event) => _moveVertically(
-          event,
-          up: _downloadsFocus,
-          down: DeviceProfile.isMobileApp ? _historyFocus : _guideSettingsFocus,
-        ),
+        onKeyEvent: (_, event) =>
+            _moveVertically(event, up: _downloadsFocus, down: _organizeFocus),
         icon: Icons.refresh_rounded,
         title: 'Refresh library',
         subtitle: 'Reload channels, films and series',
@@ -1229,12 +1229,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
             );
         },
       ),
+      _divider(),
+      _actionRow(
+        focusNode: _organizeFocus,
+        onKeyEvent: (_, event) => _moveVertically(
+          event,
+          up: _refreshFocus,
+          down: DeviceProfile.isMobileApp ? _historyFocus : _guideSettingsFocus,
+        ),
+        icon: Icons.tune_rounded,
+        title: 'Organize library',
+        subtitle: 'Rename, hide, reorder, and combine provider categories',
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => CatalogOrganizationScreen(client: widget.client),
+          ),
+        ),
+      ),
       if (!DeviceProfile.isMobileApp) ...[
         _divider(),
         _actionRow(
           focusNode: _guideSettingsFocus,
           onKeyEvent: (_, event) =>
-              _moveVertically(event, up: _refreshFocus, down: _historyFocus),
+              _moveVertically(event, up: _organizeFocus, down: _historyFocus),
           icon: Icons.calendar_view_week_outlined,
           title: 'TV guide setup',
           subtitle: 'Manage EPG source, timing, refresh and cache',
@@ -1250,7 +1267,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         focusNode: _historyFocus,
         onKeyEvent: (_, event) => _moveVertically(
           event,
-          up: DeviceProfile.isMobileApp ? _refreshFocus : _guideSettingsFocus,
+          up: DeviceProfile.isMobileApp ? _organizeFocus : _guideSettingsFocus,
           down: _diagnosticsFocus,
         ),
         icon: Icons.history_rounded,

@@ -1191,59 +1191,79 @@ class _SignalDock extends StatelessWidget {
 
     return SizedBox(
       width: 86,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-        child: Column(
-          children: [
-            const SizedBox(height: 6),
-            Tooltip(
-              message: 'Lumen',
-              child: Container(
-                width: 46,
-                height: 46,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      accentInk.withValues(alpha: isDark ? .16 : .10),
-                      accentInk.withValues(alpha: .025),
-                    ],
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // Phone-shaped TV emulators and overscan-aware televisions can leave
+          // less than 540 logical pixels after SafeArea. Scale only the dock
+          // rows so every destination remains visible and focusable.
+          const fixedHeight = 113.0;
+          final available = constraints.maxHeight.isFinite
+              ? constraints.maxHeight
+              : 545.0;
+          final itemExtent = ((available - fixedHeight) / ordered.length).clamp(
+            36.0,
+            48.0,
+          );
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+            child: Column(
+              children: [
+                const SizedBox(height: 6),
+                Tooltip(
+                  message: 'Lumen',
+                  child: Container(
+                    width: 46,
+                    height: 46,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          accentInk.withValues(alpha: isDark ? .16 : .10),
+                          accentInk.withValues(alpha: .025),
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(lumenCorner(16)),
+                      border: Border.all(color: lineStrong),
+                    ),
+                    child: const LumenMark(size: 25),
                   ),
-                  borderRadius: BorderRadius.circular(lumenCorner(16)),
-                  border: Border.all(color: lineStrong),
                 ),
-                child: const LumenMark(size: 25),
-              ),
+                const SizedBox(height: 26),
+                for (final nav in main)
+                  _DockItem(
+                    nav: nav,
+                    selected: nav.page == index,
+                    onTap: () => onSelect(nav.page),
+                    onFocusSelect: () => onFocusSelect(nav.page),
+                    focusNode: focusNodes[nav.page],
+                    onKeyEvent: (_, event) => moveInRail(nav.page, event),
+                    itemExtent: itemExtent,
+                  ),
+                const Spacer(),
+                Container(
+                  height: 1,
+                  margin: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 7,
+                  ),
+                  color: line,
+                ),
+                for (final nav in _utilityDock)
+                  _DockItem(
+                    nav: nav,
+                    selected: nav.page == index,
+                    onTap: () => onSelect(nav.page),
+                    onFocusSelect: () => onFocusSelect(nav.page),
+                    focusNode: focusNodes[nav.page],
+                    onKeyEvent: (_, event) => moveInRail(nav.page, event),
+                    itemExtent: itemExtent,
+                  ),
+              ],
             ),
-            const SizedBox(height: 26),
-            for (final nav in main)
-              _DockItem(
-                nav: nav,
-                selected: nav.page == index,
-                onTap: () => onSelect(nav.page),
-                onFocusSelect: () => onFocusSelect(nav.page),
-                focusNode: focusNodes[nav.page],
-                onKeyEvent: (_, event) => moveInRail(nav.page, event),
-              ),
-            const Spacer(),
-            Container(
-              height: 1,
-              margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-              color: line,
-            ),
-            for (final nav in _utilityDock)
-              _DockItem(
-                nav: nav,
-                selected: nav.page == index,
-                onTap: () => onSelect(nav.page),
-                onFocusSelect: () => onFocusSelect(nav.page),
-                focusNode: focusNodes[nav.page],
-                onKeyEvent: (_, event) => moveInRail(nav.page, event),
-              ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
@@ -1256,6 +1276,7 @@ class _DockItem extends StatelessWidget {
   final VoidCallback onFocusSelect;
   final FocusNode? focusNode;
   final FocusOnKeyEventCallback? onKeyEvent;
+  final double itemExtent;
   const _DockItem({
     required this.nav,
     required this.selected,
@@ -1263,6 +1284,7 @@ class _DockItem extends StatelessWidget {
     required this.onFocusSelect,
     this.focusNode,
     this.onKeyEvent,
+    this.itemExtent = 48,
   });
 
   @override
@@ -1284,7 +1306,7 @@ class _DockItem extends StatelessWidget {
         builder: (context, active) => AnimatedContainer(
           duration: lumenMotion,
           width: 54,
-          height: 46,
+          height: itemExtent - 2,
           // Nine dock entries must fit a 540dp TV viewport after SafeArea.
           margin: const EdgeInsets.only(bottom: 2),
           decoration: BoxDecoration(

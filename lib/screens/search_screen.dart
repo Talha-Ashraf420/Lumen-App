@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../catalog_cache.dart';
+import '../catalog_organization.dart';
 import '../device_profile.dart';
 import '../epg.dart';
 import '../epg_repository.dart';
@@ -12,7 +13,6 @@ import '../library.dart';
 import '../refresh.dart';
 import '../responsive.dart';
 import '../models.dart';
-import '../store.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import '../xtream.dart';
@@ -107,8 +107,10 @@ class SearchScreenState extends State<SearchScreen>
   final _categoryButtonFocus = FocusNode(debugLabel: 'Search category');
   final _categoryMenuKey = GlobalKey<PopupMenuButtonState<String>>();
   final _sortFocus = FocusNode(debugLabel: 'Catalog sort');
+  final _sourceFocus = FocusNode(debugLabel: 'Catalog service filter');
   final _guideFocus = FocusNode(debugLabel: 'Open TV guide');
   final _sortMenuKey = GlobalKey<PopupMenuButtonState<String>>();
+  final _sourceMenuKey = GlobalKey<PopupMenuButtonState<String>>();
   final _gridScroll = ScrollController();
   final _categoryScroll = ScrollController();
   final _categoryScope = FocusScopeNode(debugLabel: 'Catalog categories');
@@ -136,6 +138,7 @@ class SearchScreenState extends State<SearchScreen>
       widget.initialSection ?? 'all'; // all | movie | series | live
   late String _cat = widget.initialCategory ?? 'all';
   late String _sort = catalogDefaultSort(widget.initialSection ?? 'all');
+  String _sourceScope = 'all';
 
   // Streams cached per category id ('all' = whole catalog). Many providers
   // return nothing for the no-category "list all" call, so we fetch per
@@ -152,6 +155,8 @@ class SearchScreenState extends State<SearchScreen>
   static const _pageSize = 48;
 
   List<Category> _movieCats = [], _seriesCats = [], _liveCats = [];
+  List<Category> _rawMovieCats = [], _rawSeriesCats = [], _rawLiveCats = [];
+  CatalogOrganization _organization = CatalogOrganization();
   bool _movieCatsReady = false;
   bool _seriesCatsReady = false;
   bool _liveCatsReady = false;
@@ -181,10 +186,28 @@ class SearchScreenState extends State<SearchScreen>
     _sortFocus
       ..onKeyEvent = _moveSortFocus
       ..addListener(_onSortFocusChanged);
+    _sourceFocus
+      ..onKeyEvent = _moveSourceFocus
+      ..addListener(_onSortFocusChanged);
     _guideFocus.onKeyEvent = _moveGuideFocus;
     _loadCats();
     contentRefresh.addListener(_onRefresh);
     CatalogCache.instance.revision.addListener(_onCatalogRevision);
+    CatalogOrganizationStore.instance.revision.addListener(
+      _onOrganizationRevision,
+    );
+    _loadOrganization();
+  }
+
+  Future<void> _loadOrganization() async {
+    final organization = await CatalogOrganizationStore.instance.load(
+      widget.client.creds,
+    );
+    if (!mounted) return;
+    setState(() {
+      _organization = organization;
+      _applyOrganization();
+    });
   }
 
   void _loadCats() {
@@ -218,26 +241,51 @@ class SearchScreenState extends State<SearchScreen>
     setState(() {
       switch (section) {
         case 'movie':
-          _movieCats = categories;
+          _rawMovieCats = categories;
           _movieCatsReady = true;
         case 'series':
-          _seriesCats = categories;
+          _rawSeriesCats = categories;
           _seriesCatsReady = true;
         case 'live':
-          _liveCats = categories;
+          _rawLiveCats = categories;
           _liveCatsReady = true;
       }
+      _applyOrganization();
       // Dedicated browse pages open on a focused category instead of issuing
       // an expensive whole-catalog request. “All categories” remains selectable.
       if (_browse &&
           _section == section &&
           widget.initialCategory == null &&
           _cat == 'all' &&
-          categories.isNotEmpty) {
-        _cat = categories.first.id;
+          _curCats.isNotEmpty) {
+        _cat = _curCats.first.id;
       }
     });
   }
+
+  void _applyOrganization() {
+    _movieCats = _organization.apply(
+      'movie',
+      _rawMovieCats,
+      sourceScope: _sourceScope,
+    );
+    _seriesCats = _organization.apply(
+      'series',
+      _rawSeriesCats,
+      sourceScope: _sourceScope,
+    );
+    _liveCats = _organization.apply(
+      'live',
+      _rawLiveCats,
+      sourceScope: _sourceScope,
+    );
+    if (_cat != 'all' && !_curCats.any((category) => category.id == _cat)) {
+      _cat = _browse && _curCats.isNotEmpty ? _curCats.first.id : 'all';
+      _lastGridIndex = 0;
+    }
+  }
+
+  void _onOrganizationRevision() => _loadOrganization();
 
   void _onRefresh() {
     if (!mounted) return;
@@ -251,6 +299,9 @@ class SearchScreenState extends State<SearchScreen>
   void dispose() {
     contentRefresh.removeListener(_onRefresh);
     CatalogCache.instance.revision.removeListener(_onCatalogRevision);
+    CatalogOrganizationStore.instance.revision.removeListener(
+      _onOrganizationRevision,
+    );
     _ctrl.dispose();
     _searchFocus.dispose();
     for (final node in _sectionFocus) {
@@ -260,6 +311,9 @@ class SearchScreenState extends State<SearchScreen>
       ..removeListener(_onSortFocusChanged)
       ..dispose();
     _sortFocus
+      ..removeListener(_onSortFocusChanged)
+      ..dispose();
+    _sourceFocus
       ..removeListener(_onSortFocusChanged)
       ..dispose();
     _guideFocus.dispose();
@@ -436,6 +490,8 @@ class SearchScreenState extends State<SearchScreen>
     if (key == LogicalKeyboardKey.arrowRight) {
       if (index + 1 < _sectionFocus.length) {
         _sectionFocus[index + 1].requestFocus();
+      } else if (_hasMultipleSources) {
+        _sourceFocus.requestFocus();
       } else if (_section != 'all') {
         _categoryButtonFocus.requestFocus();
       }
@@ -456,11 +512,38 @@ class SearchScreenState extends State<SearchScreen>
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.arrowRight) {
+      (_hasMultipleSources ? _sourceFocus : _sortFocus).requestFocus();
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowDown) {
+      return _focusResultsFromControls();
+    }
+    return KeyEventResult.ignored;
+  }
+
+  KeyEventResult _moveSourceFocus(FocusNode _, KeyEvent event) {
+    if (!_isDirectionalKeyEvent(event)) return KeyEventResult.ignored;
+    final key = event.logicalKey;
+    if (key == LogicalKeyboardKey.arrowLeft) {
+      if (_browse && isWide(context)) {
+        _requestVisibleCategoryFocus();
+      } else if (_section != 'all') {
+        _categoryButtonFocus.requestFocus();
+      } else {
+        _sectionFocus[_sectionFocusIndex].requestFocus();
+      }
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowRight) {
       _sortFocus.requestFocus();
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.arrowDown) {
       return _focusResultsFromControls();
+    }
+    if (key == LogicalKeyboardKey.arrowUp) {
+      _browse ? _requestShellTopFocus() : _searchFocus.requestFocus();
+      return KeyEventResult.handled;
     }
     return KeyEventResult.ignored;
   }
@@ -484,7 +567,9 @@ class SearchScreenState extends State<SearchScreen>
       return KeyEventResult.handled;
     }
     if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-      if (_browse) {
+      if (_hasMultipleSources) {
+        _sourceFocus.requestFocus();
+      } else if (_browse) {
         _requestVisibleCategoryFocus();
       } else {
         _categoryButtonFocus.requestFocus();
@@ -984,6 +1069,22 @@ class SearchScreenState extends State<SearchScreen>
         )
         .whenComplete(() => _inFlight.remove(requestKey));
 
+    final category = _categoryFor(section, cat);
+    final memberIds = category?.effectiveMemberIds ?? const <String>[];
+    if (memberIds.length > 1) {
+      if (offset > 0) {
+        _inFlight.remove(requestKey);
+        return;
+      }
+      finish(
+        () => _loadMergedCategory(section, memberIds).then(
+          (values) =>
+              _storePage(section, cat, values, false, generation, 0, signature),
+        ),
+      );
+      return;
+    }
+
     final categoryId = cat == 'all' ? null : cat;
     switch (section) {
       case 'movie':
@@ -1056,6 +1157,107 @@ class SearchScreenState extends State<SearchScreen>
               ),
         );
     }
+  }
+
+  Category? _categoryFor(String section, String id) {
+    if (id == 'all') return null;
+    final categories = switch (section) {
+      'movie' => _movieCats,
+      'series' => _seriesCats,
+      _ => _liveCats,
+    };
+    for (final category in categories) {
+      if (category.id == id) return category;
+    }
+    return null;
+  }
+
+  Future<List<dynamic>> _loadMergedCategory(
+    String section,
+    List<String> categoryIds,
+  ) async {
+    final batches = switch (section) {
+      'movie' => await Future.wait(
+        categoryIds.map(
+          (id) => CatalogCache.instance.vodStreams(
+            widget.client,
+            id,
+            priority: true,
+          ),
+        ),
+      ),
+      'series' => await Future.wait(
+        categoryIds.map(
+          (id) => CatalogCache.instance.seriesItems(
+            widget.client,
+            id,
+            priority: true,
+          ),
+        ),
+      ),
+      _ => await Future.wait(
+        categoryIds.map(
+          (id) => CatalogCache.instance.liveStreams(
+            widget.client,
+            id,
+            priority: true,
+          ),
+        ),
+      ),
+    };
+    final query = _q.trim().toLowerCase();
+    final values = <dynamic>[for (final batch in batches) ...batch]
+        .where((value) {
+          if (query.isEmpty) return true;
+          final name = switch (value) {
+            VodStream item => item.name,
+            Series item => item.name,
+            LiveStream item => item.name,
+            _ => '$value',
+          };
+          return name.toLowerCase().contains(query);
+        })
+        .toList(growable: true);
+    int compareName(dynamic a, dynamic b) {
+      String name(dynamic value) => switch (value) {
+        VodStream item => item.name,
+        Series item => item.name,
+        LiveStream item => item.name,
+        _ => '$value',
+      };
+      return name(a).toLowerCase().compareTo(name(b).toLowerCase());
+    }
+
+    switch (_sort) {
+      case 'az':
+        values.sort(compareName);
+      case 'za':
+        values.sort((a, b) => compareName(b, a));
+      case 'rating':
+        values.sort((a, b) {
+          double rating(dynamic value) => switch (value) {
+            VodStream item => item.rating,
+            Series item => item.rating,
+            _ => 0,
+          };
+          return rating(b).compareTo(rating(a));
+        });
+      case 'recent':
+      case 'year':
+        values.sort((a, b) {
+          int date(dynamic value) => switch (value) {
+            VodStream item => mediaAddedValue(
+              _sort == 'year' ? item.name : item.added,
+            ),
+            Series item => mediaAddedValue(
+              item.releaseDate.isEmpty ? item.name : item.releaseDate,
+            ),
+            _ => 0,
+          };
+          return date(b).compareTo(date(a));
+        });
+    }
+    return values;
   }
 
   void _storePage(
@@ -1172,7 +1374,9 @@ class SearchScreenState extends State<SearchScreen>
 
   void _openGuide() {
     if (!_epgEnabled) return;
-    final channels = _liveByCat[_cat] ?? const <LiveStream>[];
+    final channels = (_liveByCat[_cat] ?? const <LiveStream>[])
+        .where(_isVisibleItem)
+        .toList(growable: false);
     if (channels.isEmpty) return;
     _push(
       EpgGuideScreen(
@@ -1194,6 +1398,59 @@ class SearchScreenState extends State<SearchScreen>
     'live' => _liveCats,
     _ => const [],
   };
+
+  List<Category> get _rawCurCats => switch (_section) {
+    'movie' => _rawMovieCats,
+    'series' => _rawSeriesCats,
+    'live' => _rawLiveCats,
+    _ => [..._rawMovieCats, ..._rawSeriesCats, ..._rawLiveCats],
+  };
+
+  List<(String, String)> get _sources {
+    final sources = <String, String>{};
+    for (final category in _rawCurCats) {
+      if (category.sourceScope.isEmpty) continue;
+      sources[category.sourceScope] = category.sourceLabel.isEmpty
+          ? 'IPTV service'
+          : category.sourceLabel;
+    }
+    return sources.entries.map((entry) => (entry.key, entry.value)).toList()
+      ..sort((a, b) => a.$2.toLowerCase().compareTo(b.$2.toLowerCase()));
+  }
+
+  bool get _hasMultipleSources => _sources.length > 1;
+
+  bool _matchesSource(Object item) {
+    if (_sourceScope == 'all') return true;
+    return switch (item) {
+      VodStream value => value.sourceScope == _sourceScope,
+      Series value => value.sourceScope == _sourceScope,
+      LiveStream value => value.sourceScope == _sourceScope,
+      _ => true,
+    };
+  }
+
+  bool _isVisibleItem(Object item) {
+    if (!_matchesSource(item)) return false;
+    final (section, categoryId) = switch (item) {
+      VodStream value => ('movie', value.categoryId),
+      Series value => ('series', value.categoryId),
+      LiveStream value => ('live', value.categoryId),
+      _ => ('', ''),
+    };
+    return section.isEmpty || !_organization.isHidden(section, categoryId);
+  }
+
+  void _selectSource(String value) {
+    if (_sourceScope == value) return;
+    setState(() {
+      _sourceScope = value;
+      _cat = 'all';
+      _lastGridIndex = 0;
+      _applyOrganization();
+      if (_browse && _curCats.isNotEmpty) _cat = _curCats.first.id;
+    });
+  }
 
   bool get _curCatsReady => switch (_section) {
     'movie' => _movieCatsReady,
@@ -1307,6 +1564,10 @@ class SearchScreenState extends State<SearchScreen>
                 : const SizedBox.shrink(),
           ),
           const SizedBox(width: 12),
+          if (_hasMultipleSources) ...[
+            _sourceButton(compactLabel: !isWide(context)),
+            const SizedBox(width: 8),
+          ],
           _sortButton(),
           if (_section == 'live' && _epgEnabled) ...[
             const SizedBox(width: 8),
@@ -1367,8 +1628,15 @@ class SearchScreenState extends State<SearchScreen>
                 if (filters) ...[
                   const SizedBox(width: 12),
                   SizedBox(width: 220, child: _catButton()),
+                  if (_hasMultipleSources) ...[
+                    const SizedBox(width: 8),
+                    _sourceButton(compactLabel: true),
+                  ],
                   const SizedBox(width: 8),
                   _sortButton(),
+                ] else if (_hasMultipleSources) ...[
+                  const SizedBox(width: 8),
+                  _sourceButton(compactLabel: true),
                 ],
               ],
             ),
@@ -1388,18 +1656,36 @@ class SearchScreenState extends State<SearchScreen>
                     if (filters) ...[
                       const SizedBox(width: 10),
                       SizedBox(width: 220, child: _catButton()),
+                      if (_hasMultipleSources) ...[
+                        const SizedBox(width: 8),
+                        _sourceButton(compactLabel: true),
+                      ],
                       const SizedBox(width: 8),
                       _sortButton(),
+                    ] else if (_hasMultipleSources) ...[
+                      const SizedBox(width: 8),
+                      _sourceButton(compactLabel: true),
                     ],
                   ],
                 )
               else ...[
                 _sectionChips(),
+                if (!filters && _hasMultipleSources) ...[
+                  const SizedBox(height: 10),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: _sourceButton(),
+                  ),
+                ],
                 if (filters) ...[
                   const SizedBox(height: 10),
                   Row(
                     children: [
                       Expanded(child: _catButton()),
+                      if (_hasMultipleSources) ...[
+                        const SizedBox(width: 8),
+                        _sourceButton(compactLabel: true),
+                      ],
                       const SizedBox(width: 8),
                       _sortButton(),
                     ],
@@ -1471,6 +1757,119 @@ class SearchScreenState extends State<SearchScreen>
     'recent': 'Recently added',
     'year': 'Newest',
   };
+
+  Widget _sourceButton({bool compactLabel = false}) {
+    String? selected;
+    for (final source in _sources) {
+      if (source.$1 == _sourceScope) {
+        selected = source.$2;
+        break;
+      }
+    }
+    return FocusableActionDetector(
+      focusNode: _sourceFocus,
+      shortcuts: const <ShortcutActivator, Intent>{
+        SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
+        SingleActivator(LogicalKeyboardKey.numpadEnter): ActivateIntent(),
+        SingleActivator(LogicalKeyboardKey.select): ActivateIntent(),
+        SingleActivator(LogicalKeyboardKey.gameButtonA): ActivateIntent(),
+      },
+      actions: <Type, Action<Intent>>{
+        ActivateIntent: CallbackAction<ActivateIntent>(
+          onInvoke: (_) {
+            _sourceMenuKey.currentState?.showButtonMenu();
+            return null;
+          },
+        ),
+      },
+      child: ExcludeFocus(
+        child: PopupMenuButton<String>(
+          key: _sourceMenuKey,
+          tooltip: 'Filter by service',
+          color: surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(lumenCorner(16)),
+            side: BorderSide(color: line),
+          ),
+          onSelected: _selectSource,
+          itemBuilder: (_) => [
+            _sourceItem('all', 'All services'),
+            for (final source in _sources) _sourceItem(source.$1, source.$2),
+          ],
+          child: AnimatedScale(
+            scale: _sourceFocus.hasFocus ? activeFocusStyle.scale : 1,
+            duration: const Duration(milliseconds: 130),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 130),
+              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+              decoration: BoxDecoration(
+                color: _sourceFocus.hasFocus
+                    ? accent.withValues(alpha: .22)
+                    : surfaceHi.withValues(alpha: .6),
+                borderRadius: BorderRadius.circular(lumenCorner(13)),
+                border: Border.all(
+                  color: _sourceFocus.hasFocus ? accentInk : line,
+                  width: _sourceFocus.hasFocus ? activeFocusStyle.ringWidth : 1,
+                ),
+                boxShadow: _sourceFocus.hasFocus
+                    ? lumenFocusShadows(accentInk)
+                    : null,
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.dns_outlined, size: 18, color: accentInk),
+                  if (!compactLabel) ...[
+                    const SizedBox(width: 6),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 140),
+                      child: Text(
+                        selected ?? 'All services',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  PopupMenuItem<String> _sourceItem(String value, String label) =>
+      PopupMenuItem(
+        value: value,
+        child: Row(
+          children: [
+            Icon(
+              _sourceScope == value ? Icons.check_rounded : Icons.dns_outlined,
+              color: _sourceScope == value ? accentInk : muted,
+              size: 18,
+            ),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: textHi,
+                  fontWeight: _sourceScope == value
+                      ? FontWeight.w800
+                      : FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
 
   // Sort → an anchored dropdown menu (not a bottom sheet).
   Widget _sortButton() {
@@ -1808,9 +2207,17 @@ class SearchScreenState extends State<SearchScreen>
           ? _liveByCat['all']
           : null;
       final loading = movies == null || series == null || live == null;
-      final mr = (movies ?? []).take(18).map(_movie).toList();
-      final sr = (series ?? []).take(18).map(_ser).toList();
-      final liveResults = (live ?? []).take(18).toList();
+      final mr = (movies ?? [])
+          .where(_isVisibleItem)
+          .take(18)
+          .map(_movie)
+          .toList();
+      final sr = (series ?? [])
+          .where(_isVisibleItem)
+          .take(18)
+          .map(_ser)
+          .toList();
+      final liveResults = (live ?? []).where(_isVisibleItem).take(18).toList();
       final livePlaylist = liveResults.map(_liveItem).toList();
       final lr = liveResults
           .asMap()
@@ -1872,13 +2279,21 @@ class SearchScreenState extends State<SearchScreen>
     final showingStale = _canShowStale(_section, catId);
     final pageKey = _pageKey(_section, catId);
     final chans = live
-        ? _liveByCat[catId] ?? const <LiveStream>[]
+        ? (_liveByCat[catId] ?? const <LiveStream>[])
+              .where(_isVisibleItem)
+              .toList(growable: false)
         : const <LiveStream>[];
     List<_Res> items;
     if (_section == 'movie') {
-      items = (_movieByCat[catId] ?? const []).map(_movie).toList();
+      items = (_movieByCat[catId] ?? const [])
+          .where(_isVisibleItem)
+          .map(_movie)
+          .toList();
     } else if (_section == 'series') {
-      items = (_seriesByCat[catId] ?? const []).map(_ser).toList();
+      items = (_seriesByCat[catId] ?? const [])
+          .where(_isVisibleItem)
+          .map(_ser)
+          .toList();
     } else {
       // build a shared channel playlist so the player can zap next/previous
       final pl = chans.map(_liveItem).toList();
@@ -1951,7 +2366,7 @@ class SearchScreenState extends State<SearchScreen>
               child: GridView.builder(
                 controller: _gridScroll,
                 key: PageStorageKey(
-                  'catalog:${Store.profileScope(widget.client.creds)}:'
+                  'catalog:${widget.client.catalogScope}:'
                   '$_section:$catId:$_sort:$q',
                 ),
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),

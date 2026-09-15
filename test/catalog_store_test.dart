@@ -280,4 +280,20 @@ void main() {
       'Documentary',
     );
   });
+
+  test('category cache preserves combined source metadata', () async {
+    await store.replaceCategories('multi_library', 'movie', [
+      Category(
+        'source::1',
+        'Drama · provider.example',
+        sourceScope: 'source',
+        sourceLabel: 'provider.example',
+      ),
+    ], generation: 1);
+
+    final category = (await store.categories('multi_library', 'movie')).single;
+    expect(category.id, 'source::1');
+    expect(category.sourceScope, 'source');
+    expect(category.sourceLabel, 'provider.example');
+  });
 }

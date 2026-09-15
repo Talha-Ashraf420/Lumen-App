@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen_tv/main.dart';
 import 'package:lumen_tv/catalog_store.dart';
+import 'package:lumen_tv/catalog_organization.dart';
 import 'package:lumen_tv/device_profile.dart';
 import 'package:lumen_tv/models.dart';
 import 'package:lumen_tv/screens/profile_screen.dart';
@@ -40,6 +41,7 @@ void main() {
 
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
+    CatalogOrganizationStore.instance.clearMemory();
     await CatalogStore.instance.disableForWidgetTests();
     ThemeController.instance.font.value = LumenFont.lumen;
     ThemeController.instance.corners.value = LumenCornerStyle.balanced;
@@ -547,6 +549,7 @@ void main() {
       'Watch insights',
       'Downloads',
       'Refresh library',
+      'Organize library',
       'TV guide setup',
       'Clear watch history',
       'Diagnostics & feedback',
@@ -598,6 +601,7 @@ void main() {
       'Watch insights',
       'Downloads',
       'Refresh library',
+      'Organize library',
       'TV guide setup',
       'Clear watch history',
       'Diagnostics & feedback',
