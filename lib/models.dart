@@ -113,9 +113,15 @@ List<Series> seriesRecentlyAdded(Iterable<Series> values) {
 class Category {
   final String id;
   final String name;
-  Category(this.id, this.name);
-  factory Category.fromJson(Map<String, dynamic> j) =>
-      Category(_toStr(j['category_id']), _toStr(j['category_name']));
+  final String sourceScope;
+  final String sourceLabel;
+  Category(this.id, this.name, {this.sourceScope = '', this.sourceLabel = ''});
+  factory Category.fromJson(Map<String, dynamic> j) => Category(
+    _toStr(j['category_id']),
+    _toStr(j['category_name']),
+    sourceScope: _toStr(j['_lumen_source_scope']),
+    sourceLabel: _toStr(j['_lumen_source_label']),
+  );
 }
 
 class LiveStream {
@@ -128,6 +134,8 @@ class LiveStream {
   final String countryCode;
   final String fallbackIcon;
   final String logoSource;
+  final String sourceScope;
+  final String sourceLabel;
 
   LiveStream(
     this.streamId,
@@ -139,6 +147,8 @@ class LiveStream {
     this.countryCode = '',
     this.fallbackIcon = '',
     this.logoSource = '',
+    this.sourceScope = '',
+    this.sourceLabel = '',
   });
 
   /// Artwork shown by catalog surfaces. A provider/playlist logo always wins;
@@ -149,6 +159,8 @@ class LiveStream {
     String? icon,
     String? fallbackIcon,
     String? logoSource,
+    String? sourceScope,
+    String? sourceLabel,
   }) => LiveStream(
     streamId,
     name,
@@ -159,6 +171,8 @@ class LiveStream {
     countryCode: countryCode,
     fallbackIcon: fallbackIcon ?? this.fallbackIcon,
     logoSource: logoSource ?? this.logoSource,
+    sourceScope: sourceScope ?? this.sourceScope,
+    sourceLabel: sourceLabel ?? this.sourceLabel,
   );
 
   factory LiveStream.fromJson(Map<String, dynamic> j) => LiveStream(
@@ -171,6 +185,8 @@ class LiveStream {
     countryCode: _toStr(j['country'] ?? j['country_code']),
     fallbackIcon: _toStr(j['_lumen_fallback_icon']),
     logoSource: _toStr(j['_lumen_logo_source']),
+    sourceScope: _toStr(j['_lumen_source_scope']),
+    sourceLabel: _toStr(j['_lumen_source_label']),
   );
 }
 
@@ -182,6 +198,8 @@ class VodStream {
   final String containerExtension;
   final double rating;
   final String added;
+  final String sourceScope;
+  final String sourceLabel;
   VodStream(
     this.streamId,
     this.name,
@@ -189,8 +207,10 @@ class VodStream {
     this.categoryId,
     this.containerExtension,
     this.rating,
-    this.added,
-  );
+    this.added, {
+    this.sourceScope = '',
+    this.sourceLabel = '',
+  });
   factory VodStream.fromJson(Map<String, dynamic> j) => VodStream(
     _toInt(j['stream_id']),
     _toStr(j['name']),
@@ -201,6 +221,8 @@ class VodStream {
         : _toStr(j['container_extension']),
     _toDouble(j['rating']),
     _toStr(j['added']),
+    sourceScope: _toStr(j['_lumen_source_scope']),
+    sourceLabel: _toStr(j['_lumen_source_label']),
   );
 }
 
@@ -259,6 +281,8 @@ class Series {
   final double rating;
   final String releaseDate;
   final String categoryId;
+  final String sourceScope;
+  final String sourceLabel;
   Series(
     this.seriesId,
     this.name,
@@ -267,8 +291,10 @@ class Series {
     this.genre,
     this.rating,
     this.releaseDate,
-    this.categoryId,
-  );
+    this.categoryId, {
+    this.sourceScope = '',
+    this.sourceLabel = '',
+  });
   factory Series.fromJson(Map<String, dynamic> j) => Series(
     _toInt(j['series_id']),
     _toStr(j['name']),
@@ -278,6 +304,8 @@ class Series {
     _toDouble(j['rating']),
     _toStr(j['releaseDate'] ?? j['release_date']),
     _toStr(j['category_id']),
+    sourceScope: _toStr(j['_lumen_source_scope']),
+    sourceLabel: _toStr(j['_lumen_source_label']),
   );
 }
 

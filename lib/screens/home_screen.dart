@@ -163,7 +163,7 @@ class _HomeScreenState extends State<HomeScreen>
     if (categoryLoader != null) return _HomeData(await categoryLoader());
     // Plain M3U profiles are live-only. Do not spend multiple retry windows on
     // movie/series endpoints they can never have before showing their channels.
-    if (widget.client.creds.isM3u) return _HomeData(const []);
+    if (!widget.client.supportsMovieCatalog) return _HomeData(const []);
     // The streamlined Home only needs movie categories for its spotlight.
     // Live, series and full catalog shelves belong on their dedicated tabs.
     final vod = await CatalogCache.instance.vod(widget.client);
@@ -786,6 +786,13 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
                 _chip(
                   Text(genre, style: TextStyle(color: muted, fontSize: 12.5)),
                 ),
+              if (m.sourceLabel.isNotEmpty)
+                _chip(
+                  Text(
+                    m.sourceLabel,
+                    style: TextStyle(color: accentInk, fontSize: 12.5),
+                  ),
+                ),
             ],
           ),
           if (overview.isNotEmpty) ...[
@@ -1046,6 +1053,15 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
                           Text(
                             genre,
                             style: TextStyle(color: muted, fontSize: 13),
+                          ),
+                        if (m.sourceLabel.isNotEmpty)
+                          Text(
+                            m.sourceLabel,
+                            style: TextStyle(
+                              color: accentInk,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                            ),
                           ),
                       ],
                     ),

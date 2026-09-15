@@ -12,6 +12,7 @@ import 'device_profile.dart';
 import 'diagnostics.dart';
 import 'home_config.dart';
 import 'models.dart';
+import 'multi_source.dart';
 import 'network_path.dart';
 import 'playback.dart';
 import 'playback_mode.dart';
@@ -280,6 +281,7 @@ class SessionGate extends StatefulWidget {
 
 class _SessionGateState extends State<SessionGate> {
   XtreamCredentials? _creds;
+  List<XtreamCredentials> _viewerProfiles = const [];
   bool _legalAccepted = false;
   bool _loading = true;
   String _loadingLabel = 'RESTORING YOUR SESSION';
@@ -300,10 +302,14 @@ class _SessionGateState extends State<SessionGate> {
       PlaybackModeController.instance.load(),
     ]);
     final credentials = values[0] as XtreamCredentials?;
+    final viewerProfiles = credentials == null
+        ? <XtreamCredentials>[]
+        : await Store.viewerProfiles(credentials);
     final profileState = _activateProfileState(credentials);
     if (!mounted) return;
     setState(() {
       _creds = credentials;
+      _viewerProfiles = viewerProfiles;
       _legalAccepted = values[1] as bool;
       _loading = false;
     });
@@ -357,6 +363,7 @@ class _SessionGateState extends State<SessionGate> {
     if (!mounted) return;
     setState(() {
       _creds = credentials;
+      _viewerProfiles = credentials == null ? const [] : [credentials];
       _client = null;
       _loading = false;
     });
@@ -381,6 +388,30 @@ class _SessionGateState extends State<SessionGate> {
         Future<void>.sync(() => _activateProfileState(credentials)),
       ),
     );
+    if (credentials != null) {
+      unawaited(_reloadViewerProfiles(credentials, _sessionChange));
+    }
+  }
+
+  Future<void> _reloadViewerProfiles(
+    XtreamCredentials credentials,
+    int change,
+  ) async {
+    final profiles = await Store.viewerProfiles(credentials);
+    if (!mounted || change != _sessionChange || _creds == null) return;
+    final previousClient = _client;
+    setState(() {
+      _viewerProfiles = profiles;
+      _client = null;
+    });
+    _guardSessionStep('previous service viewer', () => previousClient?.close());
+    CatalogCache.instance.clear();
+  }
+
+  Future<void> _onServicesChanged() async {
+    final credentials = _creds;
+    if (credentials == null) return;
+    await _reloadViewerProfiles(credentials, _sessionChange);
   }
 
   void _guardSessionStep(String label, void Function() action) {
@@ -443,6 +474,7 @@ class _SessionGateState extends State<SessionGate> {
     // the user staring at an endless loader even though logout succeeded.
     setState(() {
       _creds = null;
+      _viewerProfiles = const [];
       _client = null;
       _loading = false;
       _loadingLabel = 'RESTORING YOUR SESSION';
@@ -491,7 +523,9 @@ class _SessionGateState extends State<SessionGate> {
         if (_creds == null) {
           return _rootExitGuard(LoginScreen(onLogin: _onLogin));
         }
-        _client ??= XtreamClient(_creds!);
+        _client ??= _viewerProfiles.length > 1
+            ? MultiSourceXtreamClient(_creds!, _viewerProfiles)
+            : XtreamClient(_creds!);
         activeClient = _client; // expose to the app-level player (split picker)
         // Key by the active profile so switching fully remounts all tabs with
         // the new client (fresh catalogs), not stale data from the old account.
@@ -500,6 +534,7 @@ class _SessionGateState extends State<SessionGate> {
           client: _client!,
           onLogout: _onLogout,
           onSwitch: _switchTo,
+          onServicesChanged: _onServicesChanged,
         );
       },
     );

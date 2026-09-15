@@ -16,7 +16,18 @@ class Store {
   static const _kActive = 'lumen_active';
   static const _kProfiles = 'lumen_profiles';
   static const _kSignedOut = 'lumen_signed_out';
+  static const _kEnabledSources = 'lumen_enabled_sources_v1';
   static const _secure = FlutterSecureStorage();
+  static const _profileStateKeys = <String>[
+    'lib_favourites',
+    'lib_progress',
+    'lib_recent',
+    'lib_watched',
+    'home_shelves',
+    'watch_stats_v1',
+    'lumen_downloads_index',
+    'lumen_epg_settings',
+  ];
   static final bool _useSecure =
       !kIsWeb && (Platform.isAndroid || Platform.isIOS);
 
@@ -137,6 +148,10 @@ class Store {
         jsonEncode(profiles.map((e) => e.toJson()).toList()),
       );
     }
+    final enabled = await enabledSourceScopes();
+    if (enabled.add(profileScope(c))) {
+      await _write(_kEnabledSources, jsonEncode(enabled.toList()));
+    }
   }
 
   static Future<void> logout() async {
@@ -162,6 +177,10 @@ class Store {
       _kProfiles,
       jsonEncode(profiles.map((e) => e.toJson()).toList()),
     );
+    final enabled = await enabledSourceScopes();
+    if (enabled.remove(profileScope(c))) {
+      await _write(_kEnabledSources, jsonEncode(enabled.toList()));
+    }
     // If we removed the currently-active account, clear the active session too —
     // otherwise it silently persists and signs back in on the next launch.
     final act = await active();
@@ -176,6 +195,90 @@ class Store {
     return profiles;
   }
 
+  /// Replace a saved service without making the user add it as a duplicate.
+  ///
+  /// Hostname and playlist URLs participate in [profileScope], so a provider
+  /// host change also changes every account-scoped storage key. Copy the
+  /// viewer-owned state first, commit the credential records second, and only
+  /// then remove the obsolete namespace. Provider catalog/EPG rows are
+  /// deliberately discarded because they may contain data from the old host;
+  /// the replacement service refreshes them normally.
+  static Future<List<XtreamCredentials>> updateProfile(
+    XtreamCredentials previous,
+    XtreamCredentials replacement,
+  ) async {
+    final profiles = await savedProfiles();
+    final index = profiles.indexWhere((value) => sameProfile(value, previous));
+    if (index < 0) {
+      throw StateError('This saved service could not be found.');
+    }
+    final duplicate = profiles.indexWhere(
+      (value) =>
+          !sameProfile(value, previous) && sameProfile(value, replacement),
+    );
+    if (duplicate >= 0) {
+      throw StateError('That service is already saved.');
+    }
+
+    final oldScope = profileScope(previous);
+    final newScope = profileScope(replacement);
+    if (oldScope != newScope) {
+      for (final key in _profileStateKeys) {
+        final oldKey = '${key}_$oldScope';
+        final value = await readPrivate(oldKey);
+        if (value == null) continue;
+        await writePrivate(
+          '${key}_$newScope',
+          _replaceServiceLocations(value, previous, replacement),
+        );
+      }
+    }
+
+    profiles[index] = replacement;
+    await _write(
+      _kProfiles,
+      jsonEncode(profiles.map((value) => value.toJson()).toList()),
+    );
+    final current = await active();
+    if (current != null && sameProfile(current, previous)) {
+      await _write(_kActive, jsonEncode(replacement.toJson()));
+    }
+
+    if (oldScope != newScope) {
+      for (final key in _profileStateKeys) {
+        await deletePrivate('${key}_$oldScope');
+      }
+      await CatalogStore.instance.deleteProfile(oldScope);
+      final enabled = await enabledSourceScopes();
+      if (enabled.remove(oldScope)) {
+        enabled.add(newScope);
+        await _write(_kEnabledSources, jsonEncode(enabled.toList()));
+      }
+    }
+    return profiles;
+  }
+
+  static String _replaceServiceLocations(
+    String value,
+    XtreamCredentials previous,
+    XtreamCredentials replacement,
+  ) {
+    var migrated = value;
+    final oldBase = previous.baseUrl.trim();
+    final newBase = replacement.baseUrl.trim();
+    if (oldBase.isNotEmpty && newBase.isNotEmpty && oldBase != newBase) {
+      migrated = migrated.replaceAll(oldBase, newBase);
+    }
+    final oldPlaylist = previous.m3uUrl?.trim() ?? '';
+    final newPlaylist = replacement.m3uUrl?.trim() ?? '';
+    if (oldPlaylist.isNotEmpty &&
+        newPlaylist.isNotEmpty &&
+        oldPlaylist != newPlaylist) {
+      migrated = migrated.replaceAll(oldPlaylist, newPlaylist);
+    }
+    return migrated;
+  }
+
   static Future<List<XtreamCredentials>> savedProfiles() async {
     await _migrate();
     final raw = await _read(_kProfiles);
@@ -187,5 +290,53 @@ class Store {
     } catch (_) {
       return [];
     }
+  }
+
+  /// Provider profiles included in the local viewer's combined library.
+  /// Existing installs start conservatively with only the active service;
+  /// people opt additional services in from Profile.
+  static Future<Set<String>> enabledSourceScopes() async {
+    final raw = await _read(_kEnabledSources);
+    if (raw == null) return <String>{};
+    try {
+      return (jsonDecode(raw) as List)
+          .map((value) => '$value')
+          .where((value) => value.isNotEmpty)
+          .toSet();
+    } catch (_) {
+      return <String>{};
+    }
+  }
+
+  static Future<void> setProfileEnabled(
+    XtreamCredentials profile,
+    bool enabled,
+  ) async {
+    final scopes = await enabledSourceScopes();
+    final scope = profileScope(profile);
+    if (enabled) {
+      scopes.add(scope);
+    } else {
+      scopes.remove(scope);
+    }
+    await _write(_kEnabledSources, jsonEncode(scopes.toList()));
+  }
+
+  static Future<List<XtreamCredentials>> viewerProfiles(
+    XtreamCredentials activeProfile,
+  ) async {
+    final profiles = await savedProfiles();
+    final enabled = await enabledSourceScopes();
+    enabled.add(profileScope(activeProfile));
+    final result = <XtreamCredentials>[activeProfile];
+    for (final profile in profiles) {
+      if (profile.isDemo ||
+          sameProfile(profile, activeProfile) ||
+          !enabled.contains(profileScope(profile))) {
+        continue;
+      }
+      result.add(profile);
+    }
+    return result;
   }
 }

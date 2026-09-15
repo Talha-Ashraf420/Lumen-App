@@ -146,6 +146,48 @@ void main() {
   );
 
   test(
+    'editing a provider host migrates account state without duplication',
+    () async {
+      const replacement = XtreamCredentials(
+        baseUrl: 'https://moved.example',
+        username: 'alice',
+        password: 'secret-a',
+      );
+      await Store.setActive(_accountA);
+      final oldScope = Store.profileScope(_accountA);
+      final newScope = Store.profileScope(replacement);
+      await Store.writePrivate(
+        'lib_progress_$oldScope',
+        '{"movie:7":{"url":"https://one.example/movie/alice/secret-a/7.mp4"}}',
+      );
+
+      final profiles = await Store.updateProfile(_accountA, replacement);
+
+      expect(profiles, hasLength(1));
+      expect(Store.sameProfile(profiles.single, replacement), isTrue);
+      expect(Store.sameProfile((await Store.active())!, replacement), isTrue);
+      expect(await Store.readPrivate('lib_progress_$oldScope'), isNull);
+      expect(
+        await Store.readPrivate('lib_progress_$newScope'),
+        contains('https://moved.example/movie/'),
+      );
+    },
+  );
+
+  test('viewer combines only enabled saved services', () async {
+    await Store.setActive(_accountA);
+    await Store.setActive(_accountB);
+    await Store.setActive(_accountA);
+
+    var sources = await Store.viewerProfiles(_accountA);
+    expect(sources.map((value) => value.username), ['alice', 'bob']);
+
+    await Store.setProfileEnabled(_accountB, false);
+    sources = await Store.viewerProfiles(_accountA);
+    expect(sources.map((value) => value.username), ['alice']);
+  });
+
+  test(
     'library, Home shelves, and playback stats stay with their account',
     () async {
       await Library.instance.activate(_accountA);
@@ -920,10 +962,12 @@ void main() {
     await tester.tap(find.byTooltip('Movies'));
     await tester.pump();
     expect(find.byKey(const ValueKey('shell-page-4')), findsOneWidget);
+    expect(find.text('Movies'), findsOneWidget);
 
     await tester.tap(find.byTooltip('Series'));
     await tester.pump();
     expect(find.byKey(const ValueKey('shell-page-5')), findsOneWidget);
+    expect(find.text('Series'), findsOneWidget);
 
     await tester.binding.handlePopRoute();
     await tester.pump();

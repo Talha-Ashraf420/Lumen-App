@@ -9,6 +9,7 @@ import 'package:lumen_tv/catalog_store.dart';
 import 'package:lumen_tv/device_profile.dart';
 import 'package:lumen_tv/models.dart';
 import 'package:lumen_tv/screens/profile_screen.dart';
+import 'package:lumen_tv/store.dart';
 import 'package:lumen_tv/theme.dart';
 import 'package:lumen_tv/updater.dart';
 import 'package:lumen_tv/widgets.dart';
@@ -53,6 +54,8 @@ void main() {
     Future<void> Function()? onLogout,
     XtreamClient? client,
     ValueChanged<XtreamCredentials>? onSwitch,
+    Future<void> Function()? onServicesChanged,
+    ProfileCredentialValidator? profileValidator,
   }) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = size;
@@ -71,6 +74,8 @@ void main() {
                 client: client ?? _ProfileTestClient(),
                 onLogout: onLogout ?? () async {},
                 onSwitch: onSwitch ?? (_) {},
+                onServicesChanged: onServicesChanged,
+                profileValidator: profileValidator,
               ),
             ),
           ),
@@ -87,9 +92,9 @@ void main() {
 
     expect(find.text('Profile'), findsOneWidget);
     expect(find.text('CURRENT ACCOUNT'), findsOneWidget);
-    expect(find.text('Make Lumen yours'), findsOneWidget);
-    expect(find.text('Library & playback'), findsOneWidget);
-    expect(find.text('Privacy & app'), findsOneWidget);
+    expect(find.text('Appearance'), findsOneWidget);
+    expect(find.text('Playback & library'), findsOneWidget);
+    expect(find.text('App & support'), findsOneWidget);
     expect(find.text('Your Lumen'), findsNothing);
     expect(tester.takeException(), isNull);
 
@@ -109,10 +114,37 @@ void main() {
     await pumpProfile(tester, const Size(1280, 900));
 
     final accountTopLeft = tester.getTopLeft(find.text('CURRENT ACCOUNT'));
-    final settingsTopLeft = tester.getTopLeft(find.text('Make Lumen yours'));
+    final settingsTopLeft = tester.getTopLeft(find.text('Appearance'));
     expect(accountTopLeft.dx, lessThan(settingsTopLeft.dx));
     expect((accountTopLeft.dy - settingsTopLeft.dy).abs(), lessThan(80));
     expect(find.text('Profile'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('phone accent choices form an even three-column grid', (
+    tester,
+  ) async {
+    await pumpProfile(tester, const Size(390, 844));
+    await tester.scrollUntilVisible(
+      find.text('Accent color'),
+      450,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+
+    final signal = tester.getRect(
+      find.byKey(const ValueKey('profile-accent-signal lime')),
+    );
+    final electric = tester.getRect(
+      find.byKey(const ValueKey('profile-accent-electric blue')),
+    );
+    final custom = tester.getRect(
+      find.byKey(const ValueKey('profile-accent-custom')),
+    );
+    expect(signal.width, closeTo(electric.width, .1));
+    expect(signal.width, closeTo(custom.width, .1));
+    expect(signal.top, closeTo(electric.top, .1));
+    expect(custom.top, greaterThan(signal.bottom));
     expect(tester.takeException(), isNull);
   });
 
@@ -144,12 +176,14 @@ void main() {
       DeviceProfile.isTelevision = true;
       addTearDown(() => DeviceProfile.isTelevision = false);
       XtreamCredentials? switchedTo;
+      var serviceChanges = 0;
 
       await pumpProfile(
         tester,
         const Size(1280, 900),
         client: _ProfileTestClient(),
         onSwitch: (profile) => switchedTo = profile,
+        onServicesChanged: () async => serviceChanges++,
       );
 
       FocusNode node(String label) => FocusManager
@@ -171,6 +205,33 @@ void main() {
       await tester.pump();
       expect(switchedTo?.username, 'Bedroom');
 
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pump();
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        'Combine service Bedroom',
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pump();
+      expect(serviceChanges, 1);
+      expect(
+        await Store.enabledSourceScopes(),
+        contains(
+          Store.profileScope(
+            const XtreamCredentials(
+              baseUrl: 'https://bedroom.example',
+              username: 'Bedroom',
+              password: 'test-only',
+            ),
+          ),
+        ),
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pump();
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        'Edit service Bedroom',
+      );
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
       await tester.pump();
       expect(
@@ -204,13 +265,53 @@ void main() {
     },
   );
 
+  testWidgets('current IPTV hostname can be edited without adding an account', (
+    tester,
+  ) async {
+    const active = XtreamCredentials(
+      baseUrl: 'https://provider.example',
+      username: 'Living room',
+      password: 'test-only',
+    );
+    await Store.setActive(active);
+    XtreamCredentials? validated;
+    XtreamCredentials? switchedTo;
+
+    await pumpProfile(
+      tester,
+      const Size(390, 844),
+      onSwitch: (profile) => switchedTo = profile,
+      profileValidator: (profile) async => validated = profile,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('edit-current-service')));
+    await tester.pumpAndSettle();
+    expect(find.text('Edit server'), findsOneWidget);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('edit-service-address')),
+      'https://replacement.example',
+    );
+    await tester.tap(find.byKey(const ValueKey('save-service-address')));
+    await tester.pumpAndSettle();
+
+    expect(validated?.baseUrl, 'https://replacement.example');
+    expect(switchedTo?.baseUrl, 'https://replacement.example');
+    final profiles = await Store.savedProfiles();
+    expect(profiles, hasLength(1));
+    expect(profiles.single.baseUrl, 'https://replacement.example');
+    expect(profiles.single.username, active.username);
+    expect(profiles.single.password, active.password);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('narrow desktop keeps shell title and stacks dashboard', (
     tester,
   ) async {
     await pumpProfile(tester, const Size(930, 900), contentWidth: 760);
 
-    final accountsTopLeft = tester.getTopLeft(find.text('Other accounts'));
-    final settingsTopLeft = tester.getTopLeft(find.text('Make Lumen yours'));
+    final accountsTopLeft = tester.getTopLeft(find.text('IPTV services'));
+    final settingsTopLeft = tester.getTopLeft(find.text('Appearance'));
     expect(settingsTopLeft.dy, greaterThan(accountsTopLeft.dy));
     expect(find.text('Profile'), findsNothing);
     expect(tester.takeException(), isNull);
@@ -473,6 +574,7 @@ void main() {
       profileScrollable.position.pixels,
       profileScrollable.position.minScrollExtent,
     );
+    await move(LogicalKeyboardKey.arrowUp, 'Edit current service');
     await move(LogicalKeyboardKey.arrowUp, 'Profile test top');
     expect(
       profileScrollable.position.pixels,
@@ -483,6 +585,7 @@ void main() {
 
     final expected = <String>{
       'Profile add account',
+      'Edit current service',
       'Dark appearance',
       'Light appearance',
       'System appearance',

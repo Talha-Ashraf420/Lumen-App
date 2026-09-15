@@ -784,14 +784,17 @@ class CatalogCache {
   static String _itemSignature(Object? item) => switch (item) {
     VodStream value =>
       '${value.streamId}|${value.name}|${value.icon}|'
-          '${value.categoryId}|${value.containerExtension}|${value.rating}',
+          '${value.categoryId}|${value.containerExtension}|${value.rating}|'
+          '${value.sourceScope}|${value.sourceLabel}',
     Series value =>
       '${value.seriesId}|${value.name}|${value.cover}|'
-          '${value.categoryId}|${value.rating}|${value.releaseDate}',
+          '${value.categoryId}|${value.rating}|${value.releaseDate}|'
+          '${value.sourceScope}|${value.sourceLabel}',
     LiveStream value =>
       '${value.streamId}|${value.name}|${value.icon}|'
           '${value.categoryId}|${value.epgId}|${value.epgName}|'
-          '${value.countryCode}|${value.fallbackIcon}|${value.logoSource}',
+          '${value.countryCode}|${value.fallbackIcon}|${value.logoSource}|'
+          '${value.sourceScope}|${value.sourceLabel}',
     _ => '$item',
   };
 

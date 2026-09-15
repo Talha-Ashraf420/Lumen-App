@@ -2556,6 +2556,7 @@ class ChannelCard extends StatelessWidget {
   final String nextTitle;
   final double? programmeProgress;
   final bool epgLoading;
+  final String sourceLabel;
   const ChannelCard({
     super.key,
     required this.name,
@@ -2571,6 +2572,7 @@ class ChannelCard extends StatelessWidget {
     this.nextTitle = '',
     this.programmeProgress,
     this.epgLoading = false,
+    this.sourceLabel = '',
   });
 
   @override
@@ -2668,6 +2670,33 @@ class ChannelCard extends StatelessWidget {
                           ),
                         );
                       },
+                    ),
+                  ),
+                if (sourceLabel.isNotEmpty)
+                  Positioned(
+                    left: 8,
+                    top: 34,
+                    child: Container(
+                      constraints: const BoxConstraints(maxWidth: 100),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xD9141719),
+                        borderRadius: BorderRadius.circular(lumenCorner(8)),
+                        border: Border.all(color: Colors.white12),
+                      ),
+                      child: Text(
+                        sourceLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 8.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                     ),
                   ),
                 if (nowTitle.isNotEmpty)

@@ -171,7 +171,10 @@ class EpgRepository extends ChangeNotifier {
     // M3U has no per-channel short-EPG endpoint. Reuse a previously cached
     // XMLTV generation for the visible window; opening Live must never trigger
     // a full guide download.
-    if (client.creds.isM3u) {
+    final shortEpgChannels = channels
+        .where((channel) => client.supportsShortEpg(channel.streamId))
+        .toList(growable: false);
+    if (shortEpgChannels.isEmpty) {
       try {
         final cachedGuide = await guideWindow(
           channels,
@@ -196,7 +199,7 @@ class EpgRepository extends ChangeNotifier {
         (visibleRevision != null && visibleRevision != _visibleRevision)) {
       return;
     }
-    for (final channel in channels) {
+    for (final channel in shortEpgChannels) {
       _enqueue(channel, now);
     }
     _pump();
@@ -307,7 +310,12 @@ class EpgRepository extends ChangeNotifier {
         if (!force && !stale) continue;
         attempted = true;
         try {
-          await client.syncEpgGuide(uri, store: store, now: _clock().toUtc());
+          await client.syncEpgGuide(
+            uri,
+            store: store,
+            now: _clock().toUtc(),
+            profileScope: profileScope,
+          );
           refreshed = true;
         } on EpgSyncException catch (error) {
           lastFailure = error;

@@ -63,12 +63,14 @@ class HomeShell extends StatefulWidget {
   final XtreamClient client;
   final Future<void> Function() onLogout;
   final void Function(XtreamCredentials) onSwitch;
+  final Future<void> Function()? onServicesChanged;
   final Future<List<Category>> Function()? homeCategoryLoader;
   const HomeShell({
     super.key,
     required this.client,
     required this.onLogout,
     required this.onSwitch,
+    this.onServicesChanged,
     this.homeCategoryLoader,
   });
   @override
@@ -152,7 +154,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     // lookup. Xtream accounts conventionally expose all three catalogs; each
     // request below removes a destination if the provider proves otherwise.
     // M3U profiles are known to be live-only from the outset.
-    _capabilities = widget.client.creds.isM3u
+    _capabilities =
+        !widget.client.supportsMovieCatalog &&
+            !widget.client.supportsSeriesCatalog
         ? const _CatalogCapabilities(live: true)
         : const _CatalogCapabilities(movies: true, series: true, live: true);
     _loadCapabilities();
@@ -174,7 +178,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     final generation = ++_capabilityLoad;
     final cache = CatalogCache.instance;
     try {
-      if (widget.client.creds.isM3u) {
+      if (!widget.client.supportsMovieCatalog &&
+          !widget.client.supportsSeriesCatalog) {
         final live = await cache.live(widget.client, priority: true);
         if (!mounted || generation != _capabilityLoad) return;
         _setCapabilities(_CatalogCapabilities(live: live.isNotEmpty));
@@ -304,6 +309,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       client: widget.client,
       onLogout: widget.onLogout,
       onSwitch: widget.onSwitch,
+      onServicesChanged: widget.onServicesChanged,
       shellRailFocusNode: _dockFocusNodes[3],
       shellTopFocusNode: _commandSearchFocus,
       entryFocusNode: _profileEntryFocus,
@@ -312,6 +318,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       key: _catalogKeys[4],
       client: widget.client,
       initialSection: 'movie',
+      shellOwnsTitle: true,
       shellRailFocusNode: _dockFocusNodes[4],
       shellTopFocusNode: _commandSearchFocus,
     ),
@@ -319,6 +326,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       key: _catalogKeys[5],
       client: widget.client,
       initialSection: 'series',
+      shellOwnsTitle: true,
       shellRailFocusNode: _dockFocusNodes[5],
       shellTopFocusNode: _commandSearchFocus,
     ),
@@ -326,6 +334,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       key: _catalogKeys[6],
       client: widget.client,
       initialSection: 'live',
+      shellOwnsTitle: true,
       shellRailFocusNode: _dockFocusNodes[6],
       shellTopFocusNode: _commandSearchFocus,
     ),
@@ -1381,7 +1390,7 @@ class _CommandBar extends StatelessWidget {
     3: 'Profile',
     4: 'Movies',
     5: 'Series',
-    6: 'Live signal',
+    6: 'Live TV',
     7: 'Downloads',
     8: 'TV guide',
   };

@@ -1255,6 +1255,8 @@ class CatalogStore {
     'container_extension': item.containerExtension,
     'rating': item.rating,
     'added': item.added,
+    if (item.sourceScope.isNotEmpty) '_lumen_source_scope': item.sourceScope,
+    if (item.sourceLabel.isNotEmpty) '_lumen_source_label': item.sourceLabel,
   };
 
   static VodStream _decodeVod(Map<String, dynamic> value) =>
@@ -1269,6 +1271,8 @@ class CatalogStore {
     'rating': item.rating,
     'releaseDate': item.releaseDate,
     'category_id': item.categoryId,
+    if (item.sourceScope.isNotEmpty) '_lumen_source_scope': item.sourceScope,
+    if (item.sourceLabel.isNotEmpty) '_lumen_source_label': item.sourceLabel,
   };
 
   static Series _decodeSeries(Map<String, dynamic> value) =>
@@ -1284,6 +1288,8 @@ class CatalogStore {
     if (item.countryCode.isNotEmpty) 'country_code': item.countryCode,
     if (item.fallbackIcon.isNotEmpty) '_lumen_fallback_icon': item.fallbackIcon,
     if (item.logoSource.isNotEmpty) '_lumen_logo_source': item.logoSource,
+    if (item.sourceScope.isNotEmpty) '_lumen_source_scope': item.sourceScope,
+    if (item.sourceLabel.isNotEmpty) '_lumen_source_label': item.sourceLabel,
   };
 
   static LiveStream _decodeLive(Map<String, dynamic> value) =>

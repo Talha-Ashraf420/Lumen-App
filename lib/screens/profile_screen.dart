@@ -22,21 +22,28 @@ import 'legal_screen.dart';
 import 'update_dialog.dart';
 import 'stats_screen.dart';
 
+typedef ProfileCredentialValidator =
+    Future<void> Function(XtreamCredentials credentials);
+
 class ProfileScreen extends StatefulWidget {
   final XtreamClient client;
   final Future<void> Function() onLogout;
   final void Function(XtreamCredentials) onSwitch;
+  final Future<void> Function()? onServicesChanged;
   final FocusNode? shellRailFocusNode;
   final FocusNode? shellTopFocusNode;
   final FocusNode? entryFocusNode;
+  final ProfileCredentialValidator? profileValidator;
   const ProfileScreen({
     super.key,
     required this.client,
     required this.onLogout,
     required this.onSwitch,
+    this.onServicesChanged,
     this.shellRailFocusNode,
     this.shellTopFocusNode,
     this.entryFocusNode,
+    this.profileValidator,
   });
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -61,10 +68,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _legalFocus = FocusNode(debugLabel: 'Legal & privacy');
   final _updateFocus = FocusNode(debugLabel: 'Check for updates');
   final _signOutFocus = FocusNode(debugLabel: 'Sign out of Lumen');
+  final _currentEditFocus = FocusNode(debugLabel: 'Edit current service');
   final Map<String, FocusNode> _profileSwitchFocus = {};
+  final Map<String, FocusNode> _profileCombineFocus = {};
+  final Map<String, FocusNode> _profileEditFocus = {};
   final Map<String, FocusNode> _profileDeleteFocus = {};
   Map<String, dynamic>? _info;
   List<XtreamCredentials> _profiles = [];
+  Set<String> _enabledScopes = {};
   bool _accountInfoLoading = true;
   bool _signingOut = false;
 
@@ -158,7 +169,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void _syncProfileFocus(List<XtreamCredentials> profiles) {
     final visible = profiles.where((profile) => !_isActive(profile)).toList();
     final liveKeys = visible.map(_profileKey).toSet();
-    for (final nodes in [_profileSwitchFocus, _profileDeleteFocus]) {
+    for (final nodes in [
+      _profileSwitchFocus,
+      _profileCombineFocus,
+      _profileEditFocus,
+      _profileDeleteFocus,
+    ]) {
       final removed = nodes.keys
           .where((key) => !liveKeys.contains(key))
           .toList();
@@ -181,6 +197,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _profileDeleteFocus.putIfAbsent(
         key,
         () => FocusNode(debugLabel: 'Remove account $label'),
+      );
+      _profileCombineFocus.putIfAbsent(
+        key,
+        () => FocusNode(debugLabel: 'Combine service $label'),
+      );
+      _profileEditFocus.putIfAbsent(
+        key,
+        () => FocusNode(debugLabel: 'Edit service $label'),
       );
     }
   }
@@ -281,8 +305,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
     });
     _entryFocusNode.onKeyEvent = (_, event) => _moveVertically(
       event,
+      up: widget.client.creds.isDemo ? null : _currentEditFocus,
       down: _firstProfileSwitchFocus ?? _themeEntryFocus,
     );
+    _currentEditFocus.onKeyEvent = (_, event) => _moveInFocusGraph(event, {
+      LogicalKeyboardKey.arrowLeft: widget.shellRailFocusNode,
+      LogicalKeyboardKey.arrowUp: widget.shellTopFocusNode,
+      LogicalKeyboardKey.arrowDown: _entryFocusNode,
+    });
     _entryFocusNode.addListener(_restoreTopWhenEntryFocused);
     widget.client
         .authenticate()
@@ -300,6 +330,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     Store.savedProfiles().then((profiles) {
       if (!mounted) return;
       _setProfiles(profiles);
+    });
+    Store.enabledSourceScopes().then((scopes) {
+      if (mounted) setState(() => _enabledScopes = scopes);
     });
   }
 
@@ -327,8 +360,74 @@ class _ProfileScreenState extends State<ProfileScreen> {
     widget.onSwitch(p);
   }
 
+  Future<void> _toggleCombined(XtreamCredentials profile) async {
+    if (profile.isDemo) return;
+    final scope = _profileKey(profile);
+    final enabled = !_enabledScopes.contains(scope);
+    await Store.setProfileEnabled(profile, enabled);
+    if (!mounted) return;
+    setState(() {
+      if (enabled) {
+        _enabledScopes.add(scope);
+      } else {
+        _enabledScopes.remove(scope);
+      }
+    });
+    await widget.onServicesChanged?.call();
+  }
+
+  Future<void> _edit(XtreamCredentials profile) async {
+    if (profile.isDemo) return;
+    final replacement = await showDialog<XtreamCredentials>(
+      context: context,
+      builder: (_) => _EditServiceDialog(
+        profile: profile,
+        validator: widget.profileValidator,
+      ),
+    );
+    if (replacement == null || !mounted) return;
+    try {
+      final wasEnabled = _enabledScopes.contains(_profileKey(profile));
+      final profiles = await Store.updateProfile(profile, replacement);
+      if (!mounted) return;
+      if (_isActive(profile)) {
+        widget.onSwitch(replacement);
+        return;
+      }
+      if (wasEnabled) {
+        setState(() {
+          _enabledScopes
+            ..remove(_profileKey(profile))
+            ..add(_profileKey(replacement));
+        });
+        await widget.onServicesChanged?.call();
+        if (!mounted) return;
+      }
+      _setProfiles(profiles, restoreFocus: _entryFocusNode);
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text('Service address updated'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+    } on StateError catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text('${error.message}'),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+    }
+  }
+
   Future<void> _delete(XtreamCredentials p) async {
     final wasActive = _isActive(p);
+    final wasEnabled = _enabledScopes.contains(_profileKey(p));
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) =>
@@ -345,6 +444,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
         widget.onLogout();
       }
       return;
+    }
+    if (wasEnabled) {
+      setState(() => _enabledScopes.remove(_profileKey(p)));
+      await widget.onServicesChanged?.call();
+      if (!mounted) return;
     }
     _setProfiles(left, restoreFocus: _entryFocusNode);
   }
@@ -537,7 +641,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _legalFocus.dispose();
     _updateFocus.dispose();
     _signOutFocus.dispose();
+    _currentEditFocus.dispose();
     for (final node in _profileSwitchFocus.values) {
+      node.dispose();
+    }
+    for (final node in _profileCombineFocus.values) {
+      node.dispose();
+    }
+    for (final node in _profileEditFocus.values) {
       node.dispose();
     }
     for (final node in _profileDeleteFocus.values) {
@@ -629,6 +740,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _accountCard() {
     final c = widget.client.creds;
+    final combinedCount = {..._enabledScopes, _profileKey(c)}.length;
     final status = c.isDemo
         ? 'Ready'
         : _accountInfoLoading
@@ -649,7 +761,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('CURRENT ACCOUNT', style: kSection()),
-          const SizedBox(height: 16),
+          const SizedBox(height: 5),
+          Text(
+            '$combinedCount ${combinedCount == 1 ? 'service' : 'services'} in this combined library',
+            style: TextStyle(color: subtle, fontSize: 11.5),
+          ),
+          const SizedBox(height: 14),
           Row(
             children: [
               Container(
@@ -700,6 +817,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ],
                 ),
               ),
+              if (!c.isDemo) ...[
+                const SizedBox(width: 10),
+                RemoteTap(
+                  key: const ValueKey('edit-current-service'),
+                  focusNode: _currentEditFocus,
+                  semanticLabel: 'Edit current service address',
+                  focusRadius: 11,
+                  onTap: () => _edit(c),
+                  child: Container(
+                    width: 40,
+                    height: 40,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: surfaceHi,
+                      borderRadius: BorderRadius.circular(lumenCorner(11)),
+                      border: Border.all(color: line),
+                    ),
+                    child: Icon(
+                      Icons.edit_outlined,
+                      color: accentInk,
+                      size: 19,
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 20),
@@ -787,7 +929,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               children: [
                 const Expanded(
                   child: Text(
-                    'Other accounts',
+                    'IPTV services',
                     style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
                   ),
                 ),
@@ -835,7 +977,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const SizedBox(width: 11),
                   Expanded(
                     child: Text(
-                      'Add another account to switch without signing out.',
+                      'Add another service, then include it in your combined library.',
                       style: TextStyle(
                         color: subtle,
                         fontSize: 12.5,
@@ -856,31 +998,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _personalizationCard() => _sectionCard(
+  Widget _personalizationCard() => _profileSection(
+    eyebrow: 'PERSONALIZATION',
+    title: 'Appearance',
+    subtitle: 'Choose a look that stays consistent on every screen.',
     icon: Icons.tune_rounded,
-    title: 'Make Lumen yours',
-    subtitle: 'Choose how the app looks on every screen.',
     body: [
-      Text('APPEARANCE', style: kSection()),
-      const SizedBox(height: 10),
+      _controlHeading(
+        'Color mode',
+        'Use a dark, light, or device-matched interface.',
+      ),
+      const SizedBox(height: 12),
       _ThemeSelector(
         entryFocusNode: _themeEntryFocus,
         upFocusNode: _lastProfileSwitchFocus ?? _entryFocusNode,
         downFocusNode: _fontEntryFocus,
         leftExitFocusNode: widget.shellRailFocusNode,
       ),
-      const SizedBox(height: 20),
-      Text('FONT', style: kSection()),
-      const SizedBox(height: 10),
+      const SizedBox(height: 24),
+      _controlHeading('Typeface', 'Set the reading style across Lumen.'),
+      const SizedBox(height: 12),
       _FontSelector(
         entryFocusNode: _fontEntryFocus,
         upFocusNode: _themeEntryFocus,
         downFocusNode: _cornerEntryFocus,
         leftExitFocusNode: widget.shellRailFocusNode,
       ),
-      const SizedBox(height: 20),
-      Text('CORNERS', style: kSection()),
-      const SizedBox(height: 10),
+      const SizedBox(height: 24),
+      _controlHeading('Shape', 'Control the roundness of cards and controls.'),
+      const SizedBox(height: 12),
       _PreferenceSelector<LumenCornerStyle>(
         entryFocusNode: _cornerEntryFocus,
         upFocusNode: _fontEntryFocus,
@@ -907,9 +1053,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ),
       ),
-      const SizedBox(height: 20),
-      Text('FOCUS', style: kSection()),
-      const SizedBox(height: 10),
+      const SizedBox(height: 24),
+      _controlHeading(
+        'Focus style',
+        'Choose how the selected item stands out on TV and keyboard devices.',
+      ),
+      const SizedBox(height: 12),
       _PreferenceSelector<LumenFocusStyle>(
         entryFocusNode: _focusStyleEntryFocus,
         upFocusNode: _cornerEntryFocus,
@@ -943,8 +1092,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ),
       ),
-      const SizedBox(height: 20),
-      Text('ACCENT', style: kSection()),
+      const SizedBox(height: 24),
+      _controlHeading(
+        'Accent color',
+        'Applied to focus, progress, selections, and primary actions.',
+      ),
       const SizedBox(height: 12),
       _AccentPicker(
         entryFocusNode: _accentEntryFocus,
@@ -952,7 +1104,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         downFocusNode: _playbackModeFocus,
         leftExitFocusNode: widget.shellRailFocusNode,
       ),
-      const SizedBox(height: 6),
     ],
   );
 
@@ -999,10 +1150,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await PlaybackModeController.instance.set(selected);
   }
 
-  Widget _libraryCard() => _sectionCard(
+  Widget _libraryCard() => _profileSection(
+    eyebrow: 'VIEWING',
     icon: Icons.video_library_outlined,
-    title: 'Library & playback',
-    subtitle: 'Manage viewing activity, offline items and catalog data.',
+    title: 'Playback & library',
+    subtitle: 'Tune streaming and manage the catalog stored on this device.',
     body: [
       ValueListenableBuilder<PlaybackMode>(
         valueListenable: PlaybackModeController.instance.mode,
@@ -1111,10 +1263,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     ],
   );
 
-  Widget _privacyCard() => _sectionCard(
+  Widget _privacyCard() => _profileSection(
+    eyebrow: 'LUMEN',
     icon: Icons.shield_outlined,
-    title: 'Privacy & app',
-    subtitle: 'Review policies and keep this installation current.',
+    title: 'App & support',
+    subtitle: 'Get help, review policies, and keep Lumen current.',
     body: [
       _actionRow(
         focusNode: _diagnosticsFocus,
@@ -1184,42 +1337,54 @@ class _ProfileScreenState extends State<ProfileScreen> {
     ],
   );
 
-  Widget _sectionCard({
+  Widget _profileSection({
+    required String eyebrow,
     required IconData icon,
     required String title,
     required String subtitle,
     required List<Widget> body,
-  }) => Glass(
-    radius: 24,
-    padding: const EdgeInsets.all(18),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
+  }) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
-              width: 38,
-              height: 38,
+              width: 42,
+              height: 42,
               decoration: BoxDecoration(
-                color: accentInk.withValues(alpha: isDark ? 0.12 : 0.10),
-                borderRadius: BorderRadius.circular(lumenCorner(12)),
+                color: accent.withValues(alpha: isDark ? .18 : .13),
+                borderRadius: BorderRadius.circular(lumenCorner(13)),
               ),
-              child: Icon(icon, color: accentInk, size: 19),
+              child: Icon(icon, color: accentInk, size: 20),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 13),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    title,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 16,
+                    eyebrow,
+                    style: TextStyle(
+                      color: accentInk,
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.35,
                     ),
                   ),
                   const SizedBox(height: 3),
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 22,
+                      height: 1.05,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.35,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
                   Text(
                     subtitle,
                     style: TextStyle(
@@ -1233,10 +1398,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ],
         ),
-        const SizedBox(height: 18),
-        ...body,
-      ],
-    ),
+      ),
+      const SizedBox(height: 12),
+      Glass(
+        radius: 24,
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: body,
+        ),
+      ),
+    ],
+  );
+
+  Widget _controlHeading(String title, String subtitle) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        title,
+        style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800),
+      ),
+      const SizedBox(height: 3),
+      Text(subtitle, style: TextStyle(color: subtle, fontSize: 11.5)),
+    ],
   );
 
   Widget _actionRow({
@@ -1365,12 +1549,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final p = profiles[index];
     final key = _profileKey(p);
     final switchFocus = _profileSwitchFocus[key]!;
+    final combineFocus = _profileCombineFocus[key]!;
+    final editFocus = _profileEditFocus[key]!;
     final deleteFocus = _profileDeleteFocus[key]!;
     FocusNode? switchAt(int target) => target >= 0 && target < profiles.length
         ? _profileSwitchFocus[_profileKey(profiles[target])]
         : null;
     FocusNode? deleteAt(int target) => target >= 0 && target < profiles.length
         ? _profileDeleteFocus[_profileKey(profiles[target])]
+        : null;
+    FocusNode? combineAt(int target) => target >= 0 && target < profiles.length
+        ? _profileCombineFocus[_profileKey(profiles[target])]
+        : null;
+    FocusNode? editAt(int target) => target >= 0 && target < profiles.length
+        ? _profileEditFocus[_profileKey(profiles[target])]
         : null;
     final host = p.isDemo
         ? 'Offline sample library'
@@ -1382,7 +1574,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       semanticLabel: 'Switch to ${p.isDemo ? 'Demo Mode' : p.username}',
       onKeyEvent: (_, event) => _moveInFocusGraph(event, {
         LogicalKeyboardKey.arrowLeft: widget.shellRailFocusNode,
-        LogicalKeyboardKey.arrowRight: deleteFocus,
+        LogicalKeyboardKey.arrowRight: p.isDemo ? deleteFocus : combineFocus,
         LogicalKeyboardKey.arrowUp: index == 0
             ? _entryFocusNode
             : switchAt(index - 1),
@@ -1430,11 +1622,90 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(color: subtle, fontSize: 12),
                   ),
+                  if (!p.isDemo && _enabledScopes.contains(key))
+                    Text(
+                      'Included in combined library',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: accentInk,
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                 ],
               ),
             ),
-            Icon(Icons.swap_horiz_rounded, color: muted, size: 20),
-            const SizedBox(width: 7),
+            if (!p.isDemo) ...[
+              RemoteTap(
+                key: ValueKey('profile-combine-$key'),
+                focusNode: combineFocus,
+                semanticLabel: _enabledScopes.contains(key)
+                    ? 'Remove ${p.username} from combined library'
+                    : 'Include ${p.username} in combined library',
+                focusRadius: 10,
+                onKeyEvent: (_, event) => _moveInFocusGraph(event, {
+                  LogicalKeyboardKey.arrowLeft: switchFocus,
+                  LogicalKeyboardKey.arrowRight: editFocus,
+                  LogicalKeyboardKey.arrowUp: index == 0
+                      ? _entryFocusNode
+                      : combineAt(index - 1),
+                  LogicalKeyboardKey.arrowDown: index == profiles.length - 1
+                      ? _themeEntryFocus
+                      : combineAt(index + 1),
+                }),
+                onTap: () => _toggleCombined(p),
+                child: Container(
+                  width: 36,
+                  height: 36,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: _enabledScopes.contains(key)
+                        ? accentInk.withValues(alpha: .14)
+                        : surfaceHi,
+                    borderRadius: BorderRadius.circular(lumenCorner(10)),
+                    border: Border.all(
+                      color: _enabledScopes.contains(key) ? accentInk : line,
+                    ),
+                  ),
+                  child: Icon(
+                    Icons.add_link_rounded,
+                    color: _enabledScopes.contains(key) ? accentInk : subtle,
+                    size: 19,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 7),
+              RemoteTap(
+                key: ValueKey('profile-edit-$key'),
+                focusNode: editFocus,
+                semanticLabel: 'Edit ${p.username} service address',
+                focusRadius: 10,
+                onKeyEvent: (_, event) => _moveInFocusGraph(event, {
+                  LogicalKeyboardKey.arrowLeft: combineFocus,
+                  LogicalKeyboardKey.arrowRight: deleteFocus,
+                  LogicalKeyboardKey.arrowUp: index == 0
+                      ? _entryFocusNode
+                      : editAt(index - 1),
+                  LogicalKeyboardKey.arrowDown: index == profiles.length - 1
+                      ? _themeEntryFocus
+                      : editAt(index + 1),
+                }),
+                onTap: () => _edit(p),
+                child: Container(
+                  width: 36,
+                  height: 36,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: surfaceHi,
+                    borderRadius: BorderRadius.circular(lumenCorner(10)),
+                    border: Border.all(color: line),
+                  ),
+                  child: Icon(Icons.edit_outlined, color: subtle, size: 19),
+                ),
+              ),
+              const SizedBox(width: 7),
+            ],
             RemoteTap(
               key: ValueKey('profile-remove-$key'),
               focusNode: deleteFocus,
@@ -1442,7 +1713,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   'Remove ${p.isDemo ? 'Demo Mode' : p.username} account',
               focusRadius: 10,
               onKeyEvent: (_, event) => _moveInFocusGraph(event, {
-                LogicalKeyboardKey.arrowLeft: switchFocus,
+                LogicalKeyboardKey.arrowLeft: p.isDemo
+                    ? switchFocus
+                    : editFocus,
                 LogicalKeyboardKey.arrowUp: index == 0
                     ? _entryFocusNode
                     : deleteAt(index - 1),
@@ -1472,6 +1745,194 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
   }
+}
+
+class _EditServiceDialog extends StatefulWidget {
+  const _EditServiceDialog({required this.profile, this.validator});
+
+  final XtreamCredentials profile;
+  final ProfileCredentialValidator? validator;
+
+  @override
+  State<_EditServiceDialog> createState() => _EditServiceDialogState();
+}
+
+class _EditServiceDialogState extends State<_EditServiceDialog> {
+  late final TextEditingController _address;
+  final _addressFocus = FocusNode(debugLabel: 'Service address');
+  final _cancelFocus = FocusNode(debugLabel: 'Cancel service edit');
+  final _saveFocus = FocusNode(debugLabel: 'Save service address');
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _address = TextEditingController(
+      text: widget.profile.isM3u
+          ? widget.profile.m3uUrl ?? ''
+          : widget.profile.baseUrl,
+    );
+  }
+
+  XtreamCredentials? _replacement() {
+    var value = _address.text.trim();
+    if (value.isEmpty) return null;
+    if (!RegExp(r'^https?://', caseSensitive: false).hasMatch(value)) {
+      value = 'https://$value';
+    }
+    final uri = Uri.tryParse(value);
+    if (uri == null ||
+        !uri.hasAuthority ||
+        (uri.scheme != 'http' && uri.scheme != 'https')) {
+      return null;
+    }
+    final profile = widget.profile;
+    if (profile.isM3u) {
+      final port = uri.hasPort ? ':${uri.port}' : '';
+      return XtreamCredentials(
+        baseUrl: '${uri.scheme}://${uri.host}$port',
+        username: profile.username,
+        password: profile.password,
+        m3uUrl: uri.toString(),
+      );
+    }
+    return XtreamCredentials(
+      baseUrl: normalizeBaseUrl(value),
+      username: profile.username,
+      password: profile.password,
+    );
+  }
+
+  Future<void> _save() async {
+    if (_busy) return;
+    final replacement = _replacement();
+    if (replacement == null) {
+      setState(() => _error = 'Enter a complete HTTP or HTTPS address.');
+      return;
+    }
+    if (replacement.baseUrl == widget.profile.baseUrl &&
+        replacement.m3uUrl == widget.profile.m3uUrl) {
+      setState(() => _error = 'Enter the provider’s new address.');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    XtreamClient? validationClient;
+    try {
+      final validator = widget.validator;
+      if (validator != null) {
+        await validator(replacement);
+      } else {
+        validationClient = XtreamClient(replacement);
+        await validationClient.authenticate().timeout(
+          const Duration(seconds: 18),
+          onTimeout: () => throw XtreamException(
+            'The new server did not respond. Check the address and try again.',
+          ),
+        );
+      }
+      if (mounted) Navigator.of(context).pop(replacement);
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _error = safeProviderError(error);
+        });
+      }
+    } finally {
+      validationClient?.close();
+    }
+  }
+
+  @override
+  void dispose() {
+    _address.dispose();
+    _addressFocus.dispose();
+    _cancelFocus.dispose();
+    _saveFocus.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    backgroundColor: surface,
+    title: Text(widget.profile.isM3u ? 'Edit playlist' : 'Edit server'),
+    content: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 480),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            widget.profile.isM3u
+                ? 'Replace the playlist URL. Your saved library and settings will stay with this service.'
+                : 'Use this when your IPTV provider moves the same account to a new hostname. Your username and password will be kept.',
+            style: TextStyle(color: subtle, height: 1.4),
+          ),
+          const SizedBox(height: 16),
+          RemoteTextInput(
+            child: TextField(
+              key: const ValueKey('edit-service-address'),
+              controller: _address,
+              focusNode: _addressFocus,
+              autofocus: true,
+              enabled: !_busy,
+              keyboardType: TextInputType.url,
+              textInputAction: TextInputAction.done,
+              autocorrect: false,
+              enableSuggestions: false,
+              decoration: InputDecoration(
+                labelText: widget.profile.isM3u
+                    ? 'Playlist URL'
+                    : 'Server address',
+                hintText: 'https://provider.example',
+                errorText: _error,
+              ),
+              onSubmitted: (_) => _save(),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Icon(Icons.person_outline_rounded, size: 17, color: muted),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(
+                  widget.profile.username,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: muted, fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    ),
+    actions: [
+      TextButton(
+        focusNode: _cancelFocus,
+        onPressed: _busy ? null : () => Navigator.of(context).pop(),
+        child: const Text('Cancel'),
+      ),
+      FilledButton.icon(
+        key: const ValueKey('save-service-address'),
+        focusNode: _saveFocus,
+        onPressed: _busy ? null : _save,
+        icon: _busy
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.check_rounded),
+        label: Text(_busy ? 'Checking…' : 'Save'),
+      ),
+    ],
+  );
 }
 
 class _AccountRemovalDialog extends StatefulWidget {
@@ -1579,6 +2040,7 @@ class _FontSelector extends StatefulWidget {
 }
 
 class _FontSelectorState extends State<_FontSelector> {
+  int _columns = LumenFont.values.length;
   late final List<FocusNode> _focusNodes = [
     widget.entryFocusNode,
     for (final option in LumenFont.values.skip(1))
@@ -1598,11 +2060,14 @@ class _FontSelectorState extends State<_FontSelector> {
       return KeyEventResult.ignored;
     }
     if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-      widget.upFocusNode.requestFocus();
+      final target = index - _columns;
+      (target >= 0 ? _focusNodes[target] : widget.upFocusNode).requestFocus();
       return KeyEventResult.handled;
     }
     if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-      widget.downFocusNode.requestFocus();
+      final target = index + _columns;
+      (target < _focusNodes.length ? _focusNodes[target] : widget.downFocusNode)
+          .requestFocus();
       return KeyEventResult.handled;
     }
     final delta = event.logicalKey == LogicalKeyboardKey.arrowLeft
@@ -1612,7 +2077,11 @@ class _FontSelectorState extends State<_FontSelector> {
         : 0;
     if (delta == 0) return KeyEventResult.ignored;
     final target = index + delta;
-    if (target >= 0 && target < _focusNodes.length) {
+    final sameRow =
+        target >= 0 &&
+        target < _focusNodes.length &&
+        target ~/ _columns == index ~/ _columns;
+    if (sameRow) {
       _focusNodes[target].requestFocus();
     } else if (target < 0 &&
         widget.leftExitFocusNode?.canRequestFocus == true) {
@@ -1625,64 +2094,76 @@ class _FontSelectorState extends State<_FontSelector> {
   Widget build(BuildContext context) {
     return ValueListenableBuilder<LumenFont>(
       valueListenable: ThemeController.instance.font,
-      builder: (context, current, _) => Row(
-        children: [
-          for (var index = 0; index < LumenFont.values.length; index++) ...[
-            if (index > 0) const SizedBox(width: 8),
-            Expanded(
-              child: RemoteTap(
-                focusNode: _focusNodes[index],
-                focusRadius: 14,
-                onKeyEvent: (_, event) => _route(index, event),
-                semanticLabel: '${LumenFont.values[index].label} font',
-                onTap: () =>
-                    ThemeController.instance.setFont(LumenFont.values[index]),
-                child: AnimatedContainer(
-                  key: ValueKey('profile-font-${LumenFont.values[index].name}'),
-                  duration: lumenMotion,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 13,
-                  ),
-                  decoration: BoxDecoration(
-                    color: current == LumenFont.values[index]
-                        ? accent.withValues(alpha: isDark ? .16 : .22)
-                        : surfaceHi.withValues(alpha: .55),
-                    borderRadius: BorderRadius.circular(lumenCorner(14)),
-                    border: Border.all(
-                      color: current == LumenFont.values[index]
-                          ? accentInk
-                          : line,
-                      width: current == LumenFont.values[index] ? 1.5 : 1,
+      builder: (context, current, _) => LayoutBuilder(
+        builder: (context, constraints) {
+          _columns = constraints.maxWidth >= 300 ? LumenFont.values.length : 2;
+          const gap = 8.0;
+          final itemWidth =
+              (constraints.maxWidth - gap * (_columns - 1)) / _columns;
+          return Wrap(
+            spacing: gap,
+            runSpacing: gap,
+            children: [
+              for (var index = 0; index < LumenFont.values.length; index++)
+                SizedBox(
+                  width: itemWidth,
+                  child: RemoteTap(
+                    focusNode: _focusNodes[index],
+                    focusRadius: 14,
+                    onKeyEvent: (_, event) => _route(index, event),
+                    semanticLabel: '${LumenFont.values[index].label} font',
+                    onTap: () => ThemeController.instance.setFont(
+                      LumenFont.values[index],
                     ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        LumenFont.values[index].label,
-                        maxLines: 1,
-                        style: TextStyle(
-                          fontFamily: LumenFont.values[index].family,
-                          color: textHi,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
+                    child: AnimatedContainer(
+                      key: ValueKey(
+                        'profile-font-${LumenFont.values[index].name}',
+                      ),
+                      duration: lumenMotion,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 13,
+                      ),
+                      decoration: BoxDecoration(
+                        color: current == LumenFont.values[index]
+                            ? accent.withValues(alpha: isDark ? .16 : .22)
+                            : surfaceHi.withValues(alpha: .55),
+                        borderRadius: BorderRadius.circular(lumenCorner(14)),
+                        border: Border.all(
+                          color: current == LumenFont.values[index]
+                              ? accentInk
+                              : line,
+                          width: current == LumenFont.values[index] ? 1.5 : 1,
                         ),
                       ),
-                      const SizedBox(height: 3),
-                      Text(
-                        LumenFont.values[index].description,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: muted, fontSize: 10.5),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            LumenFont.values[index].label,
+                            maxLines: 1,
+                            style: TextStyle(
+                              fontFamily: LumenFont.values[index].family,
+                              color: textHi,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            LumenFont.values[index].description,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(color: muted, fontSize: 10.5),
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
                 ),
-              ),
-            ),
-          ],
-        ],
+            ],
+          );
+        },
       ),
     );
   }
@@ -1725,6 +2206,7 @@ class _PreferenceSelector<T> extends StatefulWidget {
 }
 
 class _PreferenceSelectorState<T> extends State<_PreferenceSelector<T>> {
+  int _columns = 3;
   late final List<FocusNode> _focusNodes = [
     widget.entryFocusNode,
     for (final value in widget.values.skip(1))
@@ -1747,11 +2229,14 @@ class _PreferenceSelectorState<T> extends State<_PreferenceSelector<T>> {
       return KeyEventResult.ignored;
     }
     if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-      widget.upFocusNode.requestFocus();
+      final target = index - _columns;
+      (target >= 0 ? _focusNodes[target] : widget.upFocusNode).requestFocus();
       return KeyEventResult.handled;
     }
     if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-      widget.downFocusNode.requestFocus();
+      final target = index + _columns;
+      (target < _focusNodes.length ? _focusNodes[target] : widget.downFocusNode)
+          .requestFocus();
       return KeyEventResult.handled;
     }
     final delta = event.logicalKey == LogicalKeyboardKey.arrowLeft
@@ -1761,7 +2246,11 @@ class _PreferenceSelectorState<T> extends State<_PreferenceSelector<T>> {
         : 0;
     if (delta == 0) return KeyEventResult.ignored;
     final target = index + delta;
-    if (target >= 0 && target < _focusNodes.length) {
+    final sameRow =
+        target >= 0 &&
+        target < _focusNodes.length &&
+        target ~/ _columns == index ~/ _columns;
+    if (sameRow) {
       _focusNodes[target].requestFocus();
     } else if (target < 0 &&
         widget.leftExitFocusNode?.canRequestFocus == true) {
@@ -1773,76 +2262,89 @@ class _PreferenceSelectorState<T> extends State<_PreferenceSelector<T>> {
   @override
   Widget build(BuildContext context) => ValueListenableBuilder<T>(
     valueListenable: widget.current,
-    builder: (context, current, _) => Row(
-      children: [
-        for (var index = 0; index < widget.values.length; index++) ...[
-          if (index > 0) const SizedBox(width: 8),
-          Expanded(
-            child: RemoteTap(
-              focusNode: _focusNodes[index],
-              focusRadius: 14,
-              semanticLabel:
-                  '${widget.labelOf(widget.values[index])} ${widget.semanticSuffix}',
-              onKeyEvent: (_, event) => _route(index, event),
-              onTap: () => widget.onSelected(widget.values[index]),
-              child: AnimatedContainer(
-                key: ValueKey(
-                  '${widget.keyPrefix}-${widget.labelOf(widget.values[index]).toLowerCase()}',
-                ),
-                duration: lumenMotion,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 12,
-                ),
-                decoration: BoxDecoration(
-                  color: current == widget.values[index]
-                      ? accent.withValues(alpha: isDark ? .16 : .22)
-                      : surfaceHi.withValues(alpha: .55),
-                  borderRadius: BorderRadius.circular(lumenCorner(14)),
-                  border: Border.all(
-                    color: current == widget.values[index] ? accentInk : line,
-                    width: current == widget.values[index] ? 1.5 : 1,
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    if (widget.previewBuilder != null) ...[
-                      widget.previewBuilder!(
-                        widget.values[index],
-                        current == widget.values[index],
-                      ),
-                      const SizedBox(width: 9),
-                    ],
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            widget.labelOf(widget.values[index]),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            widget.descriptionOf(widget.values[index]),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(color: muted, fontSize: 9.5),
-                          ),
-                        ],
+    builder: (context, current, _) => LayoutBuilder(
+      builder: (context, constraints) {
+        _columns = constraints.maxWidth >= 300
+            ? widget.values.length
+            : 2.clamp(1, widget.values.length);
+        const gap = 8.0;
+        final itemWidth =
+            (constraints.maxWidth - gap * (_columns - 1)) / _columns;
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: [
+            for (var index = 0; index < widget.values.length; index++)
+              SizedBox(
+                width: itemWidth,
+                child: RemoteTap(
+                  focusNode: _focusNodes[index],
+                  focusRadius: 14,
+                  semanticLabel:
+                      '${widget.labelOf(widget.values[index])} ${widget.semanticSuffix}',
+                  onKeyEvent: (_, event) => _route(index, event),
+                  onTap: () => widget.onSelected(widget.values[index]),
+                  child: AnimatedContainer(
+                    key: ValueKey(
+                      '${widget.keyPrefix}-${widget.labelOf(widget.values[index]).toLowerCase()}',
+                    ),
+                    duration: lumenMotion,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: current == widget.values[index]
+                          ? accent.withValues(alpha: isDark ? .16 : .22)
+                          : surfaceHi.withValues(alpha: .55),
+                      borderRadius: BorderRadius.circular(lumenCorner(14)),
+                      border: Border.all(
+                        color: current == widget.values[index]
+                            ? accentInk
+                            : line,
+                        width: current == widget.values[index] ? 1.5 : 1,
                       ),
                     ),
-                  ],
+                    child: Row(
+                      children: [
+                        if (widget.previewBuilder != null) ...[
+                          widget.previewBuilder!(
+                            widget.values[index],
+                            current == widget.values[index],
+                          ),
+                          const SizedBox(width: 9),
+                        ],
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                widget.labelOf(widget.values[index]),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                widget.descriptionOf(widget.values[index]),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(color: muted, fontSize: 9.5),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ),
-        ],
-      ],
+          ],
+        );
+      },
     ),
   );
 }
@@ -2009,6 +2511,7 @@ class _AccentPicker extends StatefulWidget {
 }
 
 class _AccentPickerState extends State<_AccentPicker> {
+  int _columns = accentSchemes.length + 1;
   late final List<FocusNode> _focusNodes = [
     widget.entryFocusNode,
     for (var index = 1; index < accentSchemes.length + 1; index++)
@@ -2032,11 +2535,14 @@ class _AccentPickerState extends State<_AccentPicker> {
       return KeyEventResult.ignored;
     }
     if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-      widget.upFocusNode.requestFocus();
+      final target = index - _columns;
+      (target >= 0 ? _focusNodes[target] : widget.upFocusNode).requestFocus();
       return KeyEventResult.handled;
     }
     if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-      widget.downFocusNode.requestFocus();
+      final target = index + _columns;
+      (target < _focusNodes.length ? _focusNodes[target] : widget.downFocusNode)
+          .requestFocus();
       return KeyEventResult.handled;
     }
     final delta = event.logicalKey == LogicalKeyboardKey.arrowLeft
@@ -2046,7 +2552,11 @@ class _AccentPickerState extends State<_AccentPicker> {
         : 0;
     if (delta == 0) return KeyEventResult.ignored;
     final target = index + delta;
-    if (target >= 0 && target < _focusNodes.length) {
+    final sameRow =
+        target >= 0 &&
+        target < _focusNodes.length &&
+        target ~/ _columns == index ~/ _columns;
+    if (sameRow) {
       _focusNodes[target].requestFocus();
     } else if (target < 0 &&
         widget.leftExitFocusNode?.canRequestFocus == true) {
@@ -2341,94 +2851,108 @@ class _AccentPickerState extends State<_AccentPicker> {
         final isCustom = !accentSchemes.any(
           (scheme) => scheme.color.toARGB32() == cur,
         );
-        return Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children: [
-            for (var index = 0; index < accentSchemes.length; index++)
-              _schemeChoice(
-                label: accentSchemes[index].name,
-                color: accentSchemes[index].color,
-                selected: accentSchemes[index].color.toARGB32() == cur,
-                onTap: () => ThemeController.instance.setAccent(
-                  accentSchemes[index].color,
-                ),
-                focusNode: _focusNodes[index],
-                onKeyEvent: (_, event) => _route(index, event),
-              ),
-            // Custom colour is available without competing visually with the
-            // curated directions above.
-            RemoteTap(
-              focusNode: _focusNodes.last,
-              onKeyEvent: (_, event) => _route(_focusNodes.length - 1, event),
-              semanticLabel: 'Custom accent',
-              onTap: () => _pickCustom(context, current),
-              child: Container(
-                key: const ValueKey('profile-accent-custom'),
-                width: 112,
-                height: 64,
-                padding: const EdgeInsets.symmetric(horizontal: 11),
-                decoration: BoxDecoration(
-                  color: isCustom
-                      ? accentInk.withValues(alpha: isDark ? 0.16 : 0.10)
-                      : surfaceHi,
-                  borderRadius: BorderRadius.circular(lumenCorner(14)),
-                  border: Border.all(
-                    color: isCustom ? accentInk : line,
-                    width: isCustom ? 2 : 1,
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final optionCount = accentSchemes.length + 1;
+            _columns = constraints.maxWidth >= 680
+                ? optionCount
+                : constraints.maxWidth >= 300
+                ? 3
+                : 2;
+            const gap = 10.0;
+            final itemWidth =
+                (constraints.maxWidth - gap * (_columns - 1)) / _columns;
+            return Wrap(
+              spacing: gap,
+              runSpacing: gap,
+              children: [
+                for (var index = 0; index < accentSchemes.length; index++)
+                  _schemeChoice(
+                    width: itemWidth,
+                    label: accentSchemes[index].name,
+                    color: accentSchemes[index].color,
+                    selected: accentSchemes[index].color.toARGB32() == cur,
+                    onTap: () => ThemeController.instance.setAccent(
+                      accentSchemes[index].color,
+                    ),
+                    focusNode: _focusNodes[index],
+                    onKeyEvent: (_, event) => _route(index, event),
+                  ),
+                RemoteTap(
+                  focusNode: _focusNodes.last,
+                  onKeyEvent: (_, event) =>
+                      _route(_focusNodes.length - 1, event),
+                  semanticLabel: 'Custom accent',
+                  onTap: () => _pickCustom(context, current),
+                  child: Container(
+                    key: const ValueKey('profile-accent-custom'),
+                    width: itemWidth,
+                    height: 64,
+                    padding: const EdgeInsets.symmetric(horizontal: 11),
+                    decoration: BoxDecoration(
+                      color: isCustom
+                          ? accentInk.withValues(alpha: isDark ? 0.16 : 0.10)
+                          : surfaceHi,
+                      borderRadius: BorderRadius.circular(lumenCorner(14)),
+                      border: Border.all(
+                        color: isCustom ? accentInk : line,
+                        width: isCustom ? 2 : 1,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 24,
+                          height: 24,
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: SweepGradient(
+                              colors: [
+                                Color(0xFFFF0000),
+                                Color(0xFFFFFF00),
+                                Color(0xFF00FF00),
+                                Color(0xFF00FFFF),
+                                Color(0xFF0000FF),
+                                Color(0xFFFF00FF),
+                                Color(0xFFFF0000),
+                              ],
+                            ),
+                          ),
+                          child: isCustom
+                              ? const Icon(
+                                  Icons.check_rounded,
+                                  color: Colors.white,
+                                  size: 15,
+                                )
+                              : null,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Custom',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: isCustom ? textHi : muted,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 24,
-                      height: 24,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: const SweepGradient(
-                          colors: [
-                            Color(0xFFFF0000),
-                            Color(0xFFFFFF00),
-                            Color(0xFF00FF00),
-                            Color(0xFF00FFFF),
-                            Color(0xFF0000FF),
-                            Color(0xFFFF00FF),
-                            Color(0xFFFF0000),
-                          ],
-                        ),
-                      ),
-                      child: isCustom
-                          ? const Icon(
-                              Icons.check_rounded,
-                              color: Colors.white,
-                              size: 15,
-                            )
-                          : null,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Custom',
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: isCustom ? textHi : muted,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
+              ],
+            );
+          },
         );
       },
     );
   }
 
   Widget _schemeChoice({
+    required double width,
     required String label,
     required Color color,
     required bool selected,
@@ -2444,7 +2968,7 @@ class _AccentPickerState extends State<_AccentPicker> {
       child: AnimatedContainer(
         key: ValueKey('profile-accent-${label.toLowerCase()}'),
         duration: const Duration(milliseconds: 160),
-        width: 112,
+        width: width,
         height: 64,
         padding: const EdgeInsets.symmetric(horizontal: 11),
         decoration: BoxDecoration(

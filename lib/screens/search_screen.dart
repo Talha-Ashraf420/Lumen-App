@@ -36,6 +36,7 @@ class _Res {
   final bool live;
   final VoidCallback onTap;
   final int liveStreamId;
+  final String sourceLabel;
   _Res(
     this.name,
     this.image,
@@ -46,8 +47,14 @@ class _Res {
     this.fallbackImage = '',
     this.favoriteRef,
     this.liveStreamId = 0,
+    this.sourceLabel = '',
   });
 }
+
+String _withSource(String detail, String source) => [
+  if (detail.trim().isNotEmpty) detail.trim(),
+  if (source.trim().isNotEmpty) source.trim(),
+].join(' · ');
 
 class SearchScreen extends StatefulWidget {
   final XtreamClient client;
@@ -65,6 +72,10 @@ class SearchScreen extends StatefulWidget {
   /// that catalog (used by the desktop sidebar's Movies/Series/Live entries).
   final String? initialSection;
 
+  /// True when the surrounding shell already renders this catalog's title in
+  /// its command bar. Compact shells still let the page render its own title.
+  final bool shellOwnsTitle;
+
   /// Optional category to preselect (used by Home's "See all").
   final String? initialCategory;
   final String? initialCategoryName;
@@ -74,6 +85,7 @@ class SearchScreen extends StatefulWidget {
     this.shellRailFocusNode,
     this.shellTopFocusNode,
     this.initialSection,
+    this.shellOwnsTitle = false,
     this.initialCategory,
     this.initialCategoryName,
   });
@@ -1101,7 +1113,7 @@ class SearchScreenState extends State<SearchScreen>
     m.name,
     m.icon,
     m.rating,
-    _year(m.name),
+    _withSource(_year(m.name), m.sourceLabel),
     false,
     () => _push(MovieDetailScreen(client: widget.client, movie: m)),
   );
@@ -1109,7 +1121,10 @@ class SearchScreenState extends State<SearchScreen>
     s.name,
     s.cover,
     s.rating,
-    _year(s.releaseDate.isEmpty ? s.name : s.releaseDate),
+    _withSource(
+      _year(s.releaseDate.isEmpty ? s.name : s.releaseDate),
+      s.sourceLabel,
+    ),
     false,
     () => _push(
       SeriesDetailScreen(
@@ -1259,6 +1274,10 @@ class SearchScreenState extends State<SearchScreen>
   }
 
   Widget _browseHeader(bool canBack) {
+    // The desktop/TV shell already owns the page title. Compact layouts do
+    // not render that command bar, while pushed category routes need their
+    // own back/title context, so only those surfaces render a catalog title.
+    final showTitle = canBack || !widget.shellOwnsTitle || !isWide(context);
     return Padding(
       padding: EdgeInsets.fromLTRB(canBack ? 4 : 18, 8, 16, 0),
       child: Row(
@@ -1274,10 +1293,8 @@ class SearchScreenState extends State<SearchScreen>
               ),
             ),
           Expanded(
-            child: Row(
-              children: [
-                Flexible(
-                  child: Text(
+            child: showTitle
+                ? Text(
                     widget.initialCategoryName ?? _sectionTitle,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -1286,20 +1303,8 @@ class SearchScreenState extends State<SearchScreen>
                       fontWeight: FontWeight.w800,
                       letterSpacing: -0.6,
                     ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Icon(
-                  _section == 'movie'
-                      ? Icons.movie_rounded
-                      : _section == 'series'
-                      ? Icons.video_library_rounded
-                      : Icons.live_tv_rounded,
-                  color: accentInk,
-                  size: 24,
-                ),
-              ],
-            ),
+                  )
+                : const SizedBox.shrink(),
           ),
           const SizedBox(width: 12),
           _sortButton(),
@@ -1891,6 +1896,7 @@ class SearchScreenState extends State<SearchScreen>
               fallbackImage: e.value.fallbackIcon,
               favoriteRef: _liveRef(e.value),
               liveStreamId: e.value.streamId,
+              sourceLabel: e.value.sourceLabel,
             ),
           )
           .toList();
@@ -1994,6 +2000,7 @@ class SearchScreenState extends State<SearchScreen>
                           logo: items[i].image,
                           backupLogo: items[i].fallbackImage,
                           favoriteRef: items[i].favoriteRef,
+                          sourceLabel: items[i].sourceLabel,
                           nowTitle: showEpg
                               ? _epg.nowNextFor(chans[i].streamId).now?.title ??
                                     ''
@@ -2075,6 +2082,7 @@ class SearchScreenState extends State<SearchScreen>
                       logo: items[i].image,
                       backupLogo: items[i].fallbackImage,
                       favoriteRef: items[i].favoriteRef,
+                      sourceLabel: items[i].sourceLabel,
                       nowTitle: showEpg
                           ? _epg.nowNextFor(items[i].liveStreamId).now?.title ??
                                 ''

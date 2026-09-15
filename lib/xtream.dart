@@ -295,6 +295,10 @@ class XtreamClient {
     : _http = httpClient ?? http.Client(),
       _ownsHttpClient = httpClient == null;
 
+  bool get supportsMovieCatalog => !creds.isM3u;
+  bool get supportsSeriesCatalog => !creds.isM3u;
+  bool supportsShortEpg(int streamId) => !creds.isDemo && !creds.isM3u;
+
   /// Release pooled network connections when a profile is replaced.
   void close() {
     if (_ownsHttpClient) _http.close();
@@ -529,10 +533,12 @@ class XtreamClient {
     Uri uri, {
     CatalogStore? store,
     DateTime? now,
-  }) => EpgXmltvLoader(
-    httpClient: _http,
-    store: store,
-  ).sync(profileScope: Store.profileScope(creds), uri: uri, now: now);
+    String? profileScope,
+  }) => EpgXmltvLoader(httpClient: _http, store: store).sync(
+    profileScope: profileScope ?? Store.profileScope(creds),
+    uri: uri,
+    now: now,
+  );
 
   /// Resolve missing channel artwork away from the foreground catalog fetch.
   /// CatalogCache invokes this after it has already returned cached/provider
