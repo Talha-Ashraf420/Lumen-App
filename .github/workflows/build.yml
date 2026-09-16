@@ -265,6 +265,12 @@ jobs:
           channel: stable
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
+      # iOS playback and catalog storage use the platform SQLite plugin. The
+      # transitive sqlite3 native-asset hook otherwise downloads a dylib from
+      # GitHub, making this job depend on runner DNS/CDN availability.
+      - name: Use iOS system SQLite for native assets
+        run: |
+          printf '\nhooks:\n  user_defines:\n    sqlite3:\n      source: system\n' >> pubspec.yaml
       - run: flutter pub get
       # Unsigned build (CI has no signing certs). Produces Runner.app that must
       # be re-signed / sideloaded (e.g. with AltStore or Sideloadly) to install.
