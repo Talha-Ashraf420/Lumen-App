@@ -51,7 +51,22 @@ class CatalogStore {
   Future<Database>? _opening;
   bool _disabledForWidgetTests = false;
 
-  Future<Database> _database() => _opening ??= _open();
+  Future<Database> _database() {
+    final existing = _opening;
+    if (existing != null) return existing;
+    final opening = _open();
+    _opening = opening;
+    // An intermittent filesystem/SQLite open failure must not poison every
+    // catalog read until the entire app process is killed. The caller still
+    // receives the original error; the next read gets a fresh open attempt.
+    opening.then<void>(
+      (_) {},
+      onError: (Object _, StackTrace _) {
+        if (identical(_opening, opening)) _opening = null;
+      },
+    );
+    return opening;
+  }
 
   Future<Database> _open() async {
     final override = _factoryOverride;

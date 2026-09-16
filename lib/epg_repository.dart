@@ -224,13 +224,15 @@ class EpgRepository extends ChangeNotifier {
       final channel = _queue.removeFirst();
       _queued.remove(channel.streamId);
       _loading.add(channel.streamId);
-      notifyListeners();
+      // Loading is invisible on channel tiles; rebuilding the whole grid for
+      // each queued request adds work without presenting new programme data.
       unawaited(_fetchShort(channel));
     }
   }
 
   Future<void> _fetchShort(LiveStream channel) async {
     final fetchedAt = _clock().toUtc();
+    var programmesChanged = false;
     try {
       final values = await client.shortEpg(channel.streamId, limit: 4);
       if (_disposed) return;
@@ -251,6 +253,7 @@ class EpgRepository extends ChangeNotifier {
           ),
       ]..sort((a, b) => a.startUtc.compareTo(b.startUtc));
       _programmes[channel.streamId] = List.unmodifiable(normalized);
+      programmesChanged = true;
       await store.replaceShortEpgChannel(
         profileScope,
         kXtreamShortEpgSource,
@@ -271,7 +274,7 @@ class EpgRepository extends ChangeNotifier {
     } finally {
       _loading.remove(channel.streamId);
       if (!_disposed) {
-        notifyListeners();
+        if (programmesChanged) notifyListeners();
         _pump();
       }
     }

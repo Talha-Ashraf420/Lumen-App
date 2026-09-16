@@ -113,4 +113,31 @@ https://stream.example/news.m3u8
     final guide = await api.shortEpg(42, limit: 99);
     expect(guide.single.title, 'News now');
   });
+
+  test(
+    'large channel catalogs parse without blocking the UI isolate',
+    () async {
+      final payload = jsonEncode([
+        for (var i = 0; i < 1200; i++)
+          {'stream_id': i + 1, 'name': 'Channel $i', 'category_id': '1'},
+      ]);
+      final client = MockClient((request) async {
+        expect(request.url.queryParameters['action'], 'get_live_streams');
+        return http.Response(payload, 200);
+      });
+      final api = XtreamClient(
+        const XtreamCredentials(
+          baseUrl: 'https://tv.example',
+          username: 'user',
+          password: 'pass',
+        ),
+        httpClient: client,
+      );
+      addTearDown(api.close);
+
+      final channels = await api.liveStreams('1');
+      expect(channels, hasLength(1200));
+      expect(channels.last.name, 'Channel 1199');
+    },
+  );
 }

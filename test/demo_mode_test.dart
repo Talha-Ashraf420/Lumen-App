@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+import 'package:lumen_tv/catalog_cache.dart';
+import 'package:lumen_tv/catalog_store.dart';
 import 'package:lumen_tv/models.dart';
 import 'package:lumen_tv/screens/login_screen.dart';
 import 'package:lumen_tv/store.dart';
@@ -74,6 +76,56 @@ void main() {
     expect(channels, isNotEmpty);
     expect(client.streamHeaders(channels.first.streamId), isEmpty);
     expect(tripwire.requests, 0);
+  });
+
+  test('demo never combines previously enabled IPTV services', () async {
+    const provider = XtreamCredentials(
+      baseUrl: 'https://provider.example',
+      username: 'viewer',
+      password: 'secret',
+    );
+    await Store.setActive(provider);
+    await Store.setProfileEnabled(provider, true);
+
+    final sources = await Store.viewerProfiles(XtreamCredentials.demoProfile);
+    expect(sources, [XtreamCredentials.demoProfile]);
+  });
+
+  test('demo catalog ignores stale persistent rows', () async {
+    final store = CatalogStore.instance;
+    await store.useInMemoryForTests();
+    addTearDown(() async {
+      CatalogCache.instance.clear();
+      await store.close();
+    });
+    CatalogCache.instance.clear();
+    final client = XtreamClient(XtreamCredentials.demoProfile);
+    addTearDown(client.close);
+    final scope = client.catalogScope;
+    await store.replaceCategories(scope, 'movie', [
+      Category('stale', 'Wrong catalog'),
+    ], generation: 1);
+    await store.replaceVod(scope, 'demo_featured', [
+      VodStream(1, 'Wrong movie', '', 'demo_featured', 'mp4', 0, ''),
+    ], generation: 1);
+
+    expect(
+      (await CatalogCache.instance.vod(client)).first.name,
+      'Featured stories',
+    );
+    expect((await CatalogCache.instance.series(client)), isNotEmpty);
+    expect((await CatalogCache.instance.live(client)), isNotEmpty);
+    final movies = await CatalogCache.instance.vodPage(
+      client,
+      categoryId: 'demo_featured',
+    );
+    expect(movies.items, isNotEmpty);
+    expect(
+      movies.items.map((item) => item.name),
+      isNot(contains('Wrong movie')),
+    );
+    expect((await CatalogCache.instance.seriesPage(client)).items, isNotEmpty);
+    expect((await CatalogCache.instance.livePage(client)).items, isNotEmpty);
   });
 
   test('every bundled demo asset is available offline', () async {

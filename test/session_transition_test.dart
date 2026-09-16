@@ -69,6 +69,8 @@ void main() {
 
     hydration.pending.complete();
     await tester.pump();
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 1));
   });
 
   testWidgets('saved login opens Home even when profile hydration fails', (

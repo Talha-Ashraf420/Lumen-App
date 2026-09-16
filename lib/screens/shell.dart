@@ -195,9 +195,14 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         if (!mounted || generation != _capabilityLoad) return;
         _setCapabilities(
           _CatalogCapabilities(
-            movies: kind == 'movie' ? values.isNotEmpty : _capabilities.movies,
-            series: kind == 'series' ? values.isNotEmpty : _capabilities.series,
-            live: kind == 'live' ? values.isNotEmpty : _capabilities.live,
+            // An empty category response is ambiguous: Xtream panels can
+            // return [] while throttled or reconnecting. Do not remove a
+            // destination (or kick the viewer back Home) during an outage.
+            movies:
+                _capabilities.movies || (kind == 'movie' && values.isNotEmpty),
+            series:
+                _capabilities.series || (kind == 'series' && values.isNotEmpty),
+            live: _capabilities.live || (kind == 'live' && values.isNotEmpty),
           ),
         );
       }

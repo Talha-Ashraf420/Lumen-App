@@ -10,6 +10,7 @@ import 'package:lumen_tv/catalog_organization.dart';
 import 'package:lumen_tv/device_profile.dart';
 import 'package:lumen_tv/models.dart';
 import 'package:lumen_tv/screens/profile_screen.dart';
+import 'package:lumen_tv/screens/viewer_picker_screen.dart';
 import 'package:lumen_tv/store.dart';
 import 'package:lumen_tv/theme.dart';
 import 'package:lumen_tv/updater.dart';
@@ -121,6 +122,28 @@ void main() {
     expect((accountTopLeft.dy - settingsTopLeft.dy).abs(), lessThan(80));
     expect(find.text('Profile'), findsNothing);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('TV D-pad reaches viewer management from account controls', (
+    tester,
+  ) async {
+    DeviceProfile.isTelevision = true;
+    addTearDown(() => DeviceProfile.isTelevision = false);
+    await pumpProfile(tester, const Size(1280, 900));
+    final edit = FocusManager.instance.rootScope.descendants.firstWhere(
+      (node) => node.debugLabel == 'Edit current service',
+    );
+    edit.requestFocus();
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
+    expect(
+      FocusManager.instance.primaryFocus?.debugLabel,
+      'Switch or manage viewers',
+    );
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pumpAndSettle();
+    expect(find.byType(ViewerPickerScreen), findsOneWidget);
   });
 
   testWidgets('phone accent choices form an even three-column grid', (
@@ -577,6 +600,7 @@ void main() {
       profileScrollable.position.pixels,
       profileScrollable.position.minScrollExtent,
     );
+    await move(LogicalKeyboardKey.arrowUp, 'Switch or manage viewers');
     await move(LogicalKeyboardKey.arrowUp, 'Edit current service');
     await move(LogicalKeyboardKey.arrowUp, 'Profile test top');
     expect(
@@ -588,6 +612,7 @@ void main() {
 
     final expected = <String>{
       'Profile add account',
+      'Switch or manage viewers',
       'Edit current service',
       'Dark appearance',
       'Light appearance',

@@ -2432,8 +2432,6 @@ class SearchScreenState extends State<SearchScreen>
                                   _epg.nowNextFor(chans[i].streamId).now,
                                 )
                               : null,
-                          epgLoading:
-                              showEpg && _epg.isLoading(chans[i].streamId),
                           index: i,
                           onTap: items[i].onTap,
                         )
@@ -2514,8 +2512,6 @@ class SearchScreenState extends State<SearchScreen>
                               _epg.nowNextFor(items[i].liveStreamId).now,
                             )
                           : null,
-                      epgLoading:
-                          showEpg && _epg.isLoading(items[i].liveStreamId),
                       index: i,
                       onTap: items[i].onTap,
                     )

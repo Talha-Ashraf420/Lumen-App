@@ -399,6 +399,10 @@ class Store {
   static Future<List<XtreamCredentials>> viewerProfiles(
     XtreamCredentials activeProfile,
   ) async {
+    // Demo is an offline sample library, never a source in a combined IPTV
+    // viewer. Keep it independent even if real services were enabled before
+    // the user switched accounts.
+    if (activeProfile.isDemo) return [activeProfile];
     final profiles = await savedProfiles();
     final enabled = await enabledSourceScopes();
     enabled.add(profileScope(activeProfile));

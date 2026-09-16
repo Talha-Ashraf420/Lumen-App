@@ -461,12 +461,27 @@ class XtreamClient {
     return (data['user_info'] as Map).cast<String, dynamic>();
   }
 
-  List<T> _list<T>(dynamic data, T Function(Map<String, dynamic>) f) {
+  static List<T> _parseList<T>(
+    dynamic data,
+    T Function(Map<String, dynamic>) f,
+  ) {
     if (data is! List) return [];
     return data
         .whereType<Map>()
         .map((e) => f(e.cast<String, dynamic>()))
         .toList();
+  }
+
+  Future<List<T>> _list<T>(
+    dynamic data,
+    T Function(Map<String, dynamic>) parse,
+  ) async {
+    // JSON decoding alone is not enough: constructing tens of thousands of
+    // model objects on Flutter's UI isolate stalls TV remote navigation.
+    if (data is List && data.length >= 1000) {
+      return Isolate.run(() => _parseList<T>(data, parse));
+    }
+    return _parseList<T>(data, parse);
   }
 
   Future<List<Category>> liveCategories() async {

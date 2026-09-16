@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -22,6 +23,60 @@ void main() {
   });
 
   tearDown(() => store.close());
+
+  test('short EPG loading stays silent until programme data changes', () async {
+    final pending = Completer<http.Response>();
+    final transport = MockClient((_) => pending.future);
+    final client = XtreamClient(
+      const XtreamCredentials(
+        baseUrl: 'https://tv.example',
+        username: 'user',
+        password: 'pass',
+      ),
+      httpClient: transport,
+    );
+    final repository = EpgRepository(client: client, store: store);
+    addTearDown(() {
+      repository.dispose();
+      client.close();
+    });
+    var notifications = 0;
+    repository.addListener(() => notifications++);
+
+    await repository.primeVisible([LiveStream(42, 'Channel', '', 'all')]);
+    expect(repository.shortRequestsInFlight, 1);
+    expect(notifications, 0);
+
+    final now = DateTime.now().toUtc();
+    pending.complete(
+      http.Response(
+        jsonEncode({
+          'epg_listings': [
+            {
+              'channel_id': '42',
+              'title': 'Playing now',
+              'start_timestamp':
+                  now
+                      .subtract(const Duration(minutes: 5))
+                      .millisecondsSinceEpoch ~/
+                  1000,
+              'stop_timestamp':
+                  now.add(const Duration(minutes: 55)).millisecondsSinceEpoch ~/
+                  1000,
+            },
+          ],
+        }),
+        200,
+      ),
+    );
+    final deadline = DateTime.now().add(const Duration(seconds: 2));
+    while (repository.shortRequestsInFlight > 0 &&
+        DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+    expect(repository.nowNextFor(42).now?.title, 'Playing now');
+    expect(notifications, 1);
+  });
 
   test('short EPG queue never exceeds two provider calls', () async {
     final fixedNow = DateTime.utc(2026, 9, 12, 10, 15);

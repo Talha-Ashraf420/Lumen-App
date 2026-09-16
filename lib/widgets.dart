@@ -2555,7 +2555,6 @@ class ChannelCard extends StatelessWidget {
   final String nowTitle;
   final String nextTitle;
   final double? programmeProgress;
-  final bool epgLoading;
   final String sourceLabel;
   const ChannelCard({
     super.key,
@@ -2571,7 +2570,6 @@ class ChannelCard extends StatelessWidget {
     this.nowTitle = '',
     this.nextTitle = '',
     this.programmeProgress,
-    this.epgLoading = false,
     this.sourceLabel = '',
   });
 
@@ -2742,19 +2740,6 @@ class ChannelCard extends StatelessWidget {
                             ),
                           ],
                         ],
-                      ),
-                    ),
-                  )
-                else if (epgLoading)
-                  Positioned(
-                    left: 10,
-                    bottom: 10,
-                    child: SizedBox(
-                      width: 13,
-                      height: 13,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: accent,
                       ),
                     ),
                   ),

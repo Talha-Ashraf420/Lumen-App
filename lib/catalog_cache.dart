@@ -40,6 +40,9 @@ class CatalogCache {
 
   Future<List<Category>> vod(XtreamClient client, {bool priority = false}) {
     _ensureOwner(client);
+    if (client.creds.isDemo) {
+      return _vodCategories ??= client.vodCategories();
+    }
     return _vodCategories ??= _loadCategoriesCachedFirst(
       client,
       'movie',
@@ -51,6 +54,9 @@ class CatalogCache {
 
   Future<List<Category>> series(XtreamClient client, {bool priority = false}) {
     _ensureOwner(client);
+    if (client.creds.isDemo) {
+      return _seriesCategories ??= client.seriesCategories();
+    }
     return _seriesCategories ??= _loadCategoriesCachedFirst(
       client,
       'series',
@@ -62,6 +68,9 @@ class CatalogCache {
 
   Future<List<Category>> live(XtreamClient client, {bool priority = false}) {
     _ensureOwner(client);
+    if (client.creds.isDemo) {
+      return _liveCategories ??= client.liveCategories();
+    }
     return _liveCategories ??= _loadCategoriesCachedFirst(
       client,
       'live',
@@ -78,6 +87,13 @@ class CatalogCache {
   }) {
     _ensureOwner(client);
     final bucket = categoryId ?? '*';
+    if (client.creds.isDemo) {
+      return _memoized(
+        _vodStreams,
+        bucket,
+        () => client.vodStreams(categoryId),
+      );
+    }
     return _memoized(
       _vodStreams,
       bucket,
@@ -106,6 +122,9 @@ class CatalogCache {
   }) {
     _ensureOwner(client);
     final bucket = categoryId ?? '*';
+    if (client.creds.isDemo) {
+      return _memoized(_series, bucket, () => client.series(categoryId));
+    }
     return _memoized(
       _series,
       bucket,
@@ -130,6 +149,13 @@ class CatalogCache {
   }) {
     _ensureOwner(client);
     final bucket = categoryId ?? '*';
+    if (client.creds.isDemo) {
+      return _memoized(
+        _liveStreams,
+        bucket,
+        () => client.liveStreams(categoryId),
+      );
+    }
     return _memoized(
       _liveStreams,
       bucket,
@@ -364,6 +390,19 @@ class CatalogCache {
     String sort = 'default',
   }) async {
     _ensureOwner(client);
+    if (client.creds.isDemo) {
+      return _memoryPage(
+        await vodStreams(client, categoryId),
+        offset: offset,
+        limit: limit,
+        query: query,
+        sort: sort,
+        name: (item) => item.name,
+        rating: (item) => item.rating,
+        recent: (item) => mediaAddedValue(item.added),
+        year: (item) => _yearValue(item.name),
+      );
+    }
     final bucket = categoryId ?? '*';
     final scope = client.catalogScope;
     final cached = await CatalogStore.instance.vodPage(
@@ -489,6 +528,21 @@ class CatalogCache {
     String sort = 'default',
   }) async {
     _ensureOwner(client);
+    if (client.creds.isDemo) {
+      return _memoryPage(
+        await seriesItems(client, categoryId),
+        offset: offset,
+        limit: limit,
+        query: query,
+        sort: sort,
+        name: (item) => item.name,
+        rating: (item) => item.rating,
+        recent: (item) =>
+            _yearValue(item.releaseDate.isEmpty ? item.name : item.releaseDate),
+        year: (item) =>
+            _yearValue(item.releaseDate.isEmpty ? item.name : item.releaseDate),
+      );
+    }
     final bucket = categoryId ?? '*';
     final scope = client.catalogScope;
     final cached = await CatalogStore.instance.seriesPage(
@@ -557,6 +611,19 @@ class CatalogCache {
     String sort = 'default',
   }) async {
     _ensureOwner(client);
+    if (client.creds.isDemo) {
+      return _memoryPage(
+        await liveStreams(client, categoryId),
+        offset: offset,
+        limit: limit,
+        query: query,
+        sort: sort,
+        name: (item) => item.name,
+        rating: (_) => 0,
+        recent: (_) => 0,
+        year: (_) => 0,
+      );
+    }
     final bucket = categoryId ?? '*';
     final scope = client.catalogScope;
     final cached = await CatalogStore.instance.livePage(

@@ -64,6 +64,14 @@ void main() {
       findsNothing,
       reason: 'a grid must not create one GPU blur pass per rating badge',
     );
+    expect(
+      find.descendant(
+        of: find.byType(ChannelCard),
+        matching: find.byType(CircularProgressIndicator),
+      ),
+      findsNothing,
+      reason: 'channel artwork must not show a spinner while EPG loads',
+    );
     expect(tester.takeException(), isNull);
   });
 }

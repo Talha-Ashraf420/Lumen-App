@@ -21,11 +21,13 @@ class _SourceClient extends XtreamClient {
   _SourceClient(super.credentials, {this.fail = false});
 
   bool fail;
+  bool empty = false;
   String? requestedCategory;
 
   @override
   Future<List<Category>> liveCategories() async {
     if (fail) throw XtreamException('offline');
+    if (empty) return [];
     return [Category('10', 'Sports')];
   }
 
@@ -33,6 +35,7 @@ class _SourceClient extends XtreamClient {
   Future<List<LiveStream>> liveStreams(String? categoryId) async {
     requestedCategory = categoryId;
     if (fail) throw XtreamException('offline');
+    if (empty) return [];
     return [LiveStream(123, 'News', '', categoryId ?? '10')];
   }
 
@@ -159,5 +162,33 @@ void main() {
     expect(offlineChannels.single.sourceLabel, 'one.example');
     expect(offlineChannels.single.categoryId, '$rawScope::10');
     expect('::'.allMatches(offlineChannels.single.categoryId), hasLength(1));
+  });
+
+  test('temporary empty success does not erase a working service', () async {
+    final clients = <String, _SourceClient>{};
+    final viewer = MultiSourceXtreamClient(
+      _first,
+      const [_first, _second],
+      clientFactory: (credentials) =>
+          clients[credentials.baseUrl] = _SourceClient(credentials),
+    );
+    addTearDown(viewer.close);
+
+    final categories = await viewer.liveCategories();
+    final first = categories.firstWhere(
+      (value) => value.sourceLabel == 'one.example',
+    );
+    await viewer.liveStreams(first.id);
+    clients[_first.baseUrl]!.empty = true;
+
+    expect((await viewer.liveCategories()), hasLength(2));
+    expect((await viewer.liveStreams(first.id)).single.name, 'News');
+    expect(
+      (await CatalogStore.instance.categories(
+        Store.profileScope(_first),
+        'live',
+      )).single.name,
+      'Sports',
+    );
   });
 }

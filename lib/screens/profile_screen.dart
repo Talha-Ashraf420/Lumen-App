@@ -57,6 +57,7 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   final _pageScroll = ScrollController();
   final _entryFocus = FocusNode(debugLabel: 'Profile add account');
+  final _viewerManageFocus = FocusNode(debugLabel: 'Switch or manage viewers');
   final _themeEntryFocus = FocusNode(debugLabel: 'Dark appearance');
   final _fontEntryFocus = FocusNode(debugLabel: 'Lumen font');
   final _cornerEntryFocus = FocusNode(debugLabel: 'Crisp corners');
@@ -90,7 +91,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       return KeyEventResult.ignored;
     }
     if (event.logicalKey == LogicalKeyboardKey.arrowUp &&
-        _entryFocusNode.hasFocus) {
+        _viewerManageFocus.hasFocus &&
+        widget.client.creds.isDemo) {
       _restoreProfileTop();
       final top = widget.shellTopFocusNode;
       if (top != null && top.canRequestFocus) {
@@ -311,13 +313,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
     });
     _entryFocusNode.onKeyEvent = (_, event) => _moveVertically(
       event,
-      up: widget.client.creds.isDemo ? null : _currentEditFocus,
+      up: _viewerManageFocus,
       down: _firstProfileSwitchFocus ?? _themeEntryFocus,
+    );
+    _viewerManageFocus.onKeyEvent = (_, event) => _moveVertically(
+      event,
+      up: widget.client.creds.isDemo ? null : _currentEditFocus,
+      down: _entryFocusNode,
     );
     _currentEditFocus.onKeyEvent = (_, event) => _moveInFocusGraph(event, {
       LogicalKeyboardKey.arrowLeft: widget.shellRailFocusNode,
       LogicalKeyboardKey.arrowUp: widget.shellTopFocusNode,
-      LogicalKeyboardKey.arrowDown: _entryFocusNode,
+      LogicalKeyboardKey.arrowDown: _viewerManageFocus,
     });
     _entryFocusNode.addListener(_restoreTopWhenEntryFocused);
     widget.client
@@ -629,6 +636,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void dispose() {
     _entryFocusNode.removeListener(_restoreTopWhenEntryFocused);
     _entryFocusNode.onKeyEvent = null;
+    _viewerManageFocus.dispose();
     _pageScroll.dispose();
     _entryFocus.dispose();
     _themeEntryFocus.dispose();
@@ -770,6 +778,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             const SizedBox(height: 14),
             OutlinedButton.icon(
+              focusNode: _viewerManageFocus,
               onPressed: () => showDialog<void>(
                 context: context,
                 builder: (dialogContext) => Dialog(

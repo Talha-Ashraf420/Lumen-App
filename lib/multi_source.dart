@@ -137,13 +137,18 @@ class MultiSourceXtreamClient extends XtreamClient {
   ) async {
     try {
       final fresh = await fetch();
-      await CatalogStore.instance.replaceCategories(
-        source.scope,
-        kind,
-        fresh,
-        generation: _generation(),
-      );
-      return fresh;
+      // A temporarily throttled Xtream panel can answer HTTP 200 with an
+      // empty list. Do not erase the last working per-service snapshot.
+      if (fresh.isNotEmpty || source.credentials.isM3u) {
+        await CatalogStore.instance.replaceCategories(
+          source.scope,
+          kind,
+          fresh,
+          generation: _generation(),
+        );
+        return fresh;
+      }
+      return await CatalogStore.instance.categories(source.scope, kind);
     } catch (_) {
       final cached = await CatalogStore.instance.categories(source.scope, kind);
       // Builds before the dedicated combined cache scope could write tagged
@@ -169,13 +174,20 @@ class MultiSourceXtreamClient extends XtreamClient {
     final bucket = categoryId ?? '*';
     try {
       final fresh = await source.client.liveStreams(categoryId);
-      await CatalogStore.instance.replaceLive(
+      if (fresh.isNotEmpty || source.credentials.isM3u) {
+        await CatalogStore.instance.replaceLive(
+          source.scope,
+          bucket,
+          fresh,
+          generation: _generation(),
+        );
+        return fresh;
+      }
+      return (await CatalogStore.instance.livePage(
         source.scope,
-        bucket,
-        fresh,
-        generation: _generation(),
-      );
-      return fresh;
+        bucket: bucket,
+        limit: 1000000,
+      )).items;
     } catch (_) {
       final cached = (await CatalogStore.instance.livePage(
         source.scope,
@@ -199,13 +211,20 @@ class MultiSourceXtreamClient extends XtreamClient {
     final bucket = categoryId ?? '*';
     try {
       final fresh = await source.client.vodStreams(categoryId);
-      await CatalogStore.instance.replaceVod(
+      if (fresh.isNotEmpty || source.credentials.isM3u) {
+        await CatalogStore.instance.replaceVod(
+          source.scope,
+          bucket,
+          fresh,
+          generation: _generation(),
+        );
+        return fresh;
+      }
+      return (await CatalogStore.instance.vodPage(
         source.scope,
-        bucket,
-        fresh,
-        generation: _generation(),
-      );
-      return fresh;
+        bucket: bucket,
+        limit: 1000000,
+      )).items;
     } catch (_) {
       final cached = (await CatalogStore.instance.vodPage(
         source.scope,
@@ -229,13 +248,20 @@ class MultiSourceXtreamClient extends XtreamClient {
     final bucket = categoryId ?? '*';
     try {
       final fresh = await source.client.series(categoryId);
-      await CatalogStore.instance.replaceSeries(
+      if (fresh.isNotEmpty || source.credentials.isM3u) {
+        await CatalogStore.instance.replaceSeries(
+          source.scope,
+          bucket,
+          fresh,
+          generation: _generation(),
+        );
+        return fresh;
+      }
+      return (await CatalogStore.instance.seriesPage(
         source.scope,
-        bucket,
-        fresh,
-        generation: _generation(),
-      );
-      return fresh;
+        bucket: bucket,
+        limit: 1000000,
+      )).items;
     } catch (_) {
       final cached = (await CatalogStore.instance.seriesPage(
         source.scope,
