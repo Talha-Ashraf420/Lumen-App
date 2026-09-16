@@ -102,9 +102,14 @@ class Library extends ChangeNotifier {
   /// Switch the in-memory library to [credentials] immediately, then hydrate
   /// only that profile's saved state. The generation guard prevents a slow
   /// previous profile read from winning after a rapid second switch.
-  Future<void> activate(XtreamCredentials? credentials) async {
+  Future<void> activate(
+    XtreamCredentials? credentials, {
+    String viewingId = 'default',
+  }) async {
     final activation = ++_activation;
-    _scope = credentials == null ? null : Store.profileScope(credentials);
+    _scope = credentials == null
+        ? null
+        : '${Store.profileScope(credentials)}${viewingId == 'default' ? '' : '__viewer_$viewingId'}';
     favourites.clear();
     recent.clear();
     progress.clear();
@@ -120,7 +125,11 @@ class Library extends ChangeNotifier {
 
     // Preserve existing users' data by assigning the one-time unscoped state
     // to the first profile opened after this upgrade.
-    if (fav == null && rec == null && pr == null && seen == null) {
+    if (viewingId == 'default' &&
+        fav == null &&
+        rec == null &&
+        pr == null &&
+        seen == null) {
       fav = await Store.readPrivate(_kFav);
       rec = await Store.readPrivate(_kRecent);
       pr = await Store.readPrivate(_kProg);

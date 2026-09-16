@@ -26,15 +26,20 @@ class HomeConfig extends ChangeNotifier {
   int _activation = 0;
   bool get isCustom => shelves.isNotEmpty;
 
-  Future<void> activate(XtreamCredentials? credentials) async {
+  Future<void> activate(
+    XtreamCredentials? credentials, {
+    String viewingId = 'default',
+  }) async {
     final activation = ++_activation;
-    _scope = credentials == null ? null : Store.profileScope(credentials);
+    _scope = credentials == null
+        ? null
+        : '${Store.profileScope(credentials)}${viewingId == 'default' ? '' : '__viewer_$viewingId'}';
     shelves.clear();
     notifyListeners();
     final scope = _scope;
     if (scope == null) return;
     var raw = await Store.readPrivate('${_k}_$scope');
-    if (raw == null) {
+    if (raw == null && viewingId == 'default') {
       raw = await Store.readPrivate(_k);
       if (raw != null) {
         await Store.writePrivate('${_k}_$scope', raw);

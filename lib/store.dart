@@ -29,6 +29,14 @@ class Store {
     'lumen_epg_settings',
     'lumen_catalog_organization_v1',
   ];
+  static const _viewingStateKeys = <String>[
+    'lib_favourites',
+    'lib_progress',
+    'lib_recent',
+    'lib_watched',
+    'home_shelves',
+    'watch_stats_v1',
+  ];
   static final bool _useSecure =
       !kIsWeb && (Platform.isAndroid || Platform.isIOS);
 
@@ -71,6 +79,39 @@ class Store {
 
   static String scopedKey(String key, XtreamCredentials credentials) =>
       '${key}_${profileScope(credentials)}';
+
+  /// The original viewer keeps the legacy key so upgrades retain all activity.
+  /// Other household viewers have independent state within each service.
+  static String viewingScopedKey(
+    String key,
+    XtreamCredentials credentials,
+    String viewingId,
+  ) => viewingId == 'default'
+      ? scopedKey(key, credentials)
+      : '${scopedKey(key, credentials)}__viewer_$viewingId';
+
+  static Future<List<String>> _viewingIds() async {
+    final raw = await readPrivate('lumen_viewing_profiles_v1');
+    if (raw == null) return const ['default'];
+    try {
+      return {
+        'default',
+        for (final item in jsonDecode(raw) as List)
+          if (item is Map && item['id'] is String) item['id'] as String,
+      }.toList();
+    } catch (_) {
+      return const ['default'];
+    }
+  }
+
+  static Future<void> deleteViewingProfileState(String viewingId) async {
+    if (viewingId == 'default') return;
+    for (final service in await savedProfiles()) {
+      for (final key in _viewingStateKeys) {
+        await deletePrivate(viewingScopedKey(key, service, viewingId));
+      }
+    }
+  }
 
   static bool sameProfile(XtreamCredentials a, XtreamCredentials b) =>
       profileScope(a) == profileScope(b);
@@ -239,15 +280,21 @@ class Store {
 
     final oldScope = profileScope(previous);
     final newScope = profileScope(replacement);
+    final viewingIds = await _viewingIds();
     if (oldScope != newScope) {
       for (final key in _profileStateKeys) {
-        final oldKey = '${key}_$oldScope';
-        final value = await readPrivate(oldKey);
-        if (value == null) continue;
-        await writePrivate(
-          '${key}_$newScope',
-          _replaceServiceLocations(value, previous, replacement),
-        );
+        for (final viewingId
+            in _viewingStateKeys.contains(key)
+                ? viewingIds
+                : const ['default']) {
+          final oldKey = viewingScopedKey(key, previous, viewingId);
+          final value = await readPrivate(oldKey);
+          if (value == null) continue;
+          await writePrivate(
+            viewingScopedKey(key, replacement, viewingId),
+            _replaceServiceLocations(value, previous, replacement),
+          );
+        }
       }
     }
 
@@ -263,7 +310,12 @@ class Store {
 
     if (oldScope != newScope) {
       for (final key in _profileStateKeys) {
-        await deletePrivate('${key}_$oldScope');
+        for (final viewingId
+            in _viewingStateKeys.contains(key)
+                ? viewingIds
+                : const ['default']) {
+          await deletePrivate(viewingScopedKey(key, previous, viewingId));
+        }
       }
       await CatalogStore.instance.deleteProfile(oldScope);
       final enabled = await enabledSourceScopes();

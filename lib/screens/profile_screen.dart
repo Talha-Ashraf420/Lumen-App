@@ -10,6 +10,7 @@ import '../playback_mode.dart';
 import '../refresh.dart';
 import '../responsive.dart';
 import '../store.dart';
+import '../viewing_profiles.dart';
 import '../theme.dart';
 import '../updater.dart';
 import '../widgets.dart';
@@ -22,6 +23,7 @@ import 'login_screen.dart';
 import 'legal_screen.dart';
 import 'update_dialog.dart';
 import 'stats_screen.dart';
+import 'viewer_picker_screen.dart';
 
 typedef ProfileCredentialValidator =
     Future<void> Function(XtreamCredentials credentials);
@@ -31,6 +33,7 @@ class ProfileScreen extends StatefulWidget {
   final Future<void> Function() onLogout;
   final void Function(XtreamCredentials) onSwitch;
   final Future<void> Function()? onServicesChanged;
+  final Future<void> Function(String id)? onViewerChanged;
   final FocusNode? shellRailFocusNode;
   final FocusNode? shellTopFocusNode;
   final FocusNode? entryFocusNode;
@@ -41,6 +44,7 @@ class ProfileScreen extends StatefulWidget {
     required this.onLogout,
     required this.onSwitch,
     this.onServicesChanged,
+    this.onViewerChanged,
     this.shellRailFocusNode,
     this.shellTopFocusNode,
     this.entryFocusNode,
@@ -674,6 +678,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           children: [
             _accountCard(),
             const SizedBox(height: 16),
+            _viewingCard(),
+            const SizedBox(height: 16),
             _profilesCard(),
           ],
         );
@@ -740,6 +746,53 @@ class _ProfileScreenState extends State<ProfileScreen> {
       },
     );
   }
+
+  Widget _viewingCard() => AnimatedBuilder(
+    animation: ViewingProfiles.instance,
+    builder: (context, _) {
+      final viewer = ViewingProfiles.instance.active;
+      return Glass(
+        radius: 24,
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('VIEWING PROFILE', style: kSection()),
+            const SizedBox(height: 10),
+            Text(
+              viewer.name,
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Your own My List, history, and Continue Watching. Services are shared.',
+              style: TextStyle(color: muted, fontSize: 12),
+            ),
+            const SizedBox(height: 14),
+            OutlinedButton.icon(
+              onPressed: () => showDialog<void>(
+                context: context,
+                builder: (dialogContext) => Dialog(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(24),
+                    child: ViewerPickerScreen(
+                      embedded: true,
+                      onSelect: (id) async {
+                        Navigator.pop(dialogContext);
+                        await widget.onViewerChanged?.call(id);
+                      },
+                    ),
+                  ),
+                ),
+              ),
+              icon: const Icon(Icons.switch_account_outlined),
+              label: const Text('Switch or manage viewers'),
+            ),
+          ],
+        ),
+      );
+    },
+  );
 
   Widget _accountCard() {
     final c = widget.client.creds;

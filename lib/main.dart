@@ -21,6 +21,7 @@ import 'session.dart';
 import 'split.dart';
 import 'stats.dart';
 import 'store.dart';
+import 'viewing_profiles.dart';
 import 'library.dart';
 import 'legal.dart';
 import 'theme.dart';
@@ -32,6 +33,7 @@ import 'screens/legal_screen.dart';
 import 'screens/player_host.dart';
 import 'screens/shell.dart';
 import 'screens/splash_screen.dart';
+import 'screens/viewer_picker_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -284,6 +286,7 @@ class _SessionGateState extends State<SessionGate> {
   List<XtreamCredentials> _viewerProfiles = const [];
   bool _legalAccepted = false;
   bool _loading = true;
+  bool _selectingViewer = false;
   String _loadingLabel = 'RESTORING YOUR SESSION';
   int _sessionChange = 0;
   bool _exitDialogOpen = false;
@@ -300,6 +303,7 @@ class _SessionGateState extends State<SessionGate> {
       LegalAcceptance.isAccepted(),
       ThemeController.instance.load(),
       PlaybackModeController.instance.load(),
+      ViewingProfiles.instance.load(),
     ]);
     final credentials = values[0] as XtreamCredentials?;
     final viewerProfiles = credentials == null
@@ -312,6 +316,8 @@ class _SessionGateState extends State<SessionGate> {
       _viewerProfiles = viewerProfiles;
       _legalAccepted = values[1] as bool;
       _loading = false;
+      _selectingViewer =
+          credentials != null && ViewingProfiles.instance.profiles.length > 1;
     });
     AppDiagnostics.instance.record(
       'Session',
@@ -333,11 +339,32 @@ class _SessionGateState extends State<SessionGate> {
     final override = widget.profileActivator;
     if (override != null) return override(credentials);
     return Future.wait([
-      Library.instance.activate(credentials),
-      HomeConfig.instance.activate(credentials),
-      WatchStats.instance.activate(credentials),
+      _activateViewingState(credentials),
       Downloads.instance.activate(credentials),
     ]);
+  }
+
+  Future<void> _activateViewingState(XtreamCredentials? credentials) {
+    final viewingId = ViewingProfiles.instance.activeId;
+    return Future.wait([
+      Library.instance.activate(credentials, viewingId: viewingId),
+      HomeConfig.instance.activate(credentials, viewingId: viewingId),
+      WatchStats.instance.activate(credentials, viewingId: viewingId),
+    ]);
+  }
+
+  Future<void> _selectViewer(String id) async {
+    final credentials = _creds;
+    if (credentials == null) return;
+    final change = ++_sessionChange;
+    _guardSessionStep('playback', PlaybackController.instance.stop);
+    await SplitController.instance.close();
+    await ViewingProfiles.instance.select(id);
+    if (!mounted || change != _sessionChange) return;
+    await _guardProfileState(_activateViewingState(credentials));
+    if (mounted && change == _sessionChange) {
+      setState(() => _selectingViewer = false);
+    }
   }
 
   Future<void> _guardProfileState(Future<void> activation) async {
@@ -366,6 +393,7 @@ class _SessionGateState extends State<SessionGate> {
       _viewerProfiles = credentials == null ? const [] : [credentials];
       _client = null;
       _loading = false;
+      _selectingViewer = false;
     });
     AppDiagnostics.instance.record(
       'Session',
@@ -478,6 +506,7 @@ class _SessionGateState extends State<SessionGate> {
       _client = null;
       _loading = false;
       _loadingLabel = 'RESTORING YOUR SESSION';
+      _selectingViewer = false;
     });
     AppDiagnostics.instance.record('Session', 'Sign-out completed');
     activeClient = null;
@@ -523,6 +552,9 @@ class _SessionGateState extends State<SessionGate> {
         if (_creds == null) {
           return _rootExitGuard(LoginScreen(onLogin: _onLogin));
         }
+        if (_selectingViewer) {
+          return _rootExitGuard(ViewerPickerScreen(onSelect: _selectViewer));
+        }
         _client ??= _viewerProfiles.length > 1
             ? MultiSourceXtreamClient(_creds!, _viewerProfiles)
             : XtreamClient(_creds!);
@@ -530,11 +562,14 @@ class _SessionGateState extends State<SessionGate> {
         // Key by the active profile so switching fully remounts all tabs with
         // the new client (fresh catalogs), not stale data from the old account.
         return HomeShell(
-          key: ValueKey(Store.profileScope(_creds!)),
+          key: ValueKey(
+            '${Store.profileScope(_creds!)}:${ViewingProfiles.instance.activeId}',
+          ),
           client: _client!,
           onLogout: _onLogout,
           onSwitch: _switchTo,
           onServicesChanged: _onServicesChanged,
+          onViewerChanged: _selectViewer,
         );
       },
     );

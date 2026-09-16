@@ -64,6 +64,7 @@ class HomeShell extends StatefulWidget {
   final Future<void> Function() onLogout;
   final void Function(XtreamCredentials) onSwitch;
   final Future<void> Function()? onServicesChanged;
+  final Future<void> Function(String id)? onViewerChanged;
   final Future<List<Category>> Function()? homeCategoryLoader;
   const HomeShell({
     super.key,
@@ -71,6 +72,7 @@ class HomeShell extends StatefulWidget {
     required this.onLogout,
     required this.onSwitch,
     this.onServicesChanged,
+    this.onViewerChanged,
     this.homeCategoryLoader,
   });
   @override
@@ -310,6 +312,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       onLogout: widget.onLogout,
       onSwitch: widget.onSwitch,
       onServicesChanged: widget.onServicesChanged,
+      onViewerChanged: widget.onViewerChanged,
       shellRailFocusNode: _dockFocusNodes[3],
       shellTopFocusNode: _commandSearchFocus,
       entryFocusNode: _profileEntryFocus,
