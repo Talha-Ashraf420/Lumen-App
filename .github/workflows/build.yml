@@ -156,6 +156,47 @@ jobs:
           cache: true
       - run: flutter config --enable-windows-desktop
       - run: flutter pub get
+      # media_kit's CMake downloader fails on the first transient CDN response
+      # (often an HTML error page) without retrying. Preload its pinned archives
+      # at CMAKE_BINARY_DIR and verify the same checksums before CMake runs.
+      - name: Prefetch and verify Windows media libraries
+        shell: pwsh
+        run: |
+          $destination = 'build/windows/x64'
+          New-Item -ItemType Directory -Force -Path $destination | Out-Null
+          $archives = @(
+            @{
+              name = 'mpv-dev-x86_64-20230924-git-652a1dd.7z'
+              url = 'https://github.com/media-kit/libmpv-win32-video-build/releases/download/2023-09-24/mpv-dev-x86_64-20230924-git-652a1dd.7z'
+              md5 = 'a832ef24b3a6ff97cd2560b5b9d04cd8'
+            },
+            @{
+              name = 'ANGLE.7z'
+              url = 'https://github.com/alexmercerind/flutter-windows-ANGLE-OpenGL-ES/releases/download/v1.0.1/ANGLE.7z'
+              md5 = 'e866f13e8d552348058afaafe869b1ed'
+            }
+          )
+          foreach ($archive in $archives) {
+            $target = Join-Path $destination $archive.name
+            $verified = $false
+            for ($attempt = 1; $attempt -le 5; $attempt++) {
+              $temporary = "$target.partial"
+              try {
+                curl.exe --fail --location --retry 3 --retry-all-errors --retry-delay 2 --connect-timeout 30 --max-time 180 --output $temporary $archive.url
+                if ($LASTEXITCODE -ne 0) { throw "Download failed with curl exit code $LASTEXITCODE" }
+                $actual = (Get-FileHash -Path $temporary -Algorithm MD5).Hash.ToLowerInvariant()
+                if ($actual -ne $archive.md5) { throw "Checksum mismatch for $($archive.name)" }
+                Move-Item -Force $temporary $target
+                $verified = $true
+                break
+              } catch {
+                Remove-Item -Force $temporary -ErrorAction SilentlyContinue
+                Write-Warning "Attempt $attempt for $($archive.name) failed: $_"
+                if ($attempt -lt 5) { Start-Sleep -Seconds ([Math]::Min(15, 2 * $attempt)) }
+              }
+            }
+            if (-not $verified) { throw "Could not obtain a verified $($archive.name) archive" }
+          }
       - run: flutter build windows --release --dart-define=APP_BUILD=${{ github.run_number }}
       - name: Package portable zip
         run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath Lumen-Windows.zip
