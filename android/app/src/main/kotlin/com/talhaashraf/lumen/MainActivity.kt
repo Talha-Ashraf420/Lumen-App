@@ -1,5 +1,6 @@
 package com.talhaashraf.lumen
 
+import android.Manifest
 import android.content.Intent
 import android.app.Activity
 import android.app.AlertDialog
@@ -29,6 +30,7 @@ class MainActivity : FlutterActivity() {
     private val deviceChannelName = "lumen/device"
     private val subtitleChannelName = "lumen/subtitles"
     private val tvTextInputChannelName = "lumen/tv_text_input"
+    private val downloadsChannelName = "lumen/downloads"
     private val subtitleRequestCode = 6204
     private val media3RequestCode = 6206
     private var pipAllowed = false
@@ -236,6 +238,48 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            downloadsChannelName
+        ).setMethodCallHandler { call, result ->
+            try {
+                when (call.method) {
+                    "enqueue" -> {
+                        val accepted = DownloadTransferService.enqueue(
+                            this, call.arguments as? Map<*, *> ?: emptyMap<String, Any>()
+                        )
+                        if (accepted) requestDownloadNotificationPermissionOnce()
+                        result.success(accepted)
+                    }
+                    "snapshot" -> result.success(DownloadTransferService.snapshot())
+                    "pause" -> {
+                        DownloadTransferService.pause(call.arguments as? String ?: "")
+                        result.success(null)
+                    }
+                    "cancel" -> {
+                        DownloadTransferService.cancel(call.arguments as? String ?: "")
+                        result.success(null)
+                    }
+                    "pauseAll" -> {
+                        DownloadTransferService.pauseAll()
+                        result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
+            } catch (_: Exception) {
+                result.error("download_unavailable", "Unable to start or control this download.", null)
+            }
+        }
+    }
+
+    private fun requestDownloadNotificationPermissionOnce() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        ) return
+        val preferences = getSharedPreferences("lumen_download_ui", Context.MODE_PRIVATE)
+        if (preferences.getBoolean("notification_permission_asked", false)) return
+        preferences.edit().putBoolean("notification_permission_asked", true).apply()
+        requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 6207)
     }
 
     /**
