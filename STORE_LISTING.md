@@ -11,12 +11,14 @@ The canonical copy lives under `fastlane/metadata/android/en-US/`.
   `fastlane/metadata/android/en-US/images/phoneScreenshots/`
 - **Android TV screenshots**:
   `fastlane/metadata/android/en-US/images/tvScreenshots/`
-- The committed mockups use only Lumen UI and fictional/local test data.
-  Regenerate the accurate source captures, then the branded mockups:
-  `flutter test --update-goldens tool/store_screenshots_test.dart`
-  and `dart run tool/generate_store_mockups.dart`.
-- Add further screenshots only when every poster, logo, program name, and media
-  item is owned or licensed for store marketing.
+- Use only screenshots captured from the actual Android app and reproducible
+  during Google Play review. The verified TV set is in
+  `store_assets/play_store/tv/verified_2026-09-17/` and staged under Fastlane.
+  Older generated TV mockups were rejected for showing a catalog absent from
+  the app and must not be re-uploaded. Recapture from the reviewed build after
+  any substantial UI or demo-content change.
+- Add further screenshots only when the depicted features and content are
+  present in the reviewed build and marketing rights are clear.
 - **App name**: Lumen
 - **Category**: Video Players & Editors / Entertainment
 - **Content rating**: typically Teen/12+ (user-supplied media)
@@ -53,9 +55,9 @@ store listings unless they have actually been published and verified.
 ---
 
 ## Compliance notes
-- Lumen ships **no content** — it's a client for the user's own subscription/
-  playlist. Keep that framing prominent in every listing (it's in the full
-  description and in-app).
+- Lumen includes a **small fictional offline demo** but does not supply an
+  IPTV subscription or real content catalog. Real media comes only from the
+  user's own authorized source. Keep that distinction explicit in listing copy.
 - Use the **signed release builds** from CI (stable key, incrementing
   versionCode) so updates install cleanly in each supported distribution
   channel.

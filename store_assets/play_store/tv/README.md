@@ -1,23 +1,9 @@
-# Lumen Android TV screenshots
+# Lumen Android TV store screenshots
 
-Upload the numbered JPEG files in this order:
+**Do not upload the numbered JPEGs in this directory.** They are concept artwork built from a fictional, expanded library, not captures of the app. Google Play rejected them on 17 September 2026 under its Misleading Claims policy because the depicted catalog was absent from the in-app experience.
 
-1. `01_movies.jpg` — Movies library
-2. `02_home.jpg` — Home and continue watching
-3. `03_live_tv.jpg` — Live TV categories
-4. `04_series_detail.jpg` — Series and episodes
-5. `06_profile.jpg` — Appearance and personalization
+Use the unedited PNGs in [`verified_2026-09-17/`](verified_2026-09-17/) instead. They were captured at 1920 × 1080 from the running Android TV emulator using Lumen's built-in offline demo, version 1.1.33 (94), the exact build in the rejected Play production change: login, home, Movies, Live TV, and Series. The demo is intentionally small and reproducible without provider credentials.
 
-All final files are:
+Before a future Play submission, verify that each screenshot reflects the version being reviewed. If the UI changes, recapture it from that build. Never substitute fictional content or provider artwork for a raw in-app screenshot.
 
-- 1920 × 1080 pixels
-- 16:9 landscape
-- JPEG without transparency
-- Under 8 MB
-
-The screenshots use a fictional demo library. They intentionally exclude real
-provider credentials, account identifiers, copyrighted movie artwork, broadcaster
-logos, and `CAM` labels from the supplied reference captures.
-
-`preview_contact_sheet.jpg` is for review only and should not be uploaded.
-The `source_png` directory contains the lossless generated source images.
+The legacy `source_png/` images and `preview_contact_sheet.jpg` are retained for historical context only and must not be uploaded to Play.

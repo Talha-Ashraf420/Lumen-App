@@ -3,7 +3,9 @@ the legal right to use. Connect your own authorized HTTPS
 Xtream-compatible service or M3U playlist and browse the media made
 available by that source.
 
-Lumen does not provide, sell, host, curate, or endorse channels,
+An optional offline demo shows a small fictional sample library so you can
+explore the interface without an account. Outside that demo, Lumen does not
+provide, sell, host, curate, or endorse channels,
 subscriptions, playlists, streams, movies, series, or any other media. You
 must supply your own authorized source. Lumen is not affiliated with any
 content provider.

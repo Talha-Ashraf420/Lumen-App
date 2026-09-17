@@ -76,22 +76,23 @@ Looking to list Lumen on a store? See **[STORE_LISTING.md](STORE_LISTING.md)**.
 
 ## 📸 Screenshots
 
-The gallery uses a fictional demo library to showcase Lumen without bundling or
-advertising third-party channels, provider credentials, or copyrighted catalogs.
+These are unedited captures of Lumen's built-in offline demo on Android TV.
+The demo library is fictional and intentionally small; actual content depends
+on a user's own authorized source.
 
 | Movies | Home |
 |--------|------|
-| ![Lumen Movies library](store_assets/play_store/tv/01_movies.jpg) | ![Lumen Home and continue watching](store_assets/play_store/tv/02_home.jpg) |
+| ![Lumen demo Movies library](store_assets/play_store/tv/verified_2026-09-17/03-demo-movies.png) | ![Lumen demo home](store_assets/play_store/tv/verified_2026-09-17/02-demo-home.png) |
 
-| Live TV | Series detail |
-|---------|---------------|
-| ![Lumen Live TV categories](store_assets/play_store/tv/03_live_tv.jpg) | ![Lumen series and episodes](store_assets/play_store/tv/04_series_detail.jpg) |
+| Live TV | Series |
+|---------|--------|
+| ![Lumen demo Live TV](store_assets/play_store/tv/verified_2026-09-17/04-demo-live-tv.png) | ![Lumen demo Series](store_assets/play_store/tv/verified_2026-09-17/05-demo-series.png) |
 
-| Personalization |
-|-----------------|
-| ![Lumen appearance and personalization](store_assets/play_store/tv/06_profile.jpg) |
+| Connect your library |
+|----------------------|
+| ![Lumen login with offline demo option](store_assets/play_store/tv/verified_2026-09-17/01-login.png) |
 
-The complete 1920×1080 Android TV upload set and specifications are available in
+The verified 1920×1080 Android TV screenshot set and specifications are available in
 **[store_assets/play_store/tv](store_assets/play_store/tv/README.md)**.
 
 ---
