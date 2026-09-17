@@ -364,7 +364,7 @@ class CatalogStore {
     if (_disabledForWidgetTests) return true;
     try {
       final db = await _database();
-      return db.transaction((txn) async {
+      return await db.transaction((txn) async {
         if (!await _acceptGeneration(txn, scope, kind, '', generation)) {
           return false;
         }
@@ -631,7 +631,7 @@ class CatalogStore {
     if (_disabledForWidgetTests) return true;
     try {
       final db = await _database();
-      return db.transaction((txn) async {
+      return await db.transaction((txn) async {
         if (!await _acceptGeneration(txn, scope, kind, bucket, generation)) {
           return false;
         }

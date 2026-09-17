@@ -933,9 +933,17 @@ class SearchScreenState extends State<SearchScreen>
 
   void _onCatalogRevision() {
     if (!mounted) return;
-    // A catalog revision is a background upgrade (including late channel-logo
-    // enrichment), not a reason to blank every mounted browse page. Keep the
-    // last good rows on screen while the current page is re-queried.
+    // Provider refreshes and late logo enrichment can emit many revisions
+    // while the remote is moving through a long grid. Replacing the current
+    // result with page one on every revision discards loaded rows, invalidates
+    // their focus targets, and can leave the remote scrolling into an empty
+    // area. Keep a usable page stable until an explicit refresh. An empty
+    // page may retry as soon as fresh catalog data becomes available.
+    // Never invalidate an in-flight page: its completion would be rejected by
+    // the generation guard and the grid could remain on skeletons indefinitely
+    // during a burst of channel-logo/catalog updates.
+    if (_inFlight.isNotEmpty) return;
+    if (_browse && _has(_section, _cat) && debugLoadedResultCount > 0) return;
     setState(_invalidateResultsKeepingVisible);
     _loadCats();
   }
@@ -2100,21 +2108,25 @@ class SearchScreenState extends State<SearchScreen>
           decoration: BoxDecoration(
             border: Border(right: BorderSide(color: line)),
           ),
-          child: ListView(
+          child: ListView.builder(
             controller: _categoryScroll,
             padding: const EdgeInsets.fromLTRB(12, 2, 12, 24),
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 6, 12, 10),
-                child: Text('CATEGORIES', style: kSection()),
-              ),
-              for (var i = 0; i < cats.length; i++)
-                _catTile(
-                  cats[i].$1,
-                  cats[i].$2,
-                  onKeyEvent: (_, event) => _moveCategoryFocus(cats, i, event),
-                ),
-            ],
+            itemCount: cats.length + 1,
+            itemBuilder: (context, index) {
+              if (index == 0) {
+                return Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 6, 12, 10),
+                  child: Text('CATEGORIES', style: kSection()),
+                );
+              }
+              final categoryIndex = index - 1;
+              return _catTile(
+                cats[categoryIndex].$1,
+                cats[categoryIndex].$2,
+                onKeyEvent: (_, event) =>
+                    _moveCategoryFocus(cats, categoryIndex, event),
+              );
+            },
           ),
         ),
       ),

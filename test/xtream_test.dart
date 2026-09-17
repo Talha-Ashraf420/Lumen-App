@@ -79,6 +79,25 @@ https://stream.example/news.m3u8
         'Origin': 'https://portal.example',
       });
     });
+
+    test('resolves relative and protocol-relative channel logos', () {
+      final parsed = parseM3uPlaylist('''
+#EXTM3U
+#EXTINF:-1 tvg-logo="logos/news.png",News
+https://stream.example/news.m3u8
+#EXTINF:-1 tvg-logo="//cdn.example/sport.png",Sport
+https://stream.example/sport.m3u8
+''', playlistUri: Uri.parse('https://playlist.example/tv/list.m3u'));
+
+      expect(
+        parsed.channels.singleWhere((channel) => channel.name == 'News').icon,
+        'https://playlist.example/tv/logos/news.png',
+      );
+      expect(
+        parsed.channels.singleWhere((channel) => channel.name == 'Sport').icon,
+        'https://cdn.example/sport.png',
+      );
+    });
   });
 
   test('short EPG uses a bounded Xtream request', () async {

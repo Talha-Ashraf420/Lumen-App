@@ -2,14 +2,16 @@
 
 Every Android release has two separate distribution variants.
 
-## Google Play closed testing
+## Google Play
 
 - Package: `com.talhaashraf.lumen`
 - Artifact: signed Android App Bundle (`.aab`)
 - Signing: dedicated Google Play upload key; Google Play App Signing owns the
   distribution key.
-- Delivery: upload the verified bundle to the Alpha closed-testing track and
-  submit the release for review/rollout.
+- Delivery: upload the verified bundle to the track explicitly requested for
+  that release. Production access is approved, but the first production
+  release has not been published; preparing a build does not authorize a
+  production rollout.
 
 The CI artifact is named `Lumen-Google-Play-aab`. It must not be attached to the
 public GitHub release. Automated Play submission additionally requires a
@@ -44,8 +46,9 @@ publishing a new `Lumen-Android.apk` updates what the same code downloads.
    resolves successfully.
 5. Downloader code `4560142` downloads that current APK.
 6. The simple Discord notice is posted.
-7. The Play AAB is submitted to closed testing and the Console shows it in
-   review or serving testers.
+7. If a Play submission was requested, the AAB is submitted to the requested
+   track and the Console shows the expected review or rollout state. Otherwise
+   record the Play channel as pending; never imply production is live.
 
 Never commit keystores, passwords, `key.properties`, service-account JSON, or
 Discord webhook URLs.

@@ -165,7 +165,7 @@ void _parseHeaderQuery(String raw, Map<String, String> headers) {
 
 /// Parse common IPTV playlist extensions used for protected streams:
 /// EXTVLCOPT, KODIPROP, EXTVLC HTTP JSON and URL pipe headers.
-ParsedM3uPlaylist parseM3uPlaylist(String body) {
+ParsedM3uPlaylist parseM3uPlaylist(String body, {Uri? playlistUri}) {
   final groups = <String>{};
   final channels = <LiveStream>[];
   final urls = <int, String>{};
@@ -250,7 +250,18 @@ ParsedM3uPlaylist parseM3uPlaylist(String body) {
     final group = groupAttr.isNotEmpty
         ? groupAttr
         : ((extGroup ?? '').isNotEmpty ? extGroup! : 'Uncategorized');
-    final logo = _m3uAttribute('tvg-logo', extinf);
+    final rawLogo = _m3uAttribute('tvg-logo', extinf);
+    final parsedLogo = Uri.tryParse(rawLogo);
+    // Like other IPTV players, accept logo paths relative to the playlist.
+    // Without this, a valid tvg-logo such as "logos/news.png" is passed to
+    // the network image widget as an unusable URL.
+    final logo =
+        playlistUri != null &&
+            parsedLogo != null &&
+            !parsedLogo.hasScheme &&
+            rawLogo.isNotEmpty
+        ? playlistUri.resolveUri(parsedLogo).toString()
+        : rawLogo;
     final epgId = _m3uAttribute('tvg-id', extinf);
     final epgName = _m3uAttribute('tvg-name', extinf);
     final sourceKey = '$name\n$url';
@@ -344,7 +355,8 @@ class XtreamClient {
         );
     if (res.statusCode != 200)
       throw XtreamException('Playlist returned ${res.statusCode}');
-    final parsed = parseM3uPlaylist(res.body);
+    final playlistUri = Uri.parse(creds.m3uUrl!);
+    final parsed = parseM3uPlaylist(res.body, playlistUri: playlistUri);
     _m3uCats
       ..clear()
       ..addAll(parsed.categories);
@@ -357,7 +369,6 @@ class XtreamClient {
     _m3uHeadersById
       ..clear()
       ..addAll(parsed.headers);
-    final playlistUri = Uri.parse(creds.m3uUrl!);
     _m3uEpgUrls
       ..clear()
       ..addAll(

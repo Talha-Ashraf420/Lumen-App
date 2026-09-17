@@ -85,6 +85,80 @@ void main() {
     expect(catalog.logoFor(LiveStream(3, 'News One', '', 'News')), isNull);
   });
 
+  test('shared country artwork is replaced only across unrelated brands', () {
+    const flag = 'https://provider.example/india-flag.png';
+    final channels = [
+      LiveStream(1, 'IN: PTV Sports HD', flag, 'India'),
+      LiveStream(2, 'IN: Zee Cinema', flag, 'India'),
+      LiveStream(3, 'IN: Sony Sports 2', flag, 'India'),
+      LiveStream(4, 'IN: Times Now World', flag, 'India'),
+    ];
+    expect(sharedProviderPlaceholderLogos(channels), {flag});
+    expect(
+      sharedProviderPlaceholderLogos([
+        for (var index = 1; index <= 5; index++)
+          LiveStream(index, 'Sky Sports $index', flag, 'Sports'),
+      ]),
+      isEmpty,
+    );
+  });
+
+  test('shared provider flags yield to exact catalog logos', () async {
+    const flag = 'https://provider.example/india-flag.png';
+    final resolver = ChannelLogoResolver(
+      httpClient: MockClient((_) async => throw StateError('no network')),
+      catalogLoader: () async => ChannelLogoCatalog.parse(
+        '[{"id":"PTVSports.pk","name":"PTV Sports","country":"PK"},'
+            '{"id":"ZeeCinema.in","name":"Zee Cinema","country":"IN"},'
+            '{"id":"SonySports.in","name":"Sony Sports 2","country":"IN"}]',
+        '[{"channel":"PTVSports.pk","in_use":true,"width":400,'
+            '"height":200,"format":"PNG","url":"https://logos.example/ptv.png"},'
+            '{"channel":"ZeeCinema.in","in_use":true,"width":400,'
+            '"height":200,"format":"PNG","url":"https://logos.example/zee.png"},'
+            '{"channel":"SonySports.in","in_use":true,"width":400,'
+            '"height":200,"format":"PNG","url":"https://logos.example/sony.png"}]',
+      ),
+    );
+    final channels = await resolver.resolve([
+      LiveStream(1, 'IN: PTV Sports HD', flag, 'India'),
+      LiveStream(2, 'IN: Zee Cinema', flag, 'India'),
+      LiveStream(3, 'IN: Sony Sports 2', flag, 'India'),
+      LiveStream(4, 'IN: Times Now World', flag, 'India'),
+    ]);
+
+    expect(channels[0].icon, 'https://logos.example/ptv.png');
+    expect(channels[1].icon, 'https://logos.example/zee.png');
+    expect(channels[2].icon, 'https://logos.example/sony.png');
+    expect(channels[3].icon, isEmpty);
+    expect(channels.every((channel) => channel.icon != flag), isTrue);
+  });
+
+  test(
+    'keeps a distinct provider logo and adds a public failure fallback',
+    () async {
+      final resolver = ChannelLogoResolver(
+        httpClient: MockClient((_) async => throw StateError('no network')),
+        catalogLoader: () async => ChannelLogoCatalog.parse(
+          '[{"id":"BBCOne.uk","name":"BBC One","country":"GB"}]',
+          '[{"channel":"BBCOne.uk","in_use":true,"width":400,'
+              '"height":200,"format":"PNG","url":"https://logos.example/bbc.png"}]',
+        ),
+      );
+
+      final channels = await resolver.resolve([
+        LiveStream(
+          1,
+          'BBC One',
+          'https://provider.example/bbc.png',
+          'News',
+          epgId: 'BBCOne.uk',
+        ),
+      ]);
+      expect(channels.single.icon, 'https://provider.example/bbc.png');
+      expect(channels.single.fallbackIcon, 'https://logos.example/bbc.png');
+    },
+  );
+
   test(
     'resolver preserves provider artwork and fills missing XMLTV logos',
     () async {

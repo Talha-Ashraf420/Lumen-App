@@ -1,6 +1,6 @@
 # Lumen — Store Listing Kit
 
-Reusable listing text and graphics for Google Play and other Android stores.
+Reusable listing text and graphics for Google Play.
 The canonical copy lives under `fastlane/metadata/android/en-US/`.
 
 ## Assets
@@ -40,37 +40,15 @@ See `fastlane/metadata/android/en-US/full_description.txt` (copy-paste ready).
 - Use `docs/reviewer-access-template.md` for private review credentials.
 - Upload an AAB signed with the private upload key and enroll in Google Play App
   Signing.
-- New personal accounts must complete Google's required closed test before
-  production access.
+- Production access has been approved, but the first production release has
+  not been published yet. Do not describe the Play listing as publicly
+  available until the production rollout is live.
 
-## Other distribution options
+## Community APK distribution
 
-### 1. Obtainium (recommended — zero submission)
-Not a store: users install + auto-update straight from GitHub Releases.
-- Tell users to add this repo in Obtainium: `https://github.com/Talha-Ashraf420/Lumen-App`
-- App: https://github.com/ImranR98/Obtainium
-
-### 2. Aptoide (self-publish, no strict review)
-1. Create a free account at https://aptoide.com
-2. Open **My Store** (in the Aptoide app) or the web dashboard.
-3. Upload `Lumen-Android.apk`, paste the short/full description, add icon +
-   feature graphic + screenshots.
-
-### 3. APKPure
-1. Go to https://apkpure.com and open the developer/upload flow.
-2. Upload the APK and listing assets above.
-
-### 4. Uptodown
-1. https://uptodown.com → "submit your app".
-2. Provide the APK + listing assets; lightly curated.
-
-### Reviewed stores (free account, may reject IPTV)
-- Amazon Appstore, Samsung Galaxy Store, Huawei AppGallery. Frame Lumen strictly
-  as a **media player (bring your own playlist)** to improve approval odds.
-
-### Current limitation
-- **F-Droid / IzzyOnDroid**: require FOSS + Fastlane metadata, while Lumen's
-  native video libraries make the current universal APK unusually large.
+The separately signed Community APK is published on GitHub Releases and is
+available through Downloader code `4560142`. Do not advertise third-party
+store listings unless they have actually been published and verified.
 
 ---
 
@@ -79,4 +57,5 @@ Not a store: users install + auto-update straight from GitHub Releases.
   playlist. Keep that framing prominent in every listing (it's in the full
   description and in-app).
 - Use the **signed release builds** from CI (stable key, incrementing
-  versionCode) so updates install cleanly across stores.
+  versionCode) so updates install cleanly in each supported distribution
+  channel.

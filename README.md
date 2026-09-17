@@ -10,7 +10,6 @@
 
 <p align="center">
   <a href="https://lumen-launch.vercel.app/"><strong>Website</strong></a> ·
-  <a href="https://play.google.com/store/apps/details?id=com.talhaashraf.lumen"><strong>Google Play</strong></a> ·
   <a href="https://github.com/Talha-Ashraf420/Lumen-App/releases/latest"><strong>Downloads</strong></a> ·
   <a href="https://discord.gg/n8dfzrDNQg"><strong>Discord</strong></a> ·
   <a href="https://github.com/sponsors/Talha-Ashraf420"><strong>Sponsor</strong></a>
@@ -34,16 +33,13 @@
 - **Runs nearly everywhere** — Android, Android TV, iOS, macOS, Windows and Linux
 - **Open and inspectable** — built in Flutter and released under the MIT license
 
-<p align="center">
-  <a href="assets/demo/lumen_demo_preview.mp4"><strong>▶ Watch the 12-second demo</strong></a>
-</p>
-
 ---
 
 ## ⬇️ Get Lumen
 
-Android and Android TV releases are distributed through Google Play. Lumen is
-currently in closed testing; visit the website to request tester access.
+Lumen has Google Play production access, but the first production release has
+not been published yet. The Play listing is not currently a public download.
+Follow the website or GitHub Releases for availability updates.
 
 Discord testers can also install the signed **Lumen Community** APK from GitHub
 Releases. It uses a separate Android package, so it can safely coexist with the
@@ -51,7 +47,6 @@ Google Play edition and receive future Community APK updates.
 
 [![Lumen website](https://img.shields.io/badge/Official%20website-Lumen-BCFF3C?style=for-the-badge)](https://lumen-launch.vercel.app/)
 [![Discord](https://img.shields.io/badge/Join%20the%20community-Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/n8dfzrDNQg)
-[![Get it on Google Play](https://img.shields.io/badge/Get%20it%20on-Google%20Play-414141?style=for-the-badge&logo=googleplay&logoColor=white)](https://play.google.com/store/apps/details?id=com.talhaashraf.lumen)
 [![Download Community APK](https://img.shields.io/badge/Download-Community%20APK-BCFF3C?style=for-the-badge&logo=android&logoColor=111)](https://github.com/Talha-Ashraf420/Lumen-App/releases/latest/download/Lumen-Android.apk)
 
 On Android TV, open the **Downloader** app and enter code **`4560142`**, or

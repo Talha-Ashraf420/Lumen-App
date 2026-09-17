@@ -242,6 +242,34 @@ class _PagedClient extends XtreamClient {
   }
 }
 
+class _PagedLiveClient extends XtreamClient {
+  _PagedLiveClient()
+    : super(
+        const XtreamCredentials(
+          baseUrl: 'https://paged-live.example',
+          username: 'large-library',
+          password: 'test-only',
+        ),
+      );
+
+  @override
+  Future<List<Category>> liveCategories() async => [
+    Category('channels', 'Many channels'),
+  ];
+
+  @override
+  Future<List<LiveStream>> liveStreams(String? categoryId) async =>
+      List.generate(
+        120,
+        (index) => LiveStream(
+          index + 1,
+          'Channel ${(index + 1).toString().padLeft(3, '0')}',
+          '',
+          'channels',
+        ),
+      );
+}
+
 class _MultiCategoryPagedClient extends XtreamClient {
   _MultiCategoryPagedClient()
     : super(
@@ -1032,6 +1060,69 @@ void main() {
     expect(tester.takeException(), isNull);
     await disposeUi(tester);
   });
+
+  testWidgets(
+    'Live keeps loaded rows and remote focus after catalog revisions',
+    (tester) async {
+      DeviceProfile.isTelevision = true;
+      addTearDown(() => DeviceProfile.isTelevision = false);
+      final client = _PagedLiveClient();
+      final key = GlobalKey<SearchScreenState>();
+      addTearDown(client.close);
+
+      await pumpAt(
+        tester,
+        SearchScreen(key: key, client: client, initialSection: 'live'),
+        const Size(1280, 800),
+      );
+      await waitFor(
+        tester,
+        () => key.currentState?.debugLoadedResultCount == 48,
+      );
+
+      for (
+        var attempt = 0;
+        attempt < 6 && key.currentState!.debugLoadedResultCount == 48;
+        attempt++
+      ) {
+        await tester.fling(find.byType(GridView), const Offset(0, -1200), 2500);
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      await waitFor(
+        tester,
+        () => key.currentState!.debugLoadedResultCount > 48,
+      );
+      final loadedBeforeRevision = key.currentState!.debugLoadedResultCount;
+
+      // Late logo/category upgrades must not replace a scrolled catalog with
+      // its first page or strand the TV remote on a disposed tile.
+      CatalogCache.instance.revision.value++;
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(key.currentState!.debugLoadedResultCount, loadedBeforeRevision);
+
+      key.currentState!.focusCatalogEntry();
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pumpAndSettle();
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        startsWith('Catalog tile '),
+      );
+      for (var step = 0; step < 8; step++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+        await tester.pump(const Duration(milliseconds: 20));
+      }
+      await tester.pumpAndSettle();
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        startsWith('Catalog tile '),
+      );
+      expect(key.currentState!.debugLoadedResultCount, loadedBeforeRevision);
+      expect(tester.takeException(), isNull);
+      await disposeUi(tester);
+    },
+  );
 
   testWidgets('Search section chips use readable content on accent fills', (
     tester,

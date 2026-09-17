@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -90,6 +92,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   int _index = 0;
   late _CatalogCapabilities _capabilities;
   int _capabilityLoad = 0;
+  Timer? _capabilityRevisionDebounce;
   final GlobalKey<SearchScreenState> _searchKey =
       GlobalKey<SearchScreenState>();
   final Map<int, GlobalKey<SearchScreenState>> _catalogKeys = {
@@ -163,7 +166,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         : const _CatalogCapabilities(movies: true, series: true, live: true);
     _loadCapabilities();
     contentRefresh.addListener(_loadCapabilities);
-    CatalogCache.instance.revision.addListener(_loadCapabilities);
+    CatalogCache.instance.revision.addListener(_onCatalogRevision);
     WidgetsBinding.instance.addObserver(this);
     // Quietly check for a newer build once per launch (skip dev builds).
     if (Updater.instance.supportsReleaseCheck && kBuildNumber > 0) {
@@ -218,7 +221,23 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     }
   }
 
+  void _onCatalogRevision() {
+    // Logo and item enrichment can emit a burst of revisions while the user is
+    // driving a long TV grid. Capabilities only depend on category presence,
+    // so one delayed check is enough and avoids rebuilding the shell for each.
+    _capabilityRevisionDebounce?.cancel();
+    _capabilityRevisionDebounce = Timer(
+      const Duration(milliseconds: 350),
+      _loadCapabilities,
+    );
+  }
+
   void _setCapabilities(_CatalogCapabilities value) {
+    if (_capabilities.movies == value.movies &&
+        _capabilities.series == value.series &&
+        _capabilities.live == value.live) {
+      return;
+    }
     setState(() {
       _capabilities = value;
       if (!_allows(_index)) {
@@ -230,8 +249,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    _capabilityRevisionDebounce?.cancel();
     contentRefresh.removeListener(_loadCapabilities);
-    CatalogCache.instance.revision.removeListener(_loadCapabilities);
+    CatalogCache.instance.revision.removeListener(_onCatalogRevision);
     WidgetsBinding.instance.removeObserver(this);
     for (final node in _dockFocusNodes.values) {
       node.dispose();

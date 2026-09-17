@@ -24,7 +24,7 @@ and Linux. It ships with no content — you bring your own subscription/playlist
 - 🎨 Pick your own accent — the whole UI recolors
 - 📡 Xtream + plain M3U/M3U8 + XMLTV EPG
 - 📱 Android / Android TV (D-pad), iOS, macOS, Windows, Linux
-- 🔄 In-app & Obtainium auto-updates
+- 🔄 In-app update checks
 - 🆓 Free & open source
 
 ---
@@ -68,7 +68,7 @@ or an M3U/XMLTV playlist.
 
 Highlights: full TV-guide grid, TMDB-enriched movies & series, offline downloads
 (pause/resume), picture-in-picture, customizable themes, and native apps for
-Android/Android TV, iOS, macOS, Windows & Linux. Auto-updates via the app or Obtainium.
+Android/Android TV, iOS, macOS, Windows & Linux. In-app update checks.
 
 Repo + downloads: https://github.com/Talha-Ashraf420/Lumen-App
 
@@ -86,10 +86,10 @@ It's early — feedback, issues and stars appreciated.
 - **GitHub**: add repo topics (`iptv`, `m3u`, `xtream`, `flutter`, `android-tv`,
   `media-player`); pin the repo; ask early users for ⭐.
 - **Hacker News**: "Show HN" (best Tue–Thu morning US time). Lead with the dev story.
-- **Reddit**: r/opensource, r/androidapps, r/flutterdev, r/selfhosted, r/androidtv,
-  r/Obtainium. Read each sub's self-promo rules first; post as "I built this", reply to comments.
+- **Reddit**: r/opensource, r/androidapps, r/flutterdev, r/selfhosted,
+  r/androidtv. Read each sub's self-promo rules first; post as "I built this",
+  reply to comments.
 - **Product Hunt**: schedule a launch; use the feature graphic.
-- **Obtainium**: share the one-tap add link from the README.
 - **alternativeto.net**: list Lumen as an alternative to TiviMate / IPTV Smarters / VLC.
 - **Dev write-up**: a Dev.to / Medium post on building a cross-platform player with
   Flutter + libmpv links back to the repo and does well with developers.
@@ -99,7 +99,8 @@ It's early — feedback, issues and stars appreciated.
 ## Tips
 - Always frame it as a **player** (bring your own subscription). Don't market it in
   piracy contexts or imply free content — that risks bans and legal trouble.
-- A demo video + the screenshots already in the README are your strongest assets.
+- Use accurate screenshots from the README. Do not describe the bundled sample
+  playback clip as a product demo.
 - Reply to every comment/issue early; engagement drives the algorithms.
 
 > Note: paid ads (Google/Meta/Reddit Ads) often reject IPTV-related apps, so organic

@@ -48,6 +48,33 @@ bool _webUrl(String value) {
   return uri != null && (uri.scheme == 'http' || uri.scheme == 'https');
 }
 
+/// A provider sometimes supplies one country flag or service badge as the
+/// stream_icon for an entire region. Only classify an identical URL as a
+/// placeholder when it spans several unrelated channel brands; variants of
+/// one network (for example Sports 1/2/3) may legitimately share artwork.
+Set<String> sharedProviderPlaceholderLogos(Iterable<LiveStream> channels) {
+  final brandsByUrl = <String, Set<String>>{};
+  for (final channel in channels) {
+    final url = channel.icon.trim();
+    if (!_webUrl(url) ||
+        (channel.logoSource.isNotEmpty && channel.fallbackIcon.isEmpty)) {
+      continue;
+    }
+    final name = channel.name.toLowerCase().replaceFirst(
+      RegExp(r'^\s*(?:us|usa|uk|gb|in|india|pk|ca|au)\s*[:|\-]\s*'),
+      '',
+    );
+    final brand = RegExp(r'[a-z0-9]+').firstMatch(name)?.group(0);
+    if (brand != null && brand.isNotEmpty) {
+      brandsByUrl.putIfAbsent(url, () => <String>{}).add(brand);
+    }
+  }
+  return {
+    for (final entry in brandsByUrl.entries)
+      if (entry.value.length >= 4) entry.key,
+  };
+}
+
 class XmltvLogoIndex {
   const XmltvLogoIndex(this.byId, this.byName);
 
@@ -301,7 +328,21 @@ class ChannelLogoResolver {
     List<Uri> guideUrls = const [],
     XmltvLogoIndex? guideIndex,
   }) async {
-    var enriched = List<LiveStream>.of(channels);
+    final sharedPlaceholders = sharedProviderPlaceholderLogos(channels);
+    var enriched = [
+      for (final channel in channels)
+        if (sharedPlaceholders.contains(channel.icon.trim()) ||
+            (channel.icon.isNotEmpty &&
+                !_webUrl(channel.icon) &&
+                !channel.icon.startsWith('asset://')))
+          channel.copyWith(
+            icon: channel.fallbackIcon,
+            fallbackIcon: '',
+            logoSource: channel.fallbackIcon.isEmpty ? '' : channel.logoSource,
+          )
+        else
+          channel,
+    ];
     if (guideIndex != null) {
       enriched = [
         for (final channel in enriched)
@@ -320,16 +361,20 @@ class ChannelLogoResolver {
       }
     }
 
-    if (!enriched.any((channel) => channel.effectiveIcon.isEmpty)) {
+    if (!enriched.any(
+      (channel) =>
+          channel.effectiveIcon.isEmpty ||
+          (channel.icon.isNotEmpty &&
+              channel.fallbackIcon.isEmpty &&
+              channel.logoSource.isEmpty),
+    )) {
       return enriched;
     }
     try {
       final catalog = await _catalogIndex();
       return [
         for (final channel in enriched)
-          channel.effectiveIcon.isNotEmpty
-              ? channel
-              : _withResolved(channel, catalog.logoFor(channel), 'iptv-org'),
+          _withResolved(channel, catalog.logoFor(channel), 'iptv-org'),
       ];
     } catch (_) {
       return enriched;
