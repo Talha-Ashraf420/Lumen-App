@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Build both signed Android channels and macOS on this Mac. Publishing is an
-# explicit second step; a normal git push never uploads binaries or runs CI.
+# Build both signed Android channels and macOS on this Mac. Hosted CI is the
+# default; local publication is only for when hosted push releases are off.
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_dir"
 
@@ -54,6 +54,11 @@ done
 previous_body=''
 previous_build=''
 if [[ "$publish" == --publish ]]; then
+  if grep -Eq '^[[:space:]]+push:' .github/workflows/build.yml; then
+    echo 'Hosted push releases are enabled. Refusing a concurrent local publication.' >&2
+    echo 'Disable that workflow trigger first, commit it, then retry --publish.' >&2
+    exit 1
+  fi
   command -v gh >/dev/null || { echo 'Install GitHub CLI (gh) before publishing.' >&2; exit 1; }
   gh auth status >/dev/null
   [[ "$(git branch --show-current)" == main ]] || { echo 'Publish from main only.' >&2; exit 1; }

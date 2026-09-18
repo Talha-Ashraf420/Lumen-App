@@ -1,8 +1,9 @@
 # Local Android + macOS release
 
-The hosted cross-platform workflow is manual-only; `git push` does not trigger
-it. `git push` alone pushes **source code only**. Use the explicit command below
-for a release, so failed local tests/builds cannot silently publish an APK.
+The hosted cross-platform workflow runs on pushes to `main` and normally
+publishes the release. This local command is a **backup** for building Android
+and macOS on a Mac. A normal `git push` starts GitHub Actions, so do not run a
+local publication at the same time as its release job.
 
 Requirements on the Mac: Flutter, Xcode, Java 17, Android SDK (including
 `apksigner` and `aapt`), `gh` logged in with release-write access, a private
@@ -25,15 +26,12 @@ bash tool/release_local.sh 107
 This runs analysis/tests, builds and verifies the signed Play `.aab` and
 Community `.apk`, builds the macOS app, and stages APK, zip, and SHA-256 files
 under `build/local-release/107`. It **does not** push or publish. Inspect/test
-the artifacts before committing the source. For an intentional release:
+the artifacts. The optional `--publish` path is blocked while the workflow's
+push trigger is enabled, to avoid two jobs overwriting the rolling release.
+Use it only after intentionally disabling hosted push releases and committing
+that workflow change.
 
-```bash
-git add .github/workflows/build.yml .gitignore android/app/build.gradle.kts lib/updater.dart tool/release_local.sh README.md docs/local-release.md
-git commit -m "Use local Android and macOS releases"
-bash tool/release_local.sh 107 --publish
-```
-
-The publish command repeats checks/builds, requires a clean tracked tree and
+The backup publish command repeats checks/builds, requires a clean tracked tree and
 `main`, pushes the committed source to the `github` remote, replaces **only**
 the Android and macOS assets on the existing `latest` release, and updates its
 build metadata. Existing Windows/Linux/unsigned iOS assets remain at their
@@ -51,9 +49,7 @@ checklist in [Android release process](android-release-process.md) separately.
 This Mac does not produce new Windows/Linux binaries. Trigger the full hosted
 workflow manually or build those on their respective systems when needed.
 
-To investigate the reported $33, inspect GitHub **Billing and licensing →
-Usage** by SKU/repository. Standard hosted runner minutes on public repos are
-free, but artifact storage can accrue charges and other private repositories or
-larger runners may be responsible. Turning off the push trigger prevents new
-build artifacts here; it does not erase accrued charges or automatically delete
-older workflow artifacts. Set a billing budget and review retained artifacts.
+The billing screenshot showed roughly $34 gross usage covered by roughly $34
+of included usage/discounts, not a $34 bill. Standard hosted runner minutes
+on public repos are free; storage or other accounts can still incur charges.
+Review **Billing and licensing → Usage** by SKU/repository and set an alert.

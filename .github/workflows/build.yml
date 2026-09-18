@@ -1,9 +1,11 @@
 name: Build and release Lumen
 
-# Emergency/manual cross-platform build only. Ordinary pushes use the local
-# release path in tool/release_local.sh and do not start hosted runners.
+# Build on every main push; the local release path remains an optional backup.
 # The private Google Play bundle stays out of the public GitHub release.
 on:
+  push:
+    branches: [main, master]
+    tags: ['v*']
   workflow_dispatch:
     inputs:
       build_number:
@@ -26,7 +28,7 @@ jobs:
     steps:
       - name: Check build number against rolling release
         env:
-          BUILD_NUMBER: ${{ inputs.build_number }}
+          BUILD_NUMBER: ${{ inputs.build_number || github.run_number }}
         shell: bash
         run: |
           case "$BUILD_NUMBER" in
@@ -88,7 +90,7 @@ jobs:
             printf 'storePassword=%s\n' "$ANDROID_STORE_PASSWORD"
           } > android/key.properties
           chmod 600 android/app/community-release.p12 android/key.properties
-      - run: flutter build apk --release --build-number=${{ inputs.build_number }} --dart-define=APP_BUILD=${{ inputs.build_number }}
+      - run: flutter build apk --release --build-number=${{ inputs.build_number || github.run_number }} --dart-define=APP_BUILD=${{ inputs.build_number || github.run_number }}
       - name: Verify signed, installable Community APK
         shell: bash
         run: |
@@ -149,7 +151,7 @@ jobs:
             printf 'storePassword=%s\n' "$ANDROID_STORE_PASSWORD"
           } > android/key.properties
           chmod 600 android/app/play-upload.p12 android/key.properties
-      - run: flutter build appbundle --release --build-number=${{ inputs.build_number }} --dart-define=APP_BUILD=${{ inputs.build_number }}
+      - run: flutter build appbundle --release --build-number=${{ inputs.build_number || github.run_number }} --dart-define=APP_BUILD=${{ inputs.build_number || github.run_number }}
       - name: Verify signed Google Play bundle
         shell: bash
         run: |
@@ -215,7 +217,7 @@ jobs:
             }
             if (-not $verified) { throw "Could not obtain a verified $($archive.name) archive" }
           }
-      - run: flutter build windows --release --dart-define=APP_BUILD=${{ inputs.build_number }}
+      - run: flutter build windows --release --dart-define=APP_BUILD=${{ inputs.build_number || github.run_number }}
       - name: Package portable zip
         run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath Lumen-Windows.zip
       - uses: actions/upload-artifact@v4
@@ -236,7 +238,7 @@ jobs:
           cache: true
       - run: flutter config --enable-macos-desktop
       - run: flutter pub get
-      - run: flutter build macos --release --dart-define=APP_BUILD=${{ inputs.build_number }}
+      - run: flutter build macos --release --dart-define=APP_BUILD=${{ inputs.build_number || github.run_number }}
       - name: Zip .app
         run: |
           APP_PATH="build/macos/Build/Products/Release/Lumen.app"
@@ -264,7 +266,7 @@ jobs:
           cache: true
       - run: flutter config --enable-linux-desktop
       - run: flutter pub get
-      - run: flutter build linux --release --dart-define=APP_BUILD=${{ inputs.build_number }}
+      - run: flutter build linux --release --dart-define=APP_BUILD=${{ inputs.build_number || github.run_number }}
       - name: Package tarball
         run: tar -czf Lumen-Linux-x64.tar.gz -C build/linux/x64/release/bundle .
       - uses: actions/upload-artifact@v4
@@ -292,7 +294,7 @@ jobs:
       - run: flutter pub get
       # Unsigned build (CI has no signing certs). Produces Runner.app that must
       # be re-signed / sideloaded (e.g. with AltStore or Sideloadly) to install.
-      - run: flutter build ios --release --no-codesign --dart-define=APP_BUILD=${{ inputs.build_number }}
+      - run: flutter build ios --release --no-codesign --dart-define=APP_BUILD=${{ inputs.build_number || github.run_number }}
       - name: Zip unsigned .app
         run: ditto -c -k --sequesterRsrc --keepParent build/ios/iphoneos/Runner.app Lumen-iOS-unsigned.zip
       - uses: actions/upload-artifact@v4
@@ -360,10 +362,10 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
-          name: Build ${{ inputs.build_number }}
+          name: Build ${{ inputs.build_number || github.run_number }}
           # The app reads this 'build:' line to detect newer builds for in-app update.
           body: |
-            build: ${{ inputs.build_number }}
+            build: ${{ inputs.build_number || github.run_number }}
 
             Lumen automatic build for Android, Android TV, Windows, macOS,
             Linux and iOS. Install links are below.
@@ -377,7 +379,7 @@ jobs:
       - name: Announce the Android build on Discord
         if: ${{ env.DISCORD_RELEASE_WEBHOOK != '' }}
         env:
-          BUILD_NUMBER: ${{ inputs.build_number }}
+          BUILD_NUMBER: ${{ inputs.build_number || github.run_number }}
           DOWNLOADER_URL: https://aftv.news/4560142
           DOWNLOADER_CODE: "4560142"
         run: |
