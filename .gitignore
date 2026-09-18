@@ -47,6 +47,7 @@ app.*.map.json
 
 # Android upload signing credentials must never be committed.
 /android/key.properties
+/android/community-key.properties
 /android/app/*.keystore
 /android/app/*.jks
 /android/app/*.p12

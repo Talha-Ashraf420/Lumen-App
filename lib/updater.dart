@@ -6,7 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-/// Monotonic build number, injected by CI (`--dart-define=APP_BUILD=<run>`).
+/// Monotonic build number, injected by the local release build or manual CI.
 /// 0 in local dev builds (we never prompt to "update" a dev build).
 const int kBuildNumber = int.fromEnvironment('APP_BUILD', defaultValue: 0);
 
@@ -152,7 +152,24 @@ class Updater {
       final j = jsonDecode(res.body) as Map<String, dynamic>;
       final name = (j['name'] ?? '').toString();
       final body = (j['body'] ?? '').toString();
-      final latest = _parseBuild(body) ?? _parseBuild(name);
+      // Local Android/macOS releases retain older Windows/Linux packages on
+      // the same rolling release. Only offer an update for this platform when
+      // its own package has a newer build; old all-platform releases use build:.
+      final platformKey = Platform.isAndroid
+          ? 'android'
+          : Platform.isMacOS
+          ? 'macos'
+          : Platform.isWindows
+          ? 'windows'
+          : Platform.isLinux
+          ? 'linux'
+          : null;
+      final latest =
+          (platformKey == null
+              ? null
+              : _parsePlatformBuild(body, platformKey)) ??
+          _parseBuild(body) ??
+          _parseBuild(name);
       if (latest == null) {
         return const UpdateCheckResult.failed(
           'The release has no valid build number.',
@@ -207,6 +224,15 @@ class Updater {
         RegExp(r'build:\s*(\d+)', caseSensitive: false).firstMatch(s) ??
         RegExp(r'Build\s+(\d+)').firstMatch(s);
     return m == null ? null : int.tryParse(m.group(1)!);
+  }
+
+  int? _parsePlatformBuild(String body, String platform) {
+    final match = RegExp(
+      '^build-$platform:\\s*(\\d+)\\s*\$',
+      caseSensitive: false,
+      multiLine: true,
+    ).firstMatch(body);
+    return match == null ? null : int.tryParse(match.group(1)!);
   }
 
   Future<bool> openStorePage() async {

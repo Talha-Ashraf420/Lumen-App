@@ -139,7 +139,14 @@ Flutter • [media_kit](https://pub.dev/packages/media_kit) (libmpv) for native 
 
 ## 🤖 Builds
 
-Every push to `main` triggers [GitHub Actions](https://github.com/Talha-Ashraf420/Lumen-App/actions) for quality checks and Android, Android TV, Windows, macOS, Linux and unsigned iOS builds. Official Android releases are delivered through Google Play; directly installable packages are published on GitHub Releases.
+Ordinary pushes do not start hosted builds. The full cross-platform
+[GitHub Actions](https://github.com/Talha-Ashraf420/Lumen-App/actions) workflow
+is manual-only. On a Mac, use `bash tool/release_local.sh BUILD_NUMBER` to
+test and build signed Play/Community Android artifacts and the macOS app
+locally. Add `--publish` only when ready to push `main` and update the rolling
+GitHub release with Community APK and macOS packages. See
+[the local release instructions](docs/local-release.md) for signing, versioning,
+and platform limitations. Google Play submission remains separate.
 
 Build locally:
 

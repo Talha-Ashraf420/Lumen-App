@@ -1,5 +1,6 @@
 import java.util.Properties
 import java.io.FileInputStream
+import java.io.File
 
 plugins {
     id("com.android.application")
@@ -10,7 +11,10 @@ plugins {
 
 // Release signing is loaded from an untracked local file. Google Play App
 // Signing should own the distribution key; this is only the upload key.
-val keystorePropertiesFile = rootProject.file("key.properties")
+// Local Community releases use a separate private key without replacing the
+// Play upload configuration at android/key.properties.
+val keystorePropertiesFile = providers.gradleProperty("lumenSigningPropertiesFile").orNull
+    ?.let(::File) ?: rootProject.file("key.properties")
 val hasKeystore = keystorePropertiesFile.exists()
 val keystoreProperties = Properties()
 if (hasKeystore) keystoreProperties.load(FileInputStream(keystorePropertiesFile))
