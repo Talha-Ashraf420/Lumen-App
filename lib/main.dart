@@ -427,6 +427,10 @@ class _SessionGateState extends State<SessionGate> {
   ) async {
     final profiles = await Store.viewerProfiles(credentials);
     if (!mounted || change != _sessionChange || _creds == null) return;
+    // Reading the same saved services after login must not close the client
+    // that Home just started using or reset its in-flight catalog requests.
+    // Include credentials, not only profileScope (which excludes passwords).
+    if (_sameViewerProfiles(_viewerProfiles, profiles)) return;
     final previousClient = _client;
     setState(() {
       _viewerProfiles = profiles;
@@ -434,6 +438,23 @@ class _SessionGateState extends State<SessionGate> {
     });
     _guardSessionStep('previous service viewer', () => previousClient?.close());
     CatalogCache.instance.clear();
+  }
+
+  static bool _sameViewerProfiles(
+    List<XtreamCredentials> a,
+    List<XtreamCredentials> b,
+  ) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].baseUrl != b[i].baseUrl ||
+          a[i].username != b[i].username ||
+          a[i].password != b[i].password ||
+          a[i].m3uUrl != b[i].m3uUrl ||
+          a[i].demo != b[i].demo) {
+        return false;
+      }
+    }
+    return true;
   }
 
   Future<void> _onServicesChanged() async {

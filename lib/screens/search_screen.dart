@@ -147,12 +147,23 @@ class SearchScreenState extends State<SearchScreen>
   final Map<String, List<Series>> _seriesByCat = {};
   final Map<String, List<LiveStream>> _liveByCat = {};
   final Set<String> _inFlight = {};
+  CatalogRequest _catalogRequest = CatalogRequest();
+  final List<(String, String)> _recentPages = [];
   final Map<String, bool> _hasMore = {};
   final Map<String, String> _cacheSignatures = {};
   final Set<String> _stalePages = {};
   int _categoryLoadGeneration = 0;
   int _resultGeneration = 0;
   static const _pageSize = 48;
+  static const _retainedPages = 6;
+  static const _inactivePageItems = _pageSize * 2;
+
+  int get debugRetainedResultCount => [
+    ..._movieByCat.values,
+    ..._seriesByCat.values,
+    ..._liveByCat.values,
+  ].fold(0, (total, items) => total + items.length);
+  int get debugRetainedCategoryCount => _recentPages.length;
 
   List<Category> _movieCats = [], _seriesCats = [], _liveCats = [];
   List<Category> _rawMovieCats = [], _rawSeriesCats = [], _rawLiveCats = [];
@@ -297,6 +308,7 @@ class SearchScreenState extends State<SearchScreen>
 
   @override
   void dispose() {
+    _catalogRequest.cancel();
     contentRefresh.removeListener(_onRefresh);
     CatalogCache.instance.revision.removeListener(_onCatalogRevision);
     CatalogOrganizationStore.instance.revision.removeListener(
@@ -730,10 +742,13 @@ class SearchScreenState extends State<SearchScreen>
     if (_cat == id) return;
     final node = _categoryFocusNode(id);
     _lastGridIndex = 0;
-    // Results are cached per category. Clearing every category here made TV
-    // browsing refetch data whenever focus crossed the sidebar and was the main
-    // source of visible hangs. Only switch the active cache key.
-    setState(() => _cat = id);
+    // Preserve nearby pages, but abandon work for the category just left.
+    setState(() {
+      _cat = id;
+      _cancelResultRequests();
+      if (_recentPages.remove((_section, id))) _recentPages.add((_section, id));
+      _trimInactivePages();
+    });
     if (!restoreCategoryFocus) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final nodeContext = node.context;
@@ -997,12 +1012,57 @@ class SearchScreenState extends State<SearchScreen>
   String _pageKey(String section, String cat) => '$section:$cat';
 
   void _invalidateResultsKeepingVisible() {
-    _resultGeneration++;
+    _cancelResultRequests();
     _stalePages
       ..clear()
       ..addAll(_cacheSignatures.keys);
     _hasMore.clear();
+  }
+
+  void _cancelResultRequests() {
+    _catalogRequest.cancel();
+    _catalogRequest = CatalogRequest();
+    _resultGeneration++;
     _inFlight.clear();
+  }
+
+  bool _isVisiblePage(String section, String cat) =>
+      (_section == 'all' && cat == 'all') ||
+      (_section == section && _cat == cat);
+
+  void _trimInactivePages() {
+    void trim<T>(String section, Map<String, List<T>> pages) {
+      for (final cat in pages.keys.toList()) {
+        if (_isVisiblePage(section, cat)) continue;
+        if (pages[cat]!.length > _inactivePageItems) {
+          pages[cat] = pages[cat]!.take(_inactivePageItems).toList();
+          _hasMore[_pageKey(section, cat)] = true;
+        }
+      }
+    }
+
+    trim('movie', _movieByCat);
+    trim('series', _seriesByCat);
+    trim('live', _liveByCat);
+    while (_recentPages.length > _retainedPages) {
+      final index = _recentPages.indexWhere(
+        (page) => !_isVisiblePage(page.$1, page.$2),
+      );
+      if (index < 0) break;
+      final (section, cat) = _recentPages.removeAt(index);
+      switch (section) {
+        case 'movie':
+          _movieByCat.remove(cat);
+        case 'series':
+          _seriesByCat.remove(cat);
+        default:
+          _liveByCat.remove(cat);
+      }
+      final key = _pageKey(section, cat);
+      _hasMore.remove(key);
+      _cacheSignatures.remove(key);
+      _stalePages.remove(key);
+    }
   }
 
   void _changeResults(VoidCallback change) {
@@ -1011,8 +1071,7 @@ class SearchScreenState extends State<SearchScreen>
       // Keep category/section pages in memory and invalidate only in-flight
       // work. Each page is tagged with its query/sort signature, so stale data
       // is never displayed but revisiting an unchanged tab is instant.
-      _resultGeneration++;
-      _inFlight.clear();
+      _cancelResultRequests();
     });
   }
 
@@ -1023,6 +1082,8 @@ class SearchScreenState extends State<SearchScreen>
       _cat = 'all';
       _sort = catalogDefaultSort(section);
       _lastGridIndex = 0;
+      _cancelResultRequests();
+      _trimInactivePages();
     });
   }
 
@@ -1080,14 +1141,17 @@ class SearchScreenState extends State<SearchScreen>
     final category = _categoryFor(section, cat);
     final memberIds = category?.effectiveMemberIds ?? const <String>[];
     if (memberIds.length > 1) {
-      if (offset > 0) {
-        _inFlight.remove(requestKey);
-        return;
-      }
       finish(
         () => _loadMergedCategory(section, memberIds).then(
-          (values) =>
-              _storePage(section, cat, values, false, generation, 0, signature),
+          (values) => _storePage(
+            section,
+            cat,
+            values.skip(offset).take(_pageSize).toList(),
+            offset + _pageSize < values.length,
+            generation,
+            offset,
+            signature,
+          ),
         ),
       );
       return;
@@ -1105,6 +1169,7 @@ class SearchScreenState extends State<SearchScreen>
                 limit: _pageSize,
                 query: _q.trim(),
                 sort: _sort,
+                request: _catalogRequest,
               )
               .then(
                 (page) => _storePage(
@@ -1128,6 +1193,7 @@ class SearchScreenState extends State<SearchScreen>
                 limit: _pageSize,
                 query: _q.trim(),
                 sort: _sort,
+                request: _catalogRequest,
               )
               .then(
                 (page) => _storePage(
@@ -1151,6 +1217,7 @@ class SearchScreenState extends State<SearchScreen>
                 limit: _pageSize,
                 query: _q.trim(),
                 sort: _sort,
+                request: _catalogRequest,
               )
               .then(
                 (page) => _storePage(
@@ -1184,6 +1251,8 @@ class SearchScreenState extends State<SearchScreen>
     String section,
     List<String> categoryIds,
   ) async {
+    final query = _q.trim().toLowerCase();
+    final sort = _sort;
     final batches = switch (section) {
       'movie' => await Future.wait(
         categoryIds.map(
@@ -1213,8 +1282,10 @@ class SearchScreenState extends State<SearchScreen>
         ),
       ),
     };
-    final query = _q.trim().toLowerCase();
-    final values = <dynamic>[for (final batch in batches) ...batch]
+    // Filter lazily: flattening first retains another complete provider list
+    // while allocating the matches. Preserve every match and the global sort.
+    final values = batches
+        .expand((batch) => batch)
         .where((value) {
           if (query.isEmpty) return true;
           final name = switch (value) {
@@ -1236,7 +1307,7 @@ class SearchScreenState extends State<SearchScreen>
       return name(a).toLowerCase().compareTo(name(b).toLowerCase());
     }
 
-    switch (_sort) {
+    switch (sort) {
       case 'az':
         values.sort(compareName);
       case 'za':
@@ -1311,6 +1382,9 @@ class SearchScreenState extends State<SearchScreen>
       _hasMore[pageKey] = keepPrevious ? false : hasMore;
       _cacheSignatures[pageKey] = signature;
       _stalePages.remove(pageKey);
+      _recentPages.remove((section, cat));
+      _recentPages.add((section, cat));
+      _trimInactivePages();
     });
     if (section == 'live' && _epgEnabled) {
       final visible = _liveByCat[cat] ?? const <LiveStream>[];

@@ -611,8 +611,25 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
 
   void _advance() {
     // IndexedStack preserves Home while another tab is open. TickerMode is
-    // disabled there, so do not rotate artwork or fetch metadata off-screen.
-    if (!TickerMode.of(context) || _items.length < 2) return;
+    // disabled there. Also avoid artwork/metadata work when the user has
+    // scrolled past the hero, opened another route, or started full playback.
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    final playback = PlaybackController.instance;
+    if (!TickerMode.getNotifier(context).value ||
+        _items.length < 2 ||
+        (lifecycle != null && lifecycle != AppLifecycleState.resumed) ||
+        ModalRoute.of(context)?.isCurrent == false ||
+        (playback.hasMedia && !playback.minimized)) {
+      return;
+    }
+    final renderObject = context.findRenderObject();
+    if (renderObject is! RenderBox ||
+        !renderObject.attached ||
+        !renderObject.hasSize) {
+      return;
+    }
+    final rect = renderObject.localToGlobal(Offset.zero) & renderObject.size;
+    if (!rect.overlaps(Offset.zero & MediaQuery.sizeOf(context))) return;
     _select((_index + 1) % _items.length);
   }
 

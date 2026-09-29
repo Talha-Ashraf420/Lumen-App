@@ -50,6 +50,8 @@ class CatalogStore {
   String? _pathOverride;
   Future<Database>? _opening;
   bool _disabledForWidgetTests = false;
+  int _maxDecodedPageRows = 0;
+  int get debugMaxDecodedPageRows => _maxDecodedPageRows;
 
   Future<Database> _database() {
     final existing = _opening;
@@ -524,6 +526,7 @@ class CatalogStore {
         limit: limit + 1,
         offset: offset,
       );
+      _maxDecodedPageRows = math.max(_maxDecodedPageRows, rows.length);
       final hasMore = rows.length > limit;
       final visible = hasMore ? rows.take(limit) : rows;
       return CatalogPage<T>(
@@ -640,30 +643,39 @@ class CatalogStore {
           where: 'profile_scope = ? AND media_kind = ? AND bucket = ?',
           whereArgs: [scope, kind, bucket],
         );
-        final batch = txn.batch();
+        // Large IPTV categories can contain tens of thousands of rows.
+        // Build/commit bounded batches so JSON encoding and SQLite binding
+        // cannot monopolize the Flutter isolate for several seconds.
+        const chunkSize = 300;
         final now = DateTime.now().millisecondsSinceEpoch;
-        for (var position = 0; position < items.length; position++) {
-          final item = items[position];
-          final title = name(item);
-          batch.insert('catalog_items', {
-            'profile_scope': scope,
-            'media_kind': kind,
-            'bucket': bucket,
-            'item_id': id(item),
-            'category_id': category(item),
-            'name': title,
-            'sort_name': _sortName(title),
-            'image': image(item),
-            'payload': jsonEncode(encode(item)),
-            'rating_value': rating(item),
-            'recent_value': recent(item),
-            'year_value': year(item),
-            'source_position': position,
-            'generation': generation,
-            'updated_at': now,
-          });
+        for (var start = 0; start < items.length; start += chunkSize) {
+          final end = math.min(start + chunkSize, items.length);
+          final batch = txn.batch();
+          for (var position = start; position < end; position++) {
+            final item = items[position];
+            final title = name(item);
+            batch.insert('catalog_items', {
+              'profile_scope': scope,
+              'media_kind': kind,
+              'bucket': bucket,
+              'item_id': id(item),
+              'category_id': category(item),
+              'name': title,
+              'sort_name': _sortName(title),
+              'image': image(item),
+              'payload': jsonEncode(encode(item)),
+              'rating_value': rating(item),
+              'recent_value': recent(item),
+              'year_value': year(item),
+              'source_position': position,
+              'generation': generation,
+              'updated_at': now,
+            });
+          }
+          await batch.commit(noResult: true);
+          // Give Flutter a chance to process input/frames between chunks.
+          await Future<void>.delayed(Duration.zero);
         }
-        await batch.commit(noResult: true);
         return true;
       });
     } catch (_) {
@@ -764,19 +776,25 @@ class CatalogStore {
     if (_disabledForWidgetTests || channels.isEmpty) return;
     final db = await _database();
     final now = DateTime.now().millisecondsSinceEpoch;
-    final batch = db.batch();
-    for (final channel in channels) {
-      batch.insert('epg_channels', {
-        'profile_scope': scope,
-        'source_key': sourceKey,
-        'generation': generation,
-        'channel_key': channel.channelKey,
-        'display_names_json': jsonEncode(channel.displayNames),
-        'icon': channel.icon,
-        'updated_at': now,
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    const chunkSize = 300;
+    for (var start = 0; start < channels.length; start += chunkSize) {
+      final end = math.min(start + chunkSize, channels.length);
+      final batch = db.batch();
+      for (var index = start; index < end; index++) {
+        final channel = channels[index];
+        batch.insert('epg_channels', {
+          'profile_scope': scope,
+          'source_key': sourceKey,
+          'generation': generation,
+          'channel_key': channel.channelKey,
+          'display_names_json': jsonEncode(channel.displayNames),
+          'icon': channel.icon,
+          'updated_at': now,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+      await batch.commit(noResult: true);
+      await Future<void>.delayed(Duration.zero);
     }
-    await batch.commit(noResult: true);
   }
 
   Future<void> appendEpgProgrammes(
@@ -788,27 +806,33 @@ class CatalogStore {
     if (_disabledForWidgetTests || programmes.isEmpty) return;
     final db = await _database();
     final now = DateTime.now().millisecondsSinceEpoch;
-    final batch = db.batch();
-    for (final programme in programmes) {
-      batch.insert('epg_programmes', {
-        'profile_scope': scope,
-        'source_key': sourceKey,
-        'generation': generation,
-        'channel_key': programme.channelKey,
-        'start_utc': programme.startUtc.millisecondsSinceEpoch,
-        'stop_utc': programme.stopUtc.millisecondsSinceEpoch,
-        'title': programme.title,
-        'subtitle': programme.subtitle,
-        'description': programme.description,
-        'categories_json': jsonEncode(programme.categories),
-        'icon': programme.icon,
-        'has_archive': programme.hasArchive ? 1 : 0,
-        'catchup_id': programme.catchupId,
-        'stop_inferred': programme.stopInferred ? 1 : 0,
-        'updated_at': now,
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    const chunkSize = 300;
+    for (var start = 0; start < programmes.length; start += chunkSize) {
+      final end = math.min(start + chunkSize, programmes.length);
+      final batch = db.batch();
+      for (var index = start; index < end; index++) {
+        final programme = programmes[index];
+        batch.insert('epg_programmes', {
+          'profile_scope': scope,
+          'source_key': sourceKey,
+          'generation': generation,
+          'channel_key': programme.channelKey,
+          'start_utc': programme.startUtc.millisecondsSinceEpoch,
+          'stop_utc': programme.stopUtc.millisecondsSinceEpoch,
+          'title': programme.title,
+          'subtitle': programme.subtitle,
+          'description': programme.description,
+          'categories_json': jsonEncode(programme.categories),
+          'icon': programme.icon,
+          'has_archive': programme.hasArchive ? 1 : 0,
+          'catchup_id': programme.catchupId,
+          'stop_inferred': programme.stopInferred ? 1 : 0,
+          'updated_at': now,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+      await batch.commit(noResult: true);
+      await Future<void>.delayed(Duration.zero);
     }
-    await batch.commit(noResult: true);
   }
 
   Future<void> completeEpgImport(
@@ -1237,15 +1261,11 @@ class CatalogStore {
         // before account deletion may complete afterwards; its rows must not
         // resurrect the profile's old library.
         final now = DateTime.now();
-        await txn.insert(
-          'catalog_profile_generations',
-          {
-            'profile_scope': scope,
-            'generation': now.microsecondsSinceEpoch,
-            'updated_at': now.millisecondsSinceEpoch,
-          },
-          conflictAlgorithm: ConflictAlgorithm.replace,
-        );
+        await txn.insert('catalog_profile_generations', {
+          'profile_scope': scope,
+          'generation': now.microsecondsSinceEpoch,
+          'updated_at': now.millisecondsSinceEpoch,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
         for (final table in [
           'catalog_categories',
           'catalog_items',
@@ -1268,6 +1288,7 @@ class CatalogStore {
   /// Installs an isolated database for unit tests.
   Future<void> useInMemoryForTests() async {
     await close();
+    _maxDecodedPageRows = 0;
     _disabledForWidgetTests = false;
     sqfliteFfiInit();
     _factoryOverride = databaseFactoryFfi;

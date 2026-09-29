@@ -73,6 +73,35 @@ void main() {
     await tester.pump(const Duration(milliseconds: 1));
   });
 
+  testWidgets(
+    'unchanged service reload retains the active client and Home state',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({
+        'lumen_legal_acceptance_v1': true,
+        'lumen_active': jsonEncode(XtreamCredentials.demoProfile.toJson()),
+      });
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildTheme(darkPalette),
+          home: SessionGate(profileActivator: (_) async {}),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      final shell = tester.widget<HomeShell>(find.byType(HomeShell));
+      final state = tester.state(find.byType(HomeShell));
+      await shell.onServicesChanged!();
+      await tester.pump();
+      expect(
+        tester.widget<HomeShell>(find.byType(HomeShell)).client,
+        same(shell.client),
+      );
+      expect(tester.state(find.byType(HomeShell)), same(state));
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 1));
+    },
+  );
+
   testWidgets('saved login opens Home even when profile hydration fails', (
     tester,
   ) async {

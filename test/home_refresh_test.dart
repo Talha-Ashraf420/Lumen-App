@@ -57,6 +57,56 @@ void main() {
     );
   });
 
+  testWidgets('spotlight stops rotating off-screen and resumes when visible', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1280, 900);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    final scroll = ScrollController();
+    final client = XtreamClient(XtreamCredentials.demoProfile);
+    addTearDown(scroll.dispose);
+    addTearDown(client.close);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildTheme(darkPalette),
+        home: Scaffold(
+          body: SingleChildScrollView(
+            controller: scroll,
+            child: Column(
+              children: [
+                SizedBox(
+                  height: 900,
+                  child: HomeScreen(client: client, onBrowse: () {}),
+                ),
+                const SizedBox(height: 1500),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    final counter = find.textContaining(RegExp(r'^\d{2} / \d{2}$'));
+    String position() => tester.widget<Text>(counter).data!;
+    final initial = position();
+    await tester.pump(const Duration(seconds: 8));
+    expect(position(), isNot(initial));
+    final visible = position();
+    scroll.jumpTo(1000);
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 16));
+    expect(position(), visible);
+    scroll.jumpTo(0);
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 8));
+    expect(position(), isNot(visible));
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 1));
+  });
+
   testWidgets('Home keeps visible content mounted during a slow refresh', (
     tester,
   ) async {

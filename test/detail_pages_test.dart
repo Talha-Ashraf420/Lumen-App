@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen_tv/catalog_cache.dart';
+import 'package:lumen_tv/catalog_organization.dart';
 import 'package:lumen_tv/catalog_store.dart';
 import 'package:lumen_tv/device_profile.dart';
 import 'package:lumen_tv/models.dart';
@@ -242,6 +243,12 @@ class _PagedClient extends XtreamClient {
   }
 }
 
+class _ManyCategoriesClient extends _PagedClient {
+  @override
+  Future<List<Category>> vodCategories() async =>
+      List.generate(14, (index) => Category('$index', 'Library $index'));
+}
+
 class _PagedLiveClient extends XtreamClient {
   _PagedLiveClient()
     : super(
@@ -358,6 +365,7 @@ void main() {
     // fake clock that is incompatible with sqflite's transaction lock timer.
     await CatalogStore.instance.disableForWidgetTests();
     CatalogCache.instance.clear();
+    CatalogOrganizationStore.instance.clearMemory();
   });
 
   Future<void> pumpAt(
@@ -1025,6 +1033,94 @@ void main() {
       final gridRect = gridBox.localToGlobal(Offset.zero) & gridBox.size;
       expect(gridRect.contains(focusedRect.center), isTrue);
 
+      await disposeUi(tester);
+    },
+  );
+
+  testWidgets(
+    'TV category browsing bounds retained pages and remains focusable',
+    (tester) async {
+      DeviceProfile.isTelevision = true;
+      addTearDown(() => DeviceProfile.isTelevision = false);
+      final client = _ManyCategoriesClient();
+      final key = GlobalKey<SearchScreenState>();
+      addTearDown(client.close);
+      await pumpAt(
+        tester,
+        SearchScreen(key: key, client: client, initialSection: 'movie'),
+        const Size(1280, 800),
+      );
+      await waitFor(
+        tester,
+        () => key.currentState?.debugLoadedResultCount == 48,
+      );
+      key.currentState!.focusCatalogEntry();
+      await tester.pump();
+      // Visit more categories than the memory budget using real remote events.
+      for (var i = 1; i < 14; i++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+        await tester.pump(const Duration(milliseconds: 260));
+        await tester.pump();
+        expect(key.currentState!.debugLoadedResultCount, greaterThan(0));
+        expect(
+          key.currentState!.debugRetainedCategoryCount,
+          lessThanOrEqualTo(6),
+        );
+        expect(
+          key.currentState!.debugRetainedResultCount,
+          lessThanOrEqualTo(6 * 96),
+        );
+      }
+      // A burst of repeat presses must still leave an attached grid focus target.
+      for (var i = 0; i < 10; i++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+        await tester.pump(const Duration(milliseconds: 15));
+      }
+      await tester.pump(const Duration(milliseconds: 260));
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pumpAndSettle();
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        startsWith('Catalog tile '),
+      );
+      expect(client.vodStreamCalls, greaterThan(6));
+      expect(tester.takeException(), isNull);
+      await disposeUi(tester);
+    },
+  );
+
+  testWidgets(
+    'merged categories page through every item instead of keeping the full grid',
+    (tester) async {
+      final client = _MultiCategoryPagedClient();
+      final key = GlobalKey<SearchScreenState>();
+      addTearDown(client.close);
+      final organization = CatalogOrganization()
+        ..merge('movie', ['one', 'two'], 'Both libraries');
+      await CatalogOrganizationStore.instance.save(client.creds, organization);
+      await pumpAt(
+        tester,
+        SearchScreen(key: key, client: client, initialSection: 'movie'),
+        const Size(1280, 800),
+      );
+      await waitFor(
+        tester,
+        () => key.currentState?.debugLoadedResultCount == 48,
+      );
+      for (
+        var attempt = 0;
+        attempt < 12 && key.currentState!.debugLoadedResultCount < 120;
+        attempt++
+      ) {
+        await tester.fling(find.byType(GridView), const Offset(0, -1200), 2500);
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      await waitFor(
+        tester,
+        () => key.currentState!.debugLoadedResultCount == 120,
+      );
+      expect(tester.takeException(), isNull);
       await disposeUi(tester);
     },
   );
