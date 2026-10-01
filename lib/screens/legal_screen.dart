@@ -248,7 +248,7 @@ class LegalScreen extends StatelessWidget {
                                         index: '04',
                                         title: 'Third-party services',
                                         body:
-                                            'Metadata may come from TMDB, missing channel artwork may be matched from IPTV-org’s public catalog, and optional subtitle searches may use OpenSubtitles. Those independent services have their own terms and privacy practices.',
+                                            'Metadata may come from TMDB, missing channel artwork may be matched from IPTV-org’s public catalog, and optional subtitle searches may use OpenSubtitles. Those independent services have their own terms and privacy practices. Optional phone-to-TV setup scans a QR locally, saves no camera images, and sends encrypted credentials directly to your TV with your approval; no Lumen relay server is used.',
                                       ),
                                       _Section(
                                         width: cardWidth,

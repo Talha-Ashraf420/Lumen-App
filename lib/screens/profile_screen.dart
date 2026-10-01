@@ -20,6 +20,7 @@ import 'catalog_organization_screen.dart';
 import 'diagnostics_screen.dart';
 import 'epg_settings_screen.dart';
 import 'login_screen.dart';
+import 'device_pairing_screen.dart';
 import 'legal_screen.dart';
 import 'update_dialog.dart';
 import 'stats_screen.dart';
@@ -69,6 +70,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _refreshFocus = FocusNode(debugLabel: 'Refresh library');
   final _organizeFocus = FocusNode(debugLabel: 'Organize library');
   final _guideSettingsFocus = FocusNode(debugLabel: 'TV guide setup');
+  final _pairingFocus = FocusNode(debugLabel: 'Set up a TV');
   final _historyFocus = FocusNode(debugLabel: 'Clear watch history');
   final _diagnosticsFocus = FocusNode(debugLabel: 'Diagnostics & feedback');
   final _communityFocus = FocusNode(debugLabel: 'Lumen community');
@@ -650,6 +652,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _refreshFocus.dispose();
     _organizeFocus.dispose();
     _guideSettingsFocus.dispose();
+    _pairingFocus.dispose();
     _historyFocus.dispose();
     _diagnosticsFocus.dispose();
     _communityFocus.dispose();
@@ -1297,7 +1300,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         onKeyEvent: (_, event) => _moveVertically(
           event,
           up: _refreshFocus,
-          down: DeviceProfile.isMobileApp ? _historyFocus : _guideSettingsFocus,
+          down: DeviceProfile.isMobileApp ? _pairingFocus : _guideSettingsFocus,
         ),
         icon: Icons.tune_rounded,
         title: 'Organize library',
@@ -1324,12 +1327,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ),
       ],
+      if (DeviceProfile.isMobileApp) ...[
+        _divider(),
+        _actionRow(
+          focusNode: _pairingFocus,
+          onKeyEvent: (_, event) =>
+              _moveVertically(event, up: _organizeFocus, down: _historyFocus),
+          icon: Icons.qr_code_scanner,
+          title: 'Set up a TV',
+          subtitle: 'Send one service securely over your home network',
+          onTap: () => Navigator.of(
+            context,
+          ).push(MaterialPageRoute(builder: (_) => const PhonePairingScreen())),
+        ),
+      ],
       _divider(),
       _actionRow(
         focusNode: _historyFocus,
         onKeyEvent: (_, event) => _moveVertically(
           event,
-          up: DeviceProfile.isMobileApp ? _organizeFocus : _guideSettingsFocus,
+          up: DeviceProfile.isMobileApp ? _pairingFocus : _guideSettingsFocus,
           down: _diagnosticsFocus,
         ),
         icon: Icons.history_rounded,

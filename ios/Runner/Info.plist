@@ -2,6 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <key>NSCameraUsageDescription</key>
+    <string>Scan a Lumen TV pairing QR to set up your TV. Camera images are not saved or uploaded.</string>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Send an account securely to your Lumen TV on the same home network, after you approve on the TV.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>

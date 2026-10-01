@@ -252,6 +252,8 @@ void main() {
   });
 
   testWidgets('TV D-pad follows the complete login route', (tester) async {
+    DeviceProfile.isTelevision = true;
+    addTearDown(() => DeviceProfile.isTelevision = false);
     await pumpLogin(tester, clientFactory: _SuccessfulLoginClient.new);
 
     final fields = tester
@@ -262,7 +264,10 @@ void main() {
     );
     final playlist = tester.widget<TextButton>(find.bySubtype<TextButton>());
     final demo = tester.widget<OutlinedButton>(
-      find.bySubtype<OutlinedButton>(),
+      find.widgetWithText(OutlinedButton, 'Explore offline demo'),
+    );
+    final pairing = tester.widget<OutlinedButton>(
+      find.widgetWithText(OutlinedButton, 'Connect using phone'),
     );
 
     submit.focusNode!.requestFocus();
@@ -295,7 +300,15 @@ void main() {
 
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
     await tester.pump(const Duration(milliseconds: 220));
+    expect(pairing.focusNode!.hasFocus, isTrue);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump(const Duration(milliseconds: 220));
     expect(demo.focusNode!.hasFocus, isTrue);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+    await tester.pump(const Duration(milliseconds: 220));
+    expect(pairing.focusNode!.hasFocus, isTrue);
 
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
     await tester.pump(const Duration(milliseconds: 220));

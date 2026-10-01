@@ -9,6 +9,7 @@ import '../store.dart';
 import '../widgets.dart';
 import '../theme.dart';
 import '../xtream.dart';
+import 'device_pairing_screen.dart';
 
 typedef LoginClientFactory = XtreamClient Function(XtreamCredentials);
 typedef LoginCredentialSaver = Future<void> Function(XtreamCredentials);
@@ -47,6 +48,8 @@ class _LoginScreenState extends State<LoginScreen> {
   late final FocusNode _submitFocus;
   late final FocusNode _playlistFocus;
   late final FocusNode _demoFocus;
+  late final FocusNode _pairingFocus;
+  bool get _canPair => DeviceProfile.isTelevision || DeviceProfile.isMobileApp;
   final Map<String, FocusNode> _profileFocus = {};
   bool _busy = false;
   String? _error;
@@ -66,6 +69,7 @@ class _LoginScreenState extends State<LoginScreen> {
     _submitFocus = _createFocusNode('login-submit');
     _playlistFocus = _createFocusNode('login-playlist');
     _demoFocus = _createFocusNode('login-demo');
+    _pairingFocus = _createFocusNode('login-pairing');
     _urlFocus.onKeyEvent = (_, event) =>
         _moveFromField(event, up: _lastProfileFocus, down: _userFocus);
     _userFocus.onKeyEvent = (_, event) => _moveFromField(
@@ -82,10 +86,15 @@ class _LoginScreenState extends State<LoginScreen> {
     );
     _submitFocus.onKeyEvent = (_, event) =>
         _moveFromControl(event, up: _userFocus, down: _playlistFocus);
-    _playlistFocus.onKeyEvent = (_, event) =>
-        _moveFromControl(event, up: _submitFocus, down: _demoFocus);
+    _playlistFocus.onKeyEvent = (_, event) => _moveFromControl(
+      event,
+      up: _submitFocus,
+      down: _canPair ? _pairingFocus : _demoFocus,
+    );
+    _pairingFocus.onKeyEvent = (_, event) =>
+        _moveFromControl(event, up: _playlistFocus, down: _demoFocus);
     _demoFocus.onKeyEvent = (_, event) =>
-        _moveFromControl(event, up: _playlistFocus);
+        _moveFromControl(event, up: _canPair ? _pairingFocus : _playlistFocus);
     Store.savedProfiles().then((profiles) {
       if (!mounted) return;
       _syncProfileFocus(profiles);
@@ -343,6 +352,21 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _startDemo() => _connect(XtreamCredentials.demoProfile);
 
+  Future<void> _pairDevice() async {
+    if (DeviceProfile.isTelevision) {
+      final credentials = await Navigator.of(context).push<XtreamCredentials>(
+        MaterialPageRoute(builder: (_) => const TvPairingScreen()),
+      );
+      if (!mounted) return;
+      if (credentials != null) await _connect(credentials);
+    } else {
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(builder: (_) => const PhonePairingScreen()),
+      );
+    }
+    if (mounted) _pairingFocus.requestFocus();
+  }
+
   @override
   void dispose() {
     _connectAttempt++;
@@ -357,6 +381,7 @@ class _LoginScreenState extends State<LoginScreen> {
     _submitFocus.dispose();
     _playlistFocus.dispose();
     _demoFocus.dispose();
+    _pairingFocus.dispose();
     for (final node in _profileFocus.values) {
       node.dispose();
     }
@@ -744,6 +769,20 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ),
         if (!_busy) ...[
+          if (_canPair)
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                focusNode: _pairingFocus,
+                onPressed: _pairDevice,
+                icon: const Icon(Icons.qr_code_scanner),
+                label: Text(
+                  DeviceProfile.isTelevision
+                      ? 'Connect using phone'
+                      : 'Set up a TV',
+                ),
+              ),
+            ),
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 8),
             child: Row(
