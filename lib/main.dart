@@ -580,12 +580,14 @@ class _SessionGateState extends State<SessionGate> {
             ? MultiSourceXtreamClient(_creds!, _viewerProfiles)
             : XtreamClient(_creds!);
         activeClient = _client; // expose to the app-level player (split picker)
-        // Key by the active profile so switching fully remounts all tabs with
-        // the new client (fresh catalogs), not stale data from the old account.
+        // HomeShell caches its tab widgets, and those widgets retain their
+        // category/grid state. A combined-service edit replaces _client even
+        // when the active account stays the same, so the shell must remount
+        // with that client or removed services remain visible in old tabs.
+        // Keep the viewing profile in the key because its library state is
+        // independent even when it shares the same catalog client.
         return HomeShell(
-          key: ValueKey(
-            '${Store.profileScope(_creds!)}:${ViewingProfiles.instance.activeId}',
-          ),
+          key: ValueKey((_client, ViewingProfiles.instance.activeId)),
           client: _client!,
           onLogout: _onLogout,
           onSwitch: _switchTo,

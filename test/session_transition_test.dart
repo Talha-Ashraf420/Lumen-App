@@ -5,8 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lumen_tv/main.dart';
 import 'package:lumen_tv/models.dart';
+import 'package:lumen_tv/multi_source.dart';
 import 'package:lumen_tv/screens/shell.dart';
 import 'package:lumen_tv/screens/login_screen.dart';
+import 'package:lumen_tv/store.dart';
 import 'package:lumen_tv/theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -101,6 +103,53 @@ void main() {
       await tester.pump(const Duration(milliseconds: 1));
     },
   );
+
+  testWidgets('disabling a combined service remounts cached catalog tabs', (
+    tester,
+  ) async {
+    const first = XtreamCredentials(
+      baseUrl: 'https://one.example',
+      username: 'first',
+      password: 'first-password',
+    );
+    const second = XtreamCredentials(
+      baseUrl: 'https://two.example',
+      username: 'second',
+      password: 'second-password',
+    );
+    SharedPreferences.setMockInitialValues({
+      'lumen_legal_acceptance_v1': true,
+      'lumen_active': jsonEncode(first.toJson()),
+      'lumen_profiles': jsonEncode([first.toJson(), second.toJson()]),
+      'lumen_enabled_sources_v1': jsonEncode([
+        Store.profileScope(first),
+        Store.profileScope(second),
+      ]),
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildTheme(darkPalette),
+        home: SessionGate(profileActivator: (_) async {}),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    final before = tester.widget<HomeShell>(find.byType(HomeShell));
+    final beforeState = tester.state(find.byType(HomeShell));
+    expect(before.client, isA<MultiSourceXtreamClient>());
+
+    await Store.setProfileEnabled(second, false);
+    await before.onServicesChanged!();
+    await tester.pump();
+
+    final after = tester.widget<HomeShell>(find.byType(HomeShell));
+    expect(after.client, isNot(same(before.client)));
+    expect(after.client, isNot(isA<MultiSourceXtreamClient>()));
+    expect(tester.state(find.byType(HomeShell)), isNot(same(beforeState)));
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 1));
+  });
 
   testWidgets('saved login opens Home even when profile hydration fails', (
     tester,

@@ -3031,24 +3031,34 @@ class _PlayerHostState extends State<PlayerHost> {
               style: TextStyle(fontWeight: FontWeight.w700),
             ),
             subtitle: const Text(
-              'SRT, VTT, SSA, ASS or TTML',
+              'SRT, VTT, SSA, ASS or TTML · no sign-up needed',
               style: TextStyle(color: Colors.white54, fontSize: 12),
             ),
           ),
-        // Online search (OpenSubtitles)
-        ListTile(
-          onTap: () => setState(() => _subsOnline = !_subsOnline),
-          leading: Icon(Icons.travel_explore_rounded, color: accent),
-          title: const Text(
-            'Search online',
-            style: TextStyle(fontWeight: FontWeight.w700),
+        if (OpenSubs.isConfigured)
+          ListTile(
+            onTap: () => setState(() => _subsOnline = !_subsOnline),
+            leading: Icon(Icons.travel_explore_rounded, color: accent),
+            title: const Text(
+              'Search online',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+            trailing: Icon(
+              _subsOnline
+                  ? Icons.expand_less_rounded
+                  : Icons.expand_more_rounded,
+              color: Colors.white54,
+            ),
           ),
-          trailing: Icon(
-            _subsOnline ? Icons.expand_less_rounded : Icons.expand_more_rounded,
-            color: Colors.white54,
+        if (!OpenSubs.isConfigured)
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 4, 20, 8),
+            child: Text(
+              'Online subtitle search is not available in this build.',
+              style: TextStyle(color: Colors.white54, fontSize: 12),
+            ),
           ),
-        ),
-        if (_subsOnline) _subsOnlinePanel(),
+        if (OpenSubs.isConfigured && _subsOnline) _subsOnlinePanel(),
         const SizedBox(height: 12),
       ],
     );

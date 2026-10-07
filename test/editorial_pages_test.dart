@@ -147,4 +147,40 @@ void main() {
     expect(tester.takeException(), isNull);
     await disposeUi(tester);
   });
+
+  testWidgets('phone Home studio selects and reorders shelves', (tester) async {
+    final client = _EditorialTestClient();
+    await HomeConfig.instance.activate(client.creds);
+    CatalogCache.instance.clear();
+    await pumpAt(
+      tester,
+      CustomizeHomeScreen(client: client),
+      const Size(390, 844),
+    );
+    await tester.pump();
+
+    await tester.tap(find.text('New cinema'));
+    await tester.pump();
+    await tester.tap(find.text('Series'));
+    await tester.pump();
+    await tester.tap(find.text('Prestige drama'));
+    await tester.pump();
+    expect(HomeConfig.instance.shelves.map((s) => s.name).toList(), [
+      'New cinema',
+      'Prestige drama',
+    ]);
+
+    await tester.tap(find.textContaining('tap to reorder or remove'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.ensureVisible(find.byTooltip('Move up').last);
+    await tester.tap(find.byTooltip('Move up').last);
+    await tester.pump();
+    expect(HomeConfig.instance.shelves.map((s) => s.name).toList(), [
+      'Prestige drama',
+      'New cinema',
+    ]);
+    expect(tester.takeException(), isNull);
+    await disposeUi(tester);
+  });
 }

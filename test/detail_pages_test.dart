@@ -7,6 +7,7 @@ import 'package:lumen_tv/catalog_cache.dart';
 import 'package:lumen_tv/catalog_organization.dart';
 import 'package:lumen_tv/catalog_store.dart';
 import 'package:lumen_tv/device_profile.dart';
+import 'package:lumen_tv/home_config.dart';
 import 'package:lumen_tv/models.dart';
 import 'package:lumen_tv/playback.dart';
 import 'package:lumen_tv/refresh.dart';
@@ -102,6 +103,7 @@ class _HomeClient extends XtreamClient {
   int seriesCategoryCalls = 0;
   int liveCategoryCalls = 0;
   final List<String?> vodStreamCategories = [];
+  final List<String?> seriesStreamCategories = [];
 
   @override
   Future<List<Category>> vodCategories() async {
@@ -130,7 +132,10 @@ class _HomeClient extends XtreamClient {
   }
 
   @override
-  Future<List<Series>> series(String? categoryId) async => const [];
+  Future<List<Series>> series(String? categoryId) async {
+    seriesStreamCategories.add(categoryId);
+    return [Series(88, 'A Good Drama', '', '', '', 8, '2026', '3')];
+  }
 
   @override
   Future<List<LiveStream>> liveStreams(String? categoryId) async => const [];
@@ -366,6 +371,7 @@ void main() {
     await CatalogStore.instance.disableForWidgetTests();
     CatalogCache.instance.clear();
     CatalogOrganizationStore.instance.clearMemory();
+    await HomeConfig.instance.activate(null);
   });
 
   Future<void> pumpAt(
@@ -684,7 +690,7 @@ void main() {
     },
   );
 
-  testWidgets('Home loads only spotlight data and skips extra shelves', (
+  testWidgets('Home loads a bounded spotlight and visible collections', (
     tester,
   ) async {
     final client = _HomeClient();
@@ -698,14 +704,47 @@ void main() {
     expect(client.vodCategoryCalls, 1);
     await waitFor(tester, () => client.vodStreamCategories.isNotEmpty);
     expect(client.vodStreamCategories, isNot(contains(null)));
-    expect(client.vodStreamCategories.toSet(), {'1'});
+    expect(client.vodStreamCategories.toSet(), contains('1'));
+    expect(client.vodStreamCategories.toSet().difference({'1', '2'}), isEmpty);
     expect(find.byType(HomeScreen), findsOneWidget);
+    expect(find.text('Customize'), findsOneWidget);
     expect(find.text('Recently added'), findsNothing);
     expect(find.text('Latest arrivals'), findsNothing);
     expect(tester.takeException(), isNull);
 
     expect(client.seriesCategoryCalls, 0);
     expect(client.liveCategoryCalls, 0);
+    await tester.tap(find.text('Customize'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.text('Build your own front row'), findsOneWidget);
+    await disposeUi(tester);
+  });
+
+  testWidgets('Home renders only the viewer-selected category kind', (
+    tester,
+  ) async {
+    final client = _HomeClient();
+    await HomeConfig.instance.activate(client.creds);
+    HomeConfig.instance.toggle(const ShelfRef('series', '3', 'Drama'));
+    await pumpAt(
+      tester,
+      HomeScreen(client: client, onBrowse: () {}),
+      const Size(390, 844),
+    );
+    await waitFor(tester, () => client.seriesCategoryCalls == 1);
+    await tester.scrollUntilVisible(
+      find.text('Drama'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pump();
+
+    expect(find.text('Drama'), findsOneWidget);
+    expect(client.seriesStreamCategories, contains('3'));
+    expect(client.liveCategoryCalls, 0);
+    expect(client.vodStreamCategories.toSet().difference({'1'}), isEmpty);
+    expect(tester.takeException(), isNull);
     await disposeUi(tester);
   });
 

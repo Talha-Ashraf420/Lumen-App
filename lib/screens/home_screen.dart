@@ -5,6 +5,7 @@ import 'dart:async';
 import '../catalog_cache.dart';
 import '../device_profile.dart';
 import '../focus_return.dart';
+import '../home_config.dart';
 import '../library.dart';
 import '../models.dart';
 import '../playback.dart';
@@ -15,6 +16,8 @@ import '../tmdb.dart';
 import '../widgets.dart';
 import '../xtream.dart';
 import 'movie_detail_screen.dart';
+import 'series_detail_screen.dart';
+import 'customize_home_screen.dart';
 
 String _year(String s) => RegExp(r'(19|20)\d{2}').firstMatch(s)?.group(0) ?? '';
 
@@ -109,6 +112,7 @@ class _HomeScreenState extends State<HomeScreen>
   late Future<_HomeData> _future;
   _HomeData? _visibleData;
   int _loadGeneration = 0;
+  int _shelfRefresh = 0;
   Timer? _catalogRevisionDebounce;
   final Map<String, FocusNode> _continueFocus = <String, FocusNode>{};
   final Map<String, FocusNode> _channelFocus = <String, FocusNode>{};
@@ -122,6 +126,7 @@ class _HomeScreenState extends State<HomeScreen>
     _beginLoad();
     contentRefresh.addListener(_onRefresh);
     CatalogCache.instance.revision.addListener(_onCatalogRevision);
+    HomeConfig.instance.addListener(_onHomeConfigChanged);
   }
 
   @override
@@ -129,6 +134,7 @@ class _HomeScreenState extends State<HomeScreen>
     _catalogRevisionDebounce?.cancel();
     contentRefresh.removeListener(_onRefresh);
     CatalogCache.instance.revision.removeListener(_onCatalogRevision);
+    HomeConfig.instance.removeListener(_onHomeConfigChanged);
     for (final node in [..._continueFocus.values, ..._channelFocus.values]) {
       node.dispose();
     }
@@ -150,7 +156,14 @@ class _HomeScreenState extends State<HomeScreen>
     if (!mounted) return;
     // Keep the currently rendered catalogs in place while fresh data arrives.
     // Pull-to-refresh should feel like an in-place update, not a cold launch.
-    setState(_beginLoad);
+    setState(() {
+      _shelfRefresh++;
+      _beginLoad();
+    });
+  }
+
+  void _onHomeConfigChanged() {
+    if (mounted) setState(_beginLoad);
   }
 
   Future<void> _pullRefresh() async {
@@ -160,14 +173,56 @@ class _HomeScreenState extends State<HomeScreen>
 
   Future<_HomeData> _loadHome() async {
     final categoryLoader = widget.categoryLoader;
-    if (categoryLoader != null) return _HomeData(await categoryLoader());
-    // Plain M3U profiles are live-only. Do not spend multiple retry windows on
-    // movie/series endpoints they can never have before showing their channels.
-    if (!widget.client.supportsMovieCatalog) return _HomeData(const []);
-    // The streamlined Home only needs movie categories for its spotlight.
-    // Live, series and full catalog shelves belong on their dedicated tabs.
-    final vod = await CatalogCache.instance.vod(widget.client);
-    return _HomeData(vod);
+    final selected = List<ShelfRef>.of(HomeConfig.instance.shelves);
+    final client = widget.client;
+    final cache = CatalogCache.instance;
+    Future<List<Category>> retainOnFailure(
+      Future<List<Category>> pending,
+      String type,
+    ) => pending.catchError((_) {
+      if (type == 'movie') return _visibleData?.vodCats ?? <Category>[];
+      return [
+        for (final shelf in _visibleData?.shelves ?? const <ShelfRef>[])
+          if (shelf.type == type) Category(shelf.id, shelf.name),
+      ];
+    });
+    // Start only the selected catalog kinds together instead of adding their
+    // provider latency one after another on a combined account.
+    final categoryLists = await Future.wait<List<Category>>([
+      retainOnFailure(
+        categoryLoader != null
+            ? categoryLoader()
+            : client.supportsMovieCatalog
+            ? cache.vod(client)
+            : Future.value(<Category>[]),
+        'movie',
+      ),
+      selected.any((s) => s.type == 'series')
+          ? retainOnFailure(cache.series(client), 'series')
+          : Future.value(<Category>[]),
+      (!client.supportsMovieCatalog || selected.any((s) => s.type == 'live'))
+          ? retainOnFailure(cache.live(client), 'live')
+          : Future.value(<Category>[]),
+    ]);
+    final [vod, series, live] = categoryLists;
+    final categories = {'movie': vod, 'series': series, 'live': live};
+    final shelves = selected.isEmpty
+        ? [
+            for (final cat in (client.supportsMovieCatalog ? vod : live).take(
+              2,
+            ))
+              ShelfRef(
+                client.supportsMovieCatalog ? 'movie' : 'live',
+                cat.id,
+                cat.name,
+              ),
+          ]
+        : [
+            for (final shelf in selected)
+              for (final cat in categories[shelf.type] ?? const <Category>[])
+                if (cat.id == shelf.id) ShelfRef(shelf.type, cat.id, cat.name),
+          ];
+    return _HomeData(vod, shelves, isCustom: selected.isNotEmpty);
   }
 
   void _beginLoad() {
@@ -420,7 +475,8 @@ class _HomeScreenState extends State<HomeScreen>
         final primarySource = heroCat == null
             ? Future.value(const <VodStream>[])
             : CatalogCache.instance
-                  .vodStreams(c, heroCat)
+                  .vodPage(c, categoryId: heroCat, limit: 12, sort: 'recent')
+                  .then((page) => page.items)
                   .catchError((_) => <VodStream>[]);
         final heroFuture = primarySource.then((items) {
           final ranked = moviesRecentlyAdded(
@@ -440,6 +496,24 @@ class _HomeScreenState extends State<HomeScreen>
           animation: Library.instance,
           builder: (_, __) => _historyRows(),
         );
+        final selectedKeys = HomeConfig.instance.shelves
+            .map((shelf) => shelf.key)
+            .toSet();
+        final shelves = HomeConfig.instance.isCustom
+            ? d.shelves
+                  .where((shelf) => selectedKeys.contains(shelf.key))
+                  .toList(growable: false)
+            : d.isCustom
+            ? const <ShelfRef>[]
+            : d.shelves;
+
+        Widget shelfAt(int index) => _HomeShelf(
+          key: ValueKey('home-shelf:${shelves[index].key}'),
+          client: c,
+          shelf: shelves[index],
+          refresh: _shelfRefresh,
+          onOpen: _push,
+        );
 
         if (isWide(context)) {
           return RefreshIndicator(
@@ -449,6 +523,11 @@ class _HomeScreenState extends State<HomeScreen>
               slivers: [
                 SliverToBoxAdapter(child: hero),
                 SliverToBoxAdapter(child: lastPlayed),
+                SliverToBoxAdapter(child: _homeStudio(shelves.length)),
+                SliverList.builder(
+                  itemCount: shelves.length,
+                  itemBuilder: (_, index) => shelfAt(index),
+                ),
                 const SliverToBoxAdapter(child: SizedBox(height: 80)),
               ],
             ),
@@ -458,19 +537,72 @@ class _HomeScreenState extends State<HomeScreen>
         return RefreshIndicator(
           onRefresh: _pullRefresh,
           color: accentInk,
-          child: ListView(
+          child: ListView.builder(
             padding: const EdgeInsets.only(bottom: 120),
-            children: [
-              _searchBar(),
-              const SizedBox(height: 10),
-              hero,
-              lastPlayed,
-            ],
+            itemCount: 5 + shelves.length,
+            itemBuilder: (_, index) => switch (index) {
+              0 => _searchBar(),
+              1 => const SizedBox(height: 10),
+              2 => hero,
+              3 => lastPlayed,
+              4 => _homeStudio(shelves.length),
+              _ => shelfAt(index - 5),
+            },
           ),
         );
       },
     );
   }
+
+  Widget _homeStudio(int shelfCount) => Padding(
+    padding: const EdgeInsets.fromLTRB(20, 24, 20, 14),
+    child: Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Your Home', style: kTitle()),
+              const SizedBox(height: 3),
+              Text(
+                HomeConfig.instance.isCustom
+                    ? '$shelfCount collections in your order'
+                    : 'A starting mix — make it yours',
+                style: TextStyle(color: subtle, fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+        RemoteTap(
+          onTap: () => _push(CustomizeHomeScreen(client: widget.client)),
+          focusRadius: 12,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
+            decoration: BoxDecoration(
+              color: surfaceHi,
+              borderRadius: BorderRadius.circular(lumenCorner(12)),
+              border: Border.all(color: line),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.tune_rounded, color: accentInk, size: 18),
+                const SizedBox(width: 6),
+                Text(
+                  'Customize',
+                  style: TextStyle(
+                    color: textHi,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
 
   Widget _searchBar() {
     return Padding(
@@ -496,7 +628,208 @@ class _HomeScreenState extends State<HomeScreen>
 
 class _HomeData {
   final List<Category> vodCats;
-  _HomeData(this.vodCats);
+  final List<ShelfRef> shelves;
+  final bool isCustom;
+  _HomeData(this.vodCats, this.shelves, {this.isCustom = false});
+}
+
+/// A shelf starts loading only when the vertical list builds it near the
+/// viewport. The catalog index returns a small page rather than decoding a
+/// provider's entire category just to paint a Home row.
+class _HomeShelf extends StatefulWidget {
+  const _HomeShelf({
+    super.key,
+    required this.client,
+    required this.shelf,
+    required this.refresh,
+    required this.onOpen,
+  });
+
+  final XtreamClient client;
+  final ShelfRef shelf;
+  final int refresh;
+  final Future<void> Function(Widget) onOpen;
+
+  @override
+  State<_HomeShelf> createState() => _HomeShelfState();
+}
+
+class _HomeShelfState extends State<_HomeShelf> {
+  late Future<List<Object>> _future;
+  CatalogRequest? _request;
+  List<Object>? _visible;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant _HomeShelf oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final changedShelf =
+        !identical(oldWidget.client, widget.client) ||
+        oldWidget.shelf.key != widget.shelf.key;
+    if (changedShelf || oldWidget.refresh != widget.refresh) {
+      if (changedShelf) _visible = null;
+      _load();
+    }
+  }
+
+  @override
+  void dispose() {
+    _request?.cancel();
+    super.dispose();
+  }
+
+  void _load() {
+    _request?.cancel();
+    final request = CatalogRequest();
+    _request = request;
+    final cache = CatalogCache.instance;
+    final client = widget.client;
+    final id = widget.shelf.id;
+    _future = (() async {
+      final List<Object> items = switch (widget.shelf.type) {
+        'series' => (await cache.seriesPage(
+          client,
+          categoryId: id,
+          limit: 12,
+          request: request,
+        )).items,
+        'live' => (await cache.livePage(
+          client,
+          categoryId: id,
+          limit: 12,
+          request: request,
+        )).items,
+        _ => (await cache.vodPage(
+          client,
+          categoryId: id,
+          limit: 12,
+          sort: 'recent',
+          request: request,
+        )).items,
+      };
+      if (mounted && identical(_request, request)) _visible = items;
+      return items;
+    })();
+  }
+
+  void _open(Object item) {
+    if (item is VodStream) {
+      widget.onOpen(MovieDetailScreen(client: widget.client, movie: item));
+    } else if (item is Series) {
+      widget.onOpen(
+        SeriesDetailScreen(
+          client: widget.client,
+          seriesId: item.seriesId,
+          title: item.name,
+          preview: item,
+        ),
+      );
+    } else if (item is LiveStream) {
+      final url = widget.client.streamUrl('live', item.streamId, ext: 'ts');
+      PlaybackController.instance.open([
+        PlayerItem(
+          url,
+          item.name,
+          isLive: true,
+          poster: item.effectiveIcon,
+          httpHeaders: widget.client.streamHeaders(item.streamId),
+          favRef: MediaRef(
+            kind: 'live',
+            id: item.streamId,
+            name: item.name,
+            image: item.effectiveIcon,
+            url: url,
+            cat: item.categoryId,
+          ),
+        ),
+      ], 0);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final live = widget.shelf.type == 'live';
+    return Padding(
+      padding: const EdgeInsets.only(top: 12, bottom: 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SectionHeader(title: widget.shelf.name),
+          FutureBuilder<List<Object>>(
+            future: _future,
+            initialData: _visible,
+            builder: (context, snapshot) {
+              final items = snapshot.data ?? _visible ?? const <Object>[];
+              if (items.isEmpty) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Text(
+                    snapshot.hasError
+                        ? 'Could not load this collection. Refresh to retry.'
+                        : snapshot.connectionState == ConnectionState.done
+                        ? 'Nothing in this collection yet.'
+                        : 'Loading collection…',
+                    style: TextStyle(color: subtle, fontSize: 12),
+                  ),
+                );
+              }
+              return SizedBox(
+                height: posterShelfHeight(live: live) + 20,
+                child: HorizontalShelfViewport(
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    clipBehavior: Clip.none,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 8,
+                    ),
+                    itemCount: items.length,
+                    separatorBuilder: (_, _) => const SizedBox(width: 14),
+                    itemBuilder: (_, index) {
+                      final item = items[index];
+                      return SizedBox(
+                        width: kPosterW,
+                        child: item is LiveStream
+                            ? ChannelCard(
+                                name: item.name,
+                                logo: item.effectiveIcon,
+                                backupLogo: item.fallbackIcon,
+                                sourceLabel: item.sourceLabel,
+                                onTap: () => _open(item),
+                                index: index,
+                              )
+                            : PosterCard(
+                                name: item is VodStream
+                                    ? item.name
+                                    : (item as Series).name,
+                                image: item is VodStream
+                                    ? item.icon
+                                    : (item as Series).cover,
+                                rating: item is VodStream
+                                    ? item.rating
+                                    : (item as Series).rating,
+                                subtitle: item is VodStream
+                                    ? _year(item.name)
+                                    : _year((item as Series).releaseDate),
+                                onTap: () => _open(item),
+                                index: index,
+                              ),
+                      );
+                    },
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// Immersive desktop hero: full-bleed backdrop, big title, actions, and a

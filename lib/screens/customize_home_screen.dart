@@ -18,31 +18,43 @@ class CustomizeHomeScreen extends StatefulWidget {
 }
 
 class _CustomizeHomeScreenState extends State<CustomizeHomeScreen> {
-  List<Category> _movies = [], _series = [], _live = [];
-  bool _ready = false;
+  final Map<String, List<Category>> _categories = {};
+  final Set<String> _loading = {};
+  final Set<String> _failed = {};
   String _q = '';
   String _type = 'movie';
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _type = widget.client.supportsMovieCatalog ? 'movie' : 'live';
+    _loadType(_type);
   }
 
-  Future<void> _load() async {
-    final c = widget.client;
-    final r = await Future.wait([
-      CatalogCache.instance.vod(c),
-      CatalogCache.instance.series(c),
-      CatalogCache.instance.live(c),
-    ]);
-    if (!mounted) return;
+  Future<void> _loadType(String type) async {
+    if (_categories.containsKey(type) || !_loading.add(type)) return;
+    setState(() => _failed.remove(type));
+    try {
+      final categories = switch (type) {
+        'series' => await CatalogCache.instance.series(widget.client),
+        'live' => await CatalogCache.instance.live(widget.client),
+        _ => await CatalogCache.instance.vod(widget.client),
+      };
+      if (mounted) setState(() => _categories[type] = categories);
+    } catch (_) {
+      if (mounted) setState(() => _failed.add(type));
+    } finally {
+      _loading.remove(type);
+      if (mounted) setState(() {});
+    }
+  }
+
+  void _selectType(String type) {
     setState(() {
-      _movies = r[0];
-      _series = r[1];
-      _live = r[2];
-      _ready = true;
+      _type = type;
+      _q = '';
     });
+    _loadType(type);
   }
 
   List<Category> _filter(List<Category> cats) {
@@ -101,25 +113,19 @@ class _CustomizeHomeScreenState extends State<CustomizeHomeScreen> {
                   ),
                 ),
                 Expanded(
-                  child: !_ready
-                      ? BrandedLoading()
-                      : Padding(
-                          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-                          child: wide
-                              ? Row(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.stretch,
-                                  children: [
-                                    SizedBox(
-                                      width: 340,
-                                      child: _selectedPanel(),
-                                    ),
-                                    const SizedBox(width: 16),
-                                    Expanded(child: _browser()),
-                                  ],
-                                )
-                              : _browser(showSelectedStrip: true),
-                        ),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                    child: wide
+                        ? Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              SizedBox(width: 340, child: _selectedPanel()),
+                              const SizedBox(width: 16),
+                              Expanded(child: _browser()),
+                            ],
+                          )
+                        : _browser(showSelectedStrip: true),
+                  ),
                 ),
               ],
             ),
@@ -143,25 +149,29 @@ class _CustomizeHomeScreenState extends State<CustomizeHomeScreen> {
         child: ListView(
           scrollDirection: Axis.horizontal,
           children: [
-            LumenFilterPill(
-              label: 'Films',
-              icon: Icons.movie_outlined,
-              selected: _type == 'movie',
-              onTap: () => setState(() => _type = 'movie'),
-            ),
-            const SizedBox(width: 8),
-            LumenFilterPill(
-              label: 'Series',
-              icon: Icons.video_library_outlined,
-              selected: _type == 'series',
-              onTap: () => setState(() => _type = 'series'),
-            ),
-            const SizedBox(width: 8),
+            if (widget.client.supportsMovieCatalog) ...[
+              LumenFilterPill(
+                label: 'Films',
+                icon: Icons.movie_outlined,
+                selected: _type == 'movie',
+                onTap: () => _selectType('movie'),
+              ),
+              const SizedBox(width: 8),
+            ],
+            if (widget.client.supportsSeriesCatalog) ...[
+              LumenFilterPill(
+                label: 'Series',
+                icon: Icons.video_library_outlined,
+                selected: _type == 'series',
+                onTap: () => _selectType('series'),
+              ),
+              const SizedBox(width: 8),
+            ],
             LumenFilterPill(
               label: 'Live TV',
               icon: Icons.cell_tower_rounded,
               selected: _type == 'live',
-              onTap: () => setState(() => _type = 'live'),
+              onTap: () => _selectType('live'),
             ),
           ],
         ),
@@ -172,11 +182,17 @@ class _CustomizeHomeScreenState extends State<CustomizeHomeScreen> {
   );
 
   Widget _categoryGrid() {
-    final source = switch (_type) {
-      'series' => _series,
-      'live' => _live,
-      _ => _movies,
-    };
+    if (_failed.contains(_type)) {
+      return Center(
+        child: TextButton.icon(
+          onPressed: () => _loadType(_type),
+          icon: const Icon(Icons.refresh_rounded),
+          label: const Text('Could not load collections. Try again'),
+        ),
+      );
+    }
+    final source = _categories[_type];
+    if (source == null) return BrandedLoading();
     final cats = _filter(source);
     if (cats.isEmpty) {
       return LumenEmptyState(
@@ -311,35 +327,55 @@ class _CustomizeHomeScreenState extends State<CustomizeHomeScreen> {
     animation: HomeConfig.instance,
     builder: (_, child) {
       final count = HomeConfig.instance.shelves.length;
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-        decoration: BoxDecoration(
-          color: surfaceHi.withValues(alpha: 0.48),
-          borderRadius: BorderRadius.circular(lumenCorner(16)),
-          border: Border.all(color: line),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              count == 0
-                  ? Icons.auto_awesome_rounded
-                  : Icons.view_carousel_rounded,
-              color: accentInk,
-              size: 19,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                count == 0
-                    ? 'Using Lumen’s default mix'
-                    : '$count shelves selected · order can be tuned on a larger screen',
-                style: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 12.5,
+      return RemoteTap(
+        onTap: count == 0
+            ? null
+            : () => showModalBottomSheet<void>(
+                context: context,
+                useSafeArea: true,
+                isScrollControlled: true,
+                backgroundColor: bg,
+                builder: (sheetContext) => Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: SizedBox(
+                    height: MediaQuery.sizeOf(sheetContext).height * 0.68,
+                    child: _selectedPanel(),
+                  ),
                 ),
               ),
-            ),
-          ],
+        focusRadius: 16,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+          decoration: BoxDecoration(
+            color: surfaceHi.withValues(alpha: 0.48),
+            borderRadius: BorderRadius.circular(lumenCorner(16)),
+            border: Border.all(color: line),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                count == 0
+                    ? Icons.auto_awesome_rounded
+                    : Icons.view_carousel_rounded,
+                color: accentInk,
+                size: 19,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  count == 0
+                      ? 'Using Lumen’s default mix'
+                      : '$count shelves selected · tap to reorder or remove',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12.5,
+                  ),
+                ),
+              ),
+              if (count > 0)
+                Icon(Icons.chevron_right_rounded, color: accentInk),
+            ],
+          ),
         ),
       );
     },
