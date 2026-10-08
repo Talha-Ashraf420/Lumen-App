@@ -229,7 +229,7 @@ class _MyListScreenState extends State<MyListScreen> {
                 height: 46,
                 child: ListView(
                   scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                  padding: pageInsets(context, top: 0, bottom: 12),
                   children: [
                     LumenFilterPill(
                       focusNode: _filterFocus[0],
@@ -301,12 +301,18 @@ class _MyListScreenState extends State<MyListScreen> {
                         );
                         _gridColumns = columns;
                         final tileWidth =
-                            (constraints.maxWidth - 40 - (columns - 1) * 14) /
+                            (constraints.maxWidth -
+                                2 * pageGutter(context) -
+                                (columns - 1) * 14) /
                             columns;
                         _gridRowExtent = tileWidth / .66 + 20;
                         return GridView.builder(
                           controller: _gridScroll,
-                          padding: const EdgeInsets.fromLTRB(20, 10, 20, 120),
+                          padding: pageInsets(
+                            context,
+                            top: 12,
+                            bottom: pageScrollBottom(context),
+                          ),
                           gridDelegate:
                               SliverGridDelegateWithFixedCrossAxisCount(
                                 crossAxisCount: columns,

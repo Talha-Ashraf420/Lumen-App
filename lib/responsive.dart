@@ -14,6 +14,24 @@ const double kMaxContent = 1500;
 bool isWide(BuildContext context) =>
     MediaQuery.sizeOf(context).width >= kWideBreakpoint;
 
+/// Shared outer gutter. Apply at the content edge, not around an already
+/// padded page; backgrounds and video can still bleed to the viewport edge.
+double pageGutter(BuildContext context) {
+  final width = MediaQuery.sizeOf(context).width;
+  return width >= kWideBreakpoint ? 32 : (width < 360 ? 20 : 24);
+}
+
+EdgeInsets pageInsets(
+  BuildContext context, {
+  double top = 24,
+  double bottom = 24,
+}) =>
+    EdgeInsets.fromLTRB(pageGutter(context), top, pageGutter(context), bottom);
+
+/// Scroll space below content in destinations underneath the floating dock.
+double pageScrollBottom(BuildContext context) =>
+    isWide(context) ? 32 : 112 + MediaQuery.paddingOf(context).bottom;
+
 /// Column count for a grid given the available [width] and a target [tile] size.
 int gridColumns(double width, {double tile = 170, int min = 3, int max = 8}) {
   final n = (width / tile).floor();

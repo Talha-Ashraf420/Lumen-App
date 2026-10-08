@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../downloads.dart';
 import '../playback.dart';
+import '../responsive.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import '../xtream.dart';
@@ -349,7 +350,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                     height: 46,
                     child: ListView(
                       scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                      padding: pageInsets(context, top: 0, bottom: 12),
                       children: [
                         LumenFilterPill(
                           focusNode: _filterNode(0),
@@ -410,11 +411,10 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                                 .toInt();
                             return GridView.builder(
                               controller: _gridScroll,
-                              padding: const EdgeInsets.fromLTRB(
-                                18,
-                                8,
-                                18,
-                                120,
+                              padding: pageInsets(
+                                context,
+                                top: 12,
+                                bottom: pageScrollBottom(context),
                               ),
                               gridDelegate:
                                   const SliverGridDelegateWithMaxCrossAxisExtent(

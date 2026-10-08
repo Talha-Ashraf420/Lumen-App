@@ -8,6 +8,7 @@ import 'package:lumen_tv/screens/viewer_picker_screen.dart';
 import 'package:lumen_tv/stats.dart';
 import 'package:lumen_tv/store.dart';
 import 'package:lumen_tv/viewing_profiles.dart';
+import 'package:lumen_tv/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const _service = XtreamCredentials(
@@ -153,6 +154,8 @@ void main() {
     await tester.pump();
     expect(find.text('Who’s watching?'), findsOneWidget);
     expect(find.text('Sam'), findsOneWidget);
+    expect(find.byType(LumenAvatar), findsNWidgets(2));
+    expect(find.text('S'), findsNothing);
     Focus.of(tester.element(find.text('Sam'))).requestFocus();
     await tester.pump();
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);

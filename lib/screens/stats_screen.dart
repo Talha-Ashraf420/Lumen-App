@@ -110,7 +110,7 @@ class _StatsScreenState extends State<StatsScreen> {
                                   'Watch something in Lumen and this space will quietly map your week, formats and favourite collections.',
                             )
                           : SingleChildScrollView(
-                              padding: const EdgeInsets.fromLTRB(20, 0, 20, 48),
+                              padding: pageInsets(context, top: 0, bottom: 48),
                               child: Center(
                                 child: ConstrainedBox(
                                   constraints: const BoxConstraints(

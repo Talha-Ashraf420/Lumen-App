@@ -972,6 +972,13 @@ class SearchScreenState extends State<SearchScreen>
   /// load and makes the expected TV path explicit: Up/Down browses categories,
   /// Right enters the movie, series or channel grid.
   void focusCatalogEntry() {
+    // Compact browse pages use a dropdown, not mounted category rows. Enter
+    // that real control so the old Search keyboard/rail focus cannot survive
+    // a tab switch and be restored when its category popup closes.
+    if (!isWide(context)) {
+      _categoryButtonFocus.requestFocus();
+      return;
+    }
     _requestVisibleCategoryFocus();
   }
 
@@ -1590,7 +1597,7 @@ class SearchScreenState extends State<SearchScreen>
                 )
               else ...[
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  padding: pageInsets(context, top: 0, bottom: 0),
                   child: _catButton(),
                 ),
                 const SizedBox(height: 8),
@@ -1600,7 +1607,7 @@ class SearchScreenState extends State<SearchScreen>
           )
         : Column(
             children: [
-              const SizedBox(height: 8),
+              const SizedBox(height: 24),
               _searchControls(),
               const SizedBox(height: 8),
               Expanded(child: _body()),
@@ -1618,7 +1625,7 @@ class SearchScreenState extends State<SearchScreen>
     // own back/title context, so only those surfaces render a catalog title.
     final showTitle = canBack || !widget.shellOwnsTitle || !isWide(context);
     return Padding(
-      padding: EdgeInsets.fromLTRB(canBack ? 4 : 18, 8, 16, 0),
+      padding: pageInsets(context, top: 14, bottom: 0),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
@@ -1637,11 +1644,7 @@ class SearchScreenState extends State<SearchScreen>
                     widget.initialCategoryName ?? _sectionTitle,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 30,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -0.6,
-                    ),
+                    style: kPageTitle(),
                   )
                 : const SizedBox.shrink(),
           ),
@@ -1701,7 +1704,7 @@ class SearchScreenState extends State<SearchScreen>
 
         if (roomy) {
           return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 18),
+            padding: pageInsets(context, top: 0, bottom: 0),
             child: Row(
               children: [
                 Expanded(child: _searchField()),
@@ -1726,7 +1729,7 @@ class SearchScreenState extends State<SearchScreen>
         }
 
         return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          padding: pageInsets(context, top: 0, bottom: 0),
           child: Column(
             children: [
               _searchField(),
@@ -1819,7 +1822,7 @@ class SearchScreenState extends State<SearchScreen>
               child: Text(
                 items[i].label,
                 style: TextStyle(
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w500,
                   fontSize: 13,
                   color: sel ? onAccent : muted,
                 ),
@@ -1879,21 +1882,27 @@ class SearchScreenState extends State<SearchScreen>
             for (final source in _sources) _sourceItem(source.$1, source.$2),
           ],
           child: AnimatedScale(
-            scale: _sourceFocus.hasFocus ? activeFocusStyle.scale : 1,
+            scale: (lumenShowsNavigationFocus && _sourceFocus.hasFocus)
+                ? activeFocusStyle.scale
+                : 1,
             duration: const Duration(milliseconds: 130),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 130),
               padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
               decoration: BoxDecoration(
-                color: _sourceFocus.hasFocus
+                color: (lumenShowsNavigationFocus && _sourceFocus.hasFocus)
                     ? accent.withValues(alpha: .22)
                     : surfaceHi.withValues(alpha: .6),
                 borderRadius: BorderRadius.circular(lumenCorner(13)),
                 border: Border.all(
-                  color: _sourceFocus.hasFocus ? accentInk : line,
-                  width: _sourceFocus.hasFocus ? activeFocusStyle.ringWidth : 1,
+                  color: (lumenShowsNavigationFocus && _sourceFocus.hasFocus)
+                      ? accentInk
+                      : line,
+                  width: (lumenShowsNavigationFocus && _sourceFocus.hasFocus)
+                      ? activeFocusStyle.ringWidth
+                      : 1,
                 ),
-                boxShadow: _sourceFocus.hasFocus
+                boxShadow: (lumenShowsNavigationFocus && _sourceFocus.hasFocus)
                     ? lumenFocusShadows(accentInk)
                     : null,
               ),
@@ -1910,7 +1919,7 @@ class SearchScreenState extends State<SearchScreen>
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w500,
                           fontSize: 13,
                         ),
                       ),
@@ -1944,7 +1953,7 @@ class SearchScreenState extends State<SearchScreen>
                 style: TextStyle(
                   color: textHi,
                   fontWeight: _sourceScope == value
-                      ? FontWeight.w800
+                      ? FontWeight.w600
                       : FontWeight.w600,
                 ),
               ),
@@ -2006,7 +2015,7 @@ class SearchScreenState extends State<SearchScreen>
                       e.value,
                       style: TextStyle(
                         fontWeight: _sort == e.key
-                            ? FontWeight.w800
+                            ? FontWeight.w600
                             : FontWeight.w600,
                         color: textHi,
                       ),
@@ -2016,21 +2025,27 @@ class SearchScreenState extends State<SearchScreen>
               ),
           ],
           child: AnimatedScale(
-            scale: _sortFocus.hasFocus ? activeFocusStyle.scale : 1,
+            scale: (lumenShowsNavigationFocus && _sortFocus.hasFocus)
+                ? activeFocusStyle.scale
+                : 1,
             duration: const Duration(milliseconds: 130),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 130),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
               decoration: BoxDecoration(
-                color: _sortFocus.hasFocus
+                color: (lumenShowsNavigationFocus && _sortFocus.hasFocus)
                     ? accent.withValues(alpha: .22)
                     : surfaceHi.withValues(alpha: 0.6),
                 borderRadius: BorderRadius.circular(lumenCorner(13)),
                 border: Border.all(
-                  color: _sortFocus.hasFocus ? accentInk : line,
-                  width: _sortFocus.hasFocus ? activeFocusStyle.ringWidth : 1,
+                  color: (lumenShowsNavigationFocus && _sortFocus.hasFocus)
+                      ? accentInk
+                      : line,
+                  width: (lumenShowsNavigationFocus && _sortFocus.hasFocus)
+                      ? activeFocusStyle.ringWidth
+                      : 1,
                 ),
-                boxShadow: _sortFocus.hasFocus
+                boxShadow: (lumenShowsNavigationFocus && _sortFocus.hasFocus)
                     ? lumenFocusShadows(accentInk)
                     : null,
               ),
@@ -2044,9 +2059,11 @@ class SearchScreenState extends State<SearchScreen>
                   ),
                   const SizedBox(width: 6),
                   Text(
-                    _sort == 'default' ? 'Sort' : _sortLabels[_sort]!,
+                    !isWide(context) || _sort == 'default'
+                        ? 'Sort'
+                        : _sortLabels[_sort]!,
                     style: TextStyle(
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w500,
                       fontSize: 13,
                       color: _sort == 'default' ? textHi : accentInk,
                     ),
@@ -2096,22 +2113,32 @@ class SearchScreenState extends State<SearchScreen>
             for (final c in _curCats) _catItem(c.id, c.name),
           ],
           child: AnimatedScale(
-            scale: _categoryButtonFocus.hasFocus ? activeFocusStyle.scale : 1,
+            scale: (lumenShowsNavigationFocus && _categoryButtonFocus.hasFocus)
+                ? activeFocusStyle.scale
+                : 1,
             duration: const Duration(milliseconds: 130),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
-                color: _categoryButtonFocus.hasFocus
+                color:
+                    (lumenShowsNavigationFocus && _categoryButtonFocus.hasFocus)
                     ? accent.withValues(alpha: .22)
                     : surfaceHi.withValues(alpha: 0.6),
                 borderRadius: BorderRadius.circular(lumenCorner(13)),
                 border: Border.all(
-                  color: _categoryButtonFocus.hasFocus ? accentInk : line,
-                  width: _categoryButtonFocus.hasFocus
+                  color:
+                      (lumenShowsNavigationFocus &&
+                          _categoryButtonFocus.hasFocus)
+                      ? accentInk
+                      : line,
+                  width:
+                      (lumenShowsNavigationFocus &&
+                          _categoryButtonFocus.hasFocus)
                       ? activeFocusStyle.ringWidth
                       : 1,
                 ),
-                boxShadow: _categoryButtonFocus.hasFocus
+                boxShadow:
+                    (lumenShowsNavigationFocus && _categoryButtonFocus.hasFocus)
                     ? lumenFocusShadows(accentInk)
                     : null,
               ),
@@ -2125,7 +2152,7 @@ class SearchScreenState extends State<SearchScreen>
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w500,
                         fontSize: 13,
                       ),
                     ),
@@ -2157,7 +2184,7 @@ class SearchScreenState extends State<SearchScreen>
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                fontWeight: sel ? FontWeight.w800 : FontWeight.w600,
+                fontWeight: sel ? FontWeight.w600 : FontWeight.w600,
                 color: sel ? textHi : muted,
               ),
             ),
@@ -2250,7 +2277,7 @@ class SearchScreenState extends State<SearchScreen>
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontWeight: sel ? FontWeight.w800 : FontWeight.w600,
+                  fontWeight: sel ? FontWeight.w600 : FontWeight.w600,
                   fontSize: 14,
                   color: sel ? textHi : muted,
                 ),
@@ -2337,7 +2364,7 @@ class SearchScreenState extends State<SearchScreen>
       }
       _resumePendingSearchFocus();
       return ListView(
-        padding: const EdgeInsets.only(top: 8, bottom: 120),
+        padding: EdgeInsets.only(top: 12, bottom: pageScrollBottom(context)),
         children: [
           if (movies == null)
             _loadingSearchGroup('Movies', live: false)
@@ -2417,7 +2444,10 @@ class SearchScreenState extends State<SearchScreen>
           tile: live ? 150 : 136,
         );
         final tileWidth =
-            (constraints.maxWidth - 32 - ((columns - 1) * 13)) / columns;
+            (constraints.maxWidth -
+                2 * pageGutter(context) -
+                ((columns - 1) * 13)) /
+            columns;
         final rowExtent = tileWidth / (live ? 0.70 : 0.66) + 20;
         _gridColumns = columns;
         _gridRowExtent = rowExtent;
@@ -2455,7 +2485,11 @@ class SearchScreenState extends State<SearchScreen>
                   'catalog:${widget.client.catalogScope}:'
                   '$_section:$catId:$_sort:$q',
                 ),
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
+                padding: pageInsets(
+                  context,
+                  top: 12,
+                  bottom: pageScrollBottom(context),
+                ),
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: columns,
                   // A channel tile is square artwork plus its label. At three
@@ -2556,10 +2590,10 @@ class SearchScreenState extends State<SearchScreen>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(18, 18, 16, 12),
+          padding: pageInsets(context, top: 18, bottom: 12),
           child: Text(
             '$title  ·  ${items.length}',
-            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
           ),
         ),
         SizedBox(
@@ -2567,7 +2601,7 @@ class SearchScreenState extends State<SearchScreen>
           child: ListView.separated(
             controller: _searchShelfScroll[id],
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+            padding: pageInsets(context, top: 0, bottom: 0),
             itemCount: items.length,
             separatorBuilder: (_, __) => const SizedBox(width: 14),
             itemBuilder: (_, i) => SizedBox(
@@ -2623,12 +2657,12 @@ class SearchScreenState extends State<SearchScreen>
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
       Padding(
-        padding: const EdgeInsets.fromLTRB(18, 18, 16, 12),
+        padding: pageInsets(context, top: 18, bottom: 12),
         child: Row(
           children: [
             Text(
               title,
-              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
             ),
             const SizedBox(width: 10),
             SizedBox(

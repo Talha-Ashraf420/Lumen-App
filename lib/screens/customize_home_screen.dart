@@ -114,7 +114,7 @@ class _CustomizeHomeScreenState extends State<CustomizeHomeScreen> {
                 ),
                 Expanded(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                    padding: pageInsets(context, top: 0),
                     child: wide
                         ? Row(
                             crossAxisAlignment: CrossAxisAlignment.stretch,

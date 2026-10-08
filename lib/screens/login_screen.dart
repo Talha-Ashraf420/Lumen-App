@@ -499,7 +499,7 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
           Center(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
+              padding: pageInsets(context),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 1080),
                 child: wide

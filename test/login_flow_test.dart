@@ -345,6 +345,8 @@ void main() {
   testWidgets('TV submit has an unmistakable high-contrast focus treatment', (
     tester,
   ) async {
+    DeviceProfile.isTelevision = true;
+    addTearDown(() => DeviceProfile.isTelevision = false);
     await pumpLogin(tester, clientFactory: _SuccessfulLoginClient.new);
 
     final submitFinder = find.byKey(const ValueKey('login-submit'));

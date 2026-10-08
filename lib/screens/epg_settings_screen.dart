@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../epg_repository.dart';
 import '../epg_settings.dart';
 import '../theme.dart';
+import '../responsive.dart';
 import '../widgets.dart';
 import '../xtream.dart';
 import 'epg_channel_mapping_screen.dart';
@@ -151,7 +152,6 @@ class _EpgSettingsScreenState extends State<EpgSettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final compact = MediaQuery.sizeOf(context).width < 760;
     return Scaffold(
       backgroundColor: bg,
       body: Stack(
@@ -168,9 +168,9 @@ class _EpgSettingsScreenState extends State<EpgSettingsScreen> {
                         )
                       : SingleChildScrollView(
                           padding: EdgeInsets.fromLTRB(
-                            compact ? 16 : 24,
+                            pageGutter(context),
                             4,
-                            compact ? 16 : 24,
+                            pageGutter(context),
                             40,
                           ),
                           child: Center(
@@ -200,7 +200,7 @@ class _EpgSettingsScreenState extends State<EpgSettingsScreen> {
   }
 
   Widget _header() => Padding(
-    padding: const EdgeInsets.fromLTRB(14, 10, 18, 12),
+    padding: pageInsets(context, bottom: 20),
     child: Row(
       children: [
         LumenBackButton(onTap: () => Navigator.of(context).maybePop()),

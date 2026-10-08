@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import '../catalog_cache.dart';
 import '../device_profile.dart';
 import '../downloads.dart';
@@ -14,6 +13,7 @@ import '../updater.dart';
 import '../responsive.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import '../viewing_profiles.dart';
 import '../xtream.dart';
 import 'downloads_screen.dart';
 import 'guide_tab_screen.dart';
@@ -597,14 +597,14 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     setState(() => _index = i);
     if (!focusContent) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _dockFocusNodes[i]?.requestFocus();
+        if (mounted && _index == i) _dockFocusNodes[i]?.requestFocus();
       });
     }
     if (focusContent && i != 0) {
       _focusPageContent(i);
     } else if (i == 0) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _dockFocusNodes[0]!.requestFocus();
+        if (mounted && _index == 0) _dockFocusNodes[0]!.requestFocus();
       });
     }
   }
@@ -612,7 +612,11 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   void _selectDockAfterFocusSettles(int page) {
     // Focus callbacks run outside build, so cached destinations can switch
     // immediately without the old debounce or an additional frame of latency.
-    if (!mounted || !(_dockFocusNodes[page]?.hasFocus ?? false)) return;
+    if (DeviceProfile.isMobileApp ||
+        !mounted ||
+        !(_dockFocusNodes[page]?.hasFocus ?? false)) {
+      return;
+    }
     _select(page, focusContent: false);
   }
 
@@ -758,8 +762,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         ),
         if (_index == 0)
           Positioned(
-            top: 4,
-            right: 16,
+            top: 12,
+            right: pageGutter(context),
             child: SafeArea(bottom: false, child: _mobileUtilityButton()),
           ),
         Align(
@@ -768,27 +772,73 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
             top: false,
             // Draw the page edge-to-edge, but keep every navigation target
             // above Android's gesture handle or three-button navigation bar.
-            minimum: const EdgeInsets.fromLTRB(16, 0, 16, 22),
-            child:
-                Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 7,
-                        vertical: 7,
-                      ),
-                      decoration: BoxDecoration(
-                        color: surface.withValues(alpha: 0.96),
-                        borderRadius: BorderRadius.circular(lumenCorner(24)),
-                        border: Border.all(color: line),
-                        boxShadow: glow(Colors.black, blur: 26, y: 12),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [for (final nav in _mobileDock) _item(nav)],
-                      ),
-                    )
-                    .animate()
-                    .fadeIn(delay: 150.ms)
-                    .slideY(begin: 0.6, end: 0, curve: Curves.easeOutBack),
+            minimum: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 480),
+              child: Container(
+                key: const ValueKey('mobile-navigation'),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [surfaceHi, surface],
+                  ),
+                  borderRadius: BorderRadius.circular(lumenCorner(26)),
+                  border: Border.all(color: line),
+                  boxShadow: glow(Colors.black, blur: 24, y: 8),
+                ),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final destinations = _mobileDock;
+                    final selected = destinations.indexWhere(
+                      (nav) => nav.page == _index,
+                    );
+                    final slot = constraints.maxWidth / destinations.length;
+                    final indicatorWidth = (slot - 8).clamp(32.0, 58.0);
+                    return Stack(
+                      children: [
+                        if (selected >= 0)
+                          AnimatedPositionedDirectional(
+                            key: const ValueKey('mobile-tab-indicator'),
+                            duration: lumenMotionDuration(
+                              context,
+                              const Duration(milliseconds: 260),
+                            ),
+                            curve: Curves.easeOutCubic,
+                            start:
+                                selected * slot + (slot - indicatorWidth) / 2,
+                            top: 2,
+                            width: indicatorWidth,
+                            height: 36,
+                            child: IgnorePointer(
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  color: accentInk.withValues(
+                                    alpha: isDark ? .17 : .11,
+                                  ),
+                                  borderRadius: BorderRadius.circular(
+                                    lumenCorner(16),
+                                  ),
+                                  border: Border.all(
+                                    color: accentInk.withValues(alpha: .22),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        Row(
+                          children: [
+                            for (final nav in destinations)
+                              Expanded(child: _item(nav)),
+                          ],
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ),
           ),
         ),
       ],
@@ -808,8 +858,6 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   ];
 
   Widget _mobileUtilityButton() {
-    final username = widget.client.creds.username.trim();
-    final initial = username.isEmpty ? 'L' : username[0].toUpperCase();
     return Tooltip(
       message: 'You & library',
       child: RemoteTap(
@@ -820,34 +868,18 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           height: 50,
           decoration: BoxDecoration(
             color: surface.withValues(alpha: 0.96),
-            borderRadius: BorderRadius.circular(lumenCorner(17)),
-            border: Border.all(color: line),
+            shape: BoxShape.circle,
             boxShadow: glow(Colors.black, blur: 16, y: 6),
           ),
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              Text(
-                initial,
-                style: TextStyle(
-                  color: textHi,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 16,
-                ),
+          child: Padding(
+            padding: const EdgeInsets.all(4),
+            child: AnimatedBuilder(
+              animation: ViewingProfiles.instance,
+              builder: (_, _) => LumenAvatar(
+                seed: ViewingProfiles.instance.activeId,
+                size: 42,
               ),
-              Positioned(
-                right: 7,
-                bottom: 7,
-                child: Container(
-                  width: 6,
-                  height: 6,
-                  decoration: BoxDecoration(
-                    color: accentInk,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
@@ -869,46 +901,72 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
 
   Widget _item(_Nav nav) {
     final sel = nav.page == _index;
-    return Tooltip(
-      message: nav.label,
-      child: RemoteTap(
-        focusNode: _dockFocusNodes[nav.page],
-        semanticLabel: nav.label,
-        onFocusChange: (focused) {
-          if (focused && !sel) _select(nav.page);
-        },
-        behavior: HitTestBehavior.opaque,
-        onTap: () => _select(nav.page),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 280),
-          curve: Curves.easeOut,
-          margin: const EdgeInsets.symmetric(horizontal: 2),
-          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
-          decoration: BoxDecoration(
-            color: sel
-                ? accentInk.withValues(alpha: isDark ? 0.12 : 0.09)
-                : null,
-            borderRadius: BorderRadius.circular(lumenCorner(17)),
-            border: sel
-                ? Border.all(
-                    color: accentInk.withValues(alpha: isDark ? 0.28 : 0.42),
-                  )
-                : null,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(nav.icon, size: 20, color: sel ? accentInk : muted),
-              const SizedBox(height: 3),
-              Text(
-                nav.label,
-                style: TextStyle(
-                  fontWeight: sel ? FontWeight.w700 : FontWeight.w500,
-                  color: sel ? textHi : subtle,
-                  fontSize: 9.5,
+    final idleIcon = switch (nav.page) {
+      0 => Icons.home_outlined,
+      4 => Icons.movie_outlined,
+      5 => Icons.video_library_outlined,
+      _ => nav.icon,
+    };
+    final selectedIcon = switch (nav.page) {
+      4 => Icons.movie_rounded,
+      5 => Icons.video_library_rounded,
+      _ => nav.icon,
+    };
+    return Semantics(
+      key: ValueKey('mobile-tab-${nav.page}'),
+      selected: sel,
+      child: Tooltip(
+        message: nav.label,
+        child: RemoteTap(
+          focusNode: _dockFocusNodes[nav.page],
+          semanticLabel: nav.label,
+          focusRadius: 17,
+          respectFocusHighlightMode: true,
+          // Route/menu focus restoration is not a touch navigation command.
+          // Keep focus-to-select only for a narrow desktop/TV rail; on phones
+          // a tap (or explicit keyboard activation) owns the active destination.
+          onFocusChange: (focused) {
+            if (!DeviceProfile.isMobileApp && focused && !sel) {
+              _select(nav.page);
+            }
+          },
+          behavior: HitTestBehavior.opaque,
+          onTap: () => _select(nav.page),
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 62),
+            padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  height: 36,
+                  child: Center(
+                    child: AnimatedSwitcher(
+                      duration: lumenMotionDuration(context, lumenMotionFast),
+                      child: Icon(
+                        sel ? selectedIcon : idleIcon,
+                        key: ValueKey('$sel:${nav.page}'),
+                        size: 23,
+                        color: sel ? accentInk : muted,
+                      ),
+                    ),
+                  ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 3),
+                AnimatedDefaultTextStyle(
+                  duration: lumenMotionDuration(context, lumenMotionFast),
+                  style: Theme.of(context).textTheme.labelSmall!.copyWith(
+                    fontWeight: sel ? FontWeight.w500 : FontWeight.w500,
+                    color: sel ? textHi : muted,
+                  ),
+                  child: Text(
+                    nav.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -954,23 +1012,7 @@ class _MobileUtilityHub extends StatelessWidget {
             const SizedBox(height: 18),
             Row(
               children: [
-                Container(
-                  width: 42,
-                  height: 42,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: accent,
-                    borderRadius: BorderRadius.circular(lumenCorner(14)),
-                  ),
-                  child: Text(
-                    account.isEmpty ? 'L' : account[0].toUpperCase(),
-                    style: TextStyle(
-                      color: onAccent,
-                      fontSize: 17,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
+                LumenAvatar(seed: ViewingProfiles.instance.activeId, size: 42),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -1004,7 +1046,7 @@ class _MobileUtilityHub extends StatelessWidget {
                 color: subtle,
                 fontSize: 10,
                 letterSpacing: 1.7,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w600,
               ),
             ),
             const SizedBox(height: 10),
@@ -1105,7 +1147,7 @@ class _MobileUtilityDestination extends StatelessWidget {
         style: TextStyle(
           color: textHi,
           fontSize: 13,
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w500,
         ),
       ),
       const SizedBox(height: 2),
@@ -1507,7 +1549,7 @@ class _CommandBar extends StatelessWidget {
         border: Border(bottom: BorderSide(color: line)),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24),
+        padding: pageInsets(context, top: 0, bottom: 0),
         child: Row(
           children: [
             Text(
@@ -1564,7 +1606,7 @@ class _CommandBar extends StatelessWidget {
                           style: TextStyle(
                             color: muted,
                             fontSize: 10,
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
                       ),
@@ -1625,10 +1667,15 @@ class _CommandBar extends StatelessWidget {
                   borderRadius: BorderRadius.circular(lumenCorner(13)),
                   border: Border.all(color: active ? accent : lineStrong),
                 ),
-                child: Icon(
-                  Icons.person_outline_rounded,
-                  size: 19,
-                  color: active ? onAccent : textHi,
+                child: Padding(
+                  padding: const EdgeInsets.all(4),
+                  child: AnimatedBuilder(
+                    animation: ViewingProfiles.instance,
+                    builder: (_, _) => LumenAvatar(
+                      seed: ViewingProfiles.instance.activeId,
+                      size: 32,
+                    ),
+                  ),
                 ),
               ),
             ),

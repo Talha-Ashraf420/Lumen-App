@@ -330,9 +330,9 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
   Widget _episodeSliver(List<Episode> episodes, SeriesInfo info) {
     return SliverPadding(
       padding: EdgeInsets.fromLTRB(
-        isWide(context) ? 34 : 16,
+        pageGutter(context),
         8,
-        isWide(context) ? 34 : 16,
+        pageGutter(context),
         0,
       ),
       sliver: SliverLayoutBuilder(
@@ -435,55 +435,64 @@ class _SeriesHero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final wide = isWide(context);
-    return SizedBox(
-      height: wide ? 540 : 570,
+    return ConstrainedBox(
+      // Let larger type and wrapped actions grow the hero instead of clipping
+      // metadata inside a fixed-height phone banner.
+      constraints: BoxConstraints(minHeight: wide ? 540 : 570),
       child: Stack(
-        fit: StackFit.expand,
         children: [
-          DetailBackdropPlaceholder(
-            icon: Icons.video_library_rounded,
-            loading: loading && backdrop.isEmpty,
+          Positioned.fill(
+            child: DetailBackdropPlaceholder(
+              icon: Icons.video_library_rounded,
+              loading: loading && backdrop.isEmpty,
+            ),
           ),
           if (backdrop.isNotEmpty)
-            MediaImage(
-              source: backdrop,
-              fit: BoxFit.cover,
-              memCacheWidth: wide ? 1800 : 900,
-              placeholder: const DetailBackdropPlaceholder(
-                icon: Icons.video_library_rounded,
-                loading: true,
-              ),
-              error: const DetailBackdropPlaceholder(
-                icon: Icons.video_library_rounded,
+            Positioned.fill(
+              child: MediaImage(
+                source: backdrop,
+                fit: BoxFit.cover,
+                memCacheWidth: wide ? 1800 : 900,
+                placeholder: const DetailBackdropPlaceholder(
+                  icon: Icons.video_library_rounded,
+                  loading: true,
+                ),
+                error: const DetailBackdropPlaceholder(
+                  icon: Icons.video_library_rounded,
+                ),
               ),
             ),
-          DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: wide ? Alignment.centerLeft : Alignment.topCenter,
-                end: wide ? Alignment.centerRight : Alignment.bottomCenter,
-                colors: wide
-                    ? [
-                        bg.withValues(alpha: .98),
-                        bg.withValues(alpha: .76),
-                        bg.withValues(alpha: .20),
-                      ]
-                    : [
-                        Colors.black.withValues(alpha: .12),
-                        bg.withValues(alpha: .56),
-                        bg,
-                      ],
-                stops: wide ? const [0, .52, 1] : const [0, .48, .80],
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: wide ? Alignment.centerLeft : Alignment.topCenter,
+                  end: wide ? Alignment.centerRight : Alignment.bottomCenter,
+                  colors: wide
+                      ? [
+                          bg.withValues(alpha: .98),
+                          bg.withValues(alpha: .76),
+                          bg.withValues(alpha: .20),
+                        ]
+                      : [
+                          Colors.black.withValues(alpha: .12),
+                          bg.withValues(alpha: .56),
+                          bg,
+                        ],
+                  stops: wide ? const [0, .52, 1] : const [0, .48, .80],
+                ),
               ),
             ),
           ),
-          DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Colors.transparent, bg],
-                stops: const [.72, 1],
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Colors.transparent, bg],
+                  stops: const [.72, 1],
+                ),
               ),
             ),
           ),
@@ -493,9 +502,9 @@ class _SeriesHero extends StatelessWidget {
                 constraints: const BoxConstraints(maxWidth: 1180),
                 child: Padding(
                   padding: EdgeInsets.fromLTRB(
-                    wide ? 42 : 20,
+                    pageGutter(context),
                     wide ? 86 : 238,
-                    wide ? 42 : 20,
+                    pageGutter(context),
                     wide ? 42 : 18,
                   ),
                   child: Row(
@@ -533,7 +542,7 @@ class _SeriesHero extends StatelessWidget {
                                 fontSize: wide ? 52 : 33,
                                 height: .98,
                                 letterSpacing: wide ? -2.2 : -1.1,
-                                fontWeight: FontWeight.w800,
+                                fontWeight: FontWeight.w600,
                               ),
                             ).animate().fadeIn(duration: 320.ms),
                             const SizedBox(height: 15),
@@ -678,7 +687,7 @@ class _SeriesFact extends StatelessWidget {
         style: TextStyle(
           color: color ?? muted,
           fontSize: 13,
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w500,
         ),
       ),
     ],
@@ -727,7 +736,7 @@ class _SeriesAction extends StatelessWidget {
                 label,
                 style: TextStyle(
                   color: foreground,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w600,
                   fontSize: 13.5,
                 ),
               ),
@@ -758,9 +767,9 @@ class _SeasonNavigator extends StatelessWidget {
       constraints: const BoxConstraints(maxWidth: 1180),
       child: Padding(
         padding: EdgeInsets.fromLTRB(
-          isWide(context) ? 34 : 16,
+          pageGutter(context),
           22,
-          isWide(context) ? 34 : 16,
+          pageGutter(context),
           12,
         ),
         child: Column(
@@ -787,7 +796,7 @@ class _SeasonNavigator extends StatelessWidget {
                     color: accent.withValues(alpha: .22),
                     fontSize: 52,
                     height: .8,
-                    fontWeight: FontWeight.w900,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ],
@@ -974,7 +983,7 @@ class _EpisodeChapter extends StatelessWidget {
                               style: const TextStyle(
                                 fontSize: 15,
                                 height: 1.22,
-                                fontWeight: FontWeight.w700,
+                                fontWeight: FontWeight.w500,
                               ),
                             ),
                             if (progress != null) ...[
@@ -1103,7 +1112,7 @@ class _EpisodeFallback extends StatelessWidget {
         style: TextStyle(
           color: accent.withValues(alpha: .38),
           fontSize: 46,
-          fontWeight: FontWeight.w900,
+          fontWeight: FontWeight.w600,
         ),
       ),
     ),
@@ -1119,9 +1128,9 @@ class _EpisodeLoading extends StatelessWidget {
       constraints: const BoxConstraints(maxWidth: 1180),
       child: Padding(
         padding: EdgeInsets.fromLTRB(
-          isWide(context) ? 34 : 16,
+          pageGutter(context),
           26,
-          isWide(context) ? 34 : 16,
+          pageGutter(context),
           50,
         ),
         child: Column(

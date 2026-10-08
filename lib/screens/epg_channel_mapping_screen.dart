@@ -8,6 +8,7 @@ import '../epg_repository.dart';
 import '../models.dart';
 import '../store.dart';
 import '../theme.dart';
+import '../responsive.dart';
 import '../widgets.dart';
 import '../xtream.dart';
 
@@ -187,7 +188,7 @@ class _EpgChannelMappingScreenState extends State<EpgChannelMappingScreen> {
               children: [
                 _header(),
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 2, 18, 12),
+                  padding: pageInsets(context, top: 2, bottom: 12),
                   child: LayoutBuilder(
                     builder: (context, constraints) {
                       final compact = constraints.maxWidth < 680;
@@ -202,6 +203,7 @@ class _EpgChannelMappingScreenState extends State<EpgChannelMappingScreen> {
                         ),
                       );
                       final filter = DropdownButtonFormField<String>(
+                        isExpanded: true,
                         initialValue: _filter,
                         decoration: const InputDecoration(labelText: 'Show'),
                         items: const [
@@ -251,7 +253,7 @@ class _EpgChannelMappingScreenState extends State<EpgChannelMappingScreen> {
   }
 
   Widget _header() => Padding(
-    padding: const EdgeInsets.fromLTRB(14, 10, 18, 12),
+    padding: pageInsets(context, bottom: 20),
     child: Row(
       children: [
         LumenBackButton(onTap: () => Navigator.of(context).maybePop()),
@@ -308,7 +310,7 @@ class _EpgChannelMappingScreenState extends State<EpgChannelMappingScreen> {
     }
     return ListView.builder(
       controller: _scroll,
-      padding: const EdgeInsets.fromLTRB(18, 0, 18, 36),
+      padding: pageInsets(context, top: 0, bottom: 36),
       itemCount: visible.length + (_loadingChannels ? 1 : 0),
       itemBuilder: (context, index) {
         if (index == visible.length) {
@@ -504,7 +506,7 @@ class _EpgChannelPickerScreenState extends State<_EpgChannelPickerScreen> {
             child: Column(
               children: [
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 10, 18, 12),
+                  padding: pageInsets(context, bottom: 20),
                   child: Row(
                     children: [
                       LumenBackButton(
@@ -535,7 +537,7 @@ class _EpgChannelPickerScreenState extends State<_EpgChannelPickerScreen> {
                   ),
                 ),
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 2, 18, 12),
+                  padding: pageInsets(context, top: 2, bottom: 12),
                   child: Column(
                     children: [
                       DropdownButtonFormField<String>(
@@ -574,7 +576,7 @@ class _EpgChannelPickerScreenState extends State<_EpgChannelPickerScreen> {
                   ),
                 ),
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 0, 18, 10),
+                  padding: pageInsets(context, top: 0, bottom: 10),
                   child: SizedBox(
                     width: double.infinity,
                     child: OutlinedButton.icon(
@@ -593,7 +595,7 @@ class _EpgChannelPickerScreenState extends State<_EpgChannelPickerScreen> {
                           ),
                         )
                       : ListView.builder(
-                          padding: const EdgeInsets.fromLTRB(18, 0, 18, 36),
+                          padding: pageInsets(context, top: 0, bottom: 36),
                           itemCount: channels.length,
                           itemBuilder: (context, index) {
                             final channel = channels[index];

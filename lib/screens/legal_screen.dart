@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../legal.dart';
+import '../responsive.dart';
 import '../theme.dart';
 import '../widgets.dart';
 
@@ -29,7 +30,7 @@ class _LegalWelcomeScreenState extends State<LegalWelcomeScreen> {
           SafeArea(
             child: Center(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.all(24),
+                padding: pageInsets(context),
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 520),
                   child: Glass(
@@ -150,7 +151,7 @@ class LegalScreen extends StatelessWidget {
                           ? (contentWidth - 14) / 2
                           : double.infinity;
                       return ListView(
-                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 48),
+                        padding: pageInsets(context, top: 0, bottom: 48),
                         children: [
                           Center(
                             child: ConstrainedBox(

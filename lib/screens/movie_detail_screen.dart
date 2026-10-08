@@ -232,9 +232,9 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                       constraints: const BoxConstraints(maxWidth: 1180),
                       child: Padding(
                         padding: EdgeInsets.fromLTRB(
-                          wide ? 42 : 20,
+                          pageGutter(context),
                           wide ? 34 : 24,
-                          wide ? 42 : 20,
+                          pageGutter(context),
                           wide ? 80 : 54,
                         ),
                         child: _EditorialDetails(
@@ -430,10 +430,10 @@ class _CinematicHero extends StatelessWidget {
                   width: MediaQuery.sizeOf(context).width,
                   child: Padding(
                     padding: EdgeInsets.fromLTRB(
-                      wide ? 42 : 20,
+                      pageGutter(context),
                       wide ? 86 : 224,
-                      wide ? 42 : 20,
-                      wide ? 42 : 20,
+                      pageGutter(context),
+                      pageGutter(context),
                     ),
                     child: wide
                         ? Row(
@@ -557,7 +557,7 @@ class _HeroCopy extends StatelessWidget {
             fontSize: wide ? 56 : 34,
             height: .96,
             letterSpacing: wide ? -2.5 : -1.2,
-            fontWeight: FontWeight.w800,
+            fontWeight: FontWeight.w600,
           ),
         ).animate().fadeIn(duration: 320.ms).slideY(begin: .06, end: 0),
         const SizedBox(height: 16),
@@ -689,7 +689,7 @@ class _Fact extends StatelessWidget {
             style: TextStyle(
               color: color ?? textHi,
               fontSize: 12.5,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w500,
             ),
           ),
         ),
@@ -728,7 +728,7 @@ class _PrimaryPlay extends StatelessWidget {
                 label,
                 style: TextStyle(
                   color: onAccent,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w600,
                   fontSize: 15,
                 ),
               ),
@@ -807,7 +807,7 @@ class _DetailAction extends StatelessWidget {
               label,
               style: TextStyle(
                 color: foreground,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w500,
                 fontSize: 13.5,
               ),
             ),

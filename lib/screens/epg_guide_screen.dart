@@ -600,7 +600,7 @@ class _EpgGuideScreenState extends State<EpgGuideScreen> {
   }
 
   Widget _toolbar() => Padding(
-    padding: EdgeInsets.fromLTRB(_isTv ? 38 : 14, 14, _isTv ? 38 : 14, 12),
+    padding: pageInsets(context, bottom: 20),
     child: Row(
       children: [
         if (widget.showBackButton) ...[
@@ -656,6 +656,7 @@ class _EpgGuideScreenState extends State<EpgGuideScreen> {
           focusNode: _refreshFocus,
           icon: Icons.refresh_rounded,
           label: 'Refresh',
+          compact: MediaQuery.sizeOf(context).width < 600,
           onTap: _refresh,
           onDown: () => _requestChannel(0),
         ),
@@ -665,6 +666,7 @@ class _EpgGuideScreenState extends State<EpgGuideScreen> {
           autofocus: _isTv && widget.showBackButton,
           icon: Icons.my_location_rounded,
           label: 'Now',
+          compact: MediaQuery.sizeOf(context).width < 600,
           onTap: _goNow,
           onDown: () => _requestChannel(0),
         ),
@@ -673,7 +675,7 @@ class _EpgGuideScreenState extends State<EpgGuideScreen> {
   );
 
   Widget _grid() => Padding(
-    padding: EdgeInsets.symmetric(horizontal: _isTv ? 38 : 14),
+    padding: pageInsets(context, top: 0, bottom: 0),
     child: ClipRRect(
       borderRadius: BorderRadius.circular(lumenCorner(16)),
       child: Stack(
@@ -816,7 +818,8 @@ class _EpgGuideScreenState extends State<EpgGuideScreen> {
         child: AnimatedBuilder(
           animation: _channelNode(row),
           builder: (_, _) {
-            final focused = _channelNode(row).hasFocus;
+            final focused =
+                (lumenShowsNavigationFocus && _channelNode(row).hasFocus);
             return Container(
               padding: const EdgeInsets.symmetric(horizontal: 12),
               decoration: BoxDecoration(
@@ -903,14 +906,18 @@ class _EpgGuideScreenState extends State<EpgGuideScreen> {
                 : surfaceHi.withValues(alpha: .72),
             borderRadius: BorderRadius.circular(lumenCorner(8)),
             border: Border.all(
-              color: node.hasFocus
+              color: (lumenShowsNavigationFocus && node.hasFocus)
                   ? accentInk
                   : airing
                   ? accent.withValues(alpha: .55)
                   : line,
-              width: node.hasFocus ? activeFocusStyle.ringWidth : 1,
+              width: (lumenShowsNavigationFocus && node.hasFocus)
+                  ? activeFocusStyle.ringWidth
+                  : 1,
             ),
-            boxShadow: node.hasFocus ? lumenFocusShadows(accentInk) : null,
+            boxShadow: (lumenShowsNavigationFocus && node.hasFocus)
+                ? lumenFocusShadows(accentInk)
+                : null,
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -948,9 +955,9 @@ class _EpgGuideScreenState extends State<EpgGuideScreen> {
     return Container(
       height: _isTv ? 104 : 88,
       margin: EdgeInsets.fromLTRB(
-        _isTv ? 38 : 14,
+        pageGutter(context),
         10,
-        _isTv ? 38 : 14,
+        pageGutter(context),
         _isTv ? 18 : 10,
       ),
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
@@ -1018,7 +1025,7 @@ class _EpgGuideScreenState extends State<EpgGuideScreen> {
   }
 
   Widget _agenda() => ListView.builder(
-    padding: const EdgeInsets.fromLTRB(14, 0, 14, 100),
+    padding: pageInsets(context, top: 0, bottom: pageScrollBottom(context)),
     itemCount: widget.channels.length,
     itemBuilder: (_, row) {
       final channel = widget.channels[row];
@@ -1177,6 +1184,7 @@ class _GuideAction extends StatelessWidget {
     required this.onTap,
     required this.onDown,
     this.autofocus = false,
+    this.compact = false,
   });
 
   final FocusNode focusNode;
@@ -1185,6 +1193,7 @@ class _GuideAction extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onDown;
   final bool autofocus;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) => RemoteTap(
@@ -1205,33 +1214,45 @@ class _GuideAction extends StatelessWidget {
       animation: focusNode,
       builder: (_, _) => AnimatedContainer(
         duration: const Duration(milliseconds: 120),
+        constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
         padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
         decoration: BoxDecoration(
-          color: focusNode.hasFocus ? accent.withValues(alpha: .2) : surface,
+          color: (lumenShowsNavigationFocus && focusNode.hasFocus)
+              ? accent.withValues(alpha: .2)
+              : surface,
           borderRadius: BorderRadius.circular(lumenCorner(11)),
           border: Border.all(
-            color: focusNode.hasFocus ? accentInk : line,
-            width: focusNode.hasFocus ? activeFocusStyle.ringWidth : 1,
+            color: (lumenShowsNavigationFocus && focusNode.hasFocus)
+                ? accentInk
+                : line,
+            width: (lumenShowsNavigationFocus && focusNode.hasFocus)
+                ? activeFocusStyle.ringWidth
+                : 1,
           ),
-          boxShadow: focusNode.hasFocus ? lumenFocusShadows(accentInk) : null,
+          boxShadow: (lumenShowsNavigationFocus && focusNode.hasFocus)
+              ? lumenFocusShadows(accentInk)
+              : null,
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
               icon,
-              color: focusNode.hasFocus ? accentInk : textHi,
+              color: (lumenShowsNavigationFocus && focusNode.hasFocus)
+                  ? accentInk
+                  : textHi,
               size: 18,
             ),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(
-                color: textHi,
-                fontSize: 12.5,
-                fontWeight: FontWeight.w700,
+            if (!compact) const SizedBox(width: 6),
+            if (!compact)
+              Text(
+                label,
+                style: TextStyle(
+                  color: textHi,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-            ),
           ],
         ),
       ),

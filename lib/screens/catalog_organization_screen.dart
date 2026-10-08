@@ -325,9 +325,9 @@ class _CatalogOrganizationScreenState extends State<CatalogOrganizationScreen> {
                 children: [
                   Padding(
                     padding: EdgeInsets.fromLTRB(
-                      compact ? 16 : 24,
+                      pageGutter(context),
                       8,
-                      compact ? 16 : 24,
+                      pageGutter(context),
                       12,
                     ),
                     child: Column(
@@ -398,9 +398,9 @@ class _CatalogOrganizationScreenState extends State<CatalogOrganizationScreen> {
     }
     return ListView.separated(
       padding: EdgeInsets.fromLTRB(
-        compact ? 12 : 24,
+        pageGutter(context),
         0,
-        compact ? 12 : 24,
+        pageGutter(context),
         100,
       ),
       itemCount: categories.length,

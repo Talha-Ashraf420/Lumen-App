@@ -385,7 +385,7 @@ class _HomeScreenState extends State<HomeScreen>
                 scrollDirection: Axis.horizontal,
                 clipBehavior: Clip.none,
                 padding: EdgeInsets.symmetric(
-                  horizontal: DeviceProfile.isTelevision ? 28 : 20,
+                  horizontal: pageGutter(context),
                   vertical: 8,
                 ),
                 itemCount: continuing.length,
@@ -418,7 +418,7 @@ class _HomeScreenState extends State<HomeScreen>
                 scrollDirection: Axis.horizontal,
                 clipBehavior: Clip.none,
                 padding: EdgeInsets.symmetric(
-                  horizontal: DeviceProfile.isTelevision ? 28 : 20,
+                  horizontal: pageGutter(context),
                   vertical: 8,
                 ),
                 itemCount: channels.length,
@@ -538,7 +538,7 @@ class _HomeScreenState extends State<HomeScreen>
           onRefresh: _pullRefresh,
           color: accentInk,
           child: ListView.builder(
-            padding: const EdgeInsets.only(bottom: 120),
+            padding: EdgeInsets.only(bottom: pageScrollBottom(context)),
             itemCount: 5 + shelves.length,
             itemBuilder: (_, index) => switch (index) {
               0 => _searchBar(),
@@ -555,7 +555,7 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Widget _homeStudio(int shelfCount) => Padding(
-    padding: const EdgeInsets.fromLTRB(20, 24, 20, 14),
+    padding: pageInsets(context, bottom: 14),
     child: Row(
       children: [
         Expanded(
@@ -592,7 +592,7 @@ class _HomeScreenState extends State<HomeScreen>
                   'Customize',
                   style: TextStyle(
                     color: textHi,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w500,
                     fontSize: 12,
                   ),
                 ),
@@ -608,7 +608,12 @@ class _HomeScreenState extends State<HomeScreen>
     return Padding(
       // The shell owns the persistent account control in the top-right corner.
       // Reserve its footprint so the search affordance never sits underneath.
-      padding: const EdgeInsets.fromLTRB(16, 4, 76, 0),
+      padding: EdgeInsets.fromLTRB(
+        pageGutter(context),
+        12,
+        pageGutter(context) + 60,
+        8,
+      ),
       child: SearchField(
         hint: 'Movies, series, channels…',
         readOnly: true,
@@ -767,7 +772,7 @@ class _HomeShelfState extends State<_HomeShelf> {
               final items = snapshot.data ?? _visible ?? const <Object>[];
               if (items.isEmpty) {
                 return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  padding: pageInsets(context, top: 0, bottom: 0),
                   child: Text(
                     snapshot.hasError
                         ? 'Could not load this collection. Refresh to retry.'
@@ -784,8 +789,8 @@ class _HomeShelfState extends State<_HomeShelf> {
                   child: ListView.separated(
                     scrollDirection: Axis.horizontal,
                     clipBehavior: Clip.none,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: pageGutter(context),
                       vertical: 8,
                     ),
                     itemCount: items.length,
@@ -948,7 +953,8 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
     // scrolled past the hero, opened another route, or started full playback.
     final lifecycle = WidgetsBinding.instance.lifecycleState;
     final playback = PlaybackController.instance;
-    if (!TickerMode.getNotifier(context).value ||
+    if (MediaQuery.disableAnimationsOf(context) ||
+        !TickerMode.getNotifier(context).value ||
         _items.length < 2 ||
         (lifecycle != null && lifecycle != AppLifecycleState.resumed) ||
         ModalRoute.of(context)?.isCurrent == false ||
@@ -1023,11 +1029,14 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
     String overview,
   ) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 6, 20, 4),
+      padding: pageInsets(context, top: 6, bottom: 4),
       child: Column(
         children: [
           AnimatedSwitcher(
-            duration: const Duration(milliseconds: 450),
+            duration: lumenMotionDuration(
+              context,
+              const Duration(milliseconds: 350),
+            ),
             transitionBuilder: (c, a) => FadeTransition(
               opacity: a,
               child: ScaleTransition(
@@ -1083,9 +1092,9 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
           Text(
             'FEATURED',
             style: TextStyle(
-              color: accent,
+              color: accentInk,
               fontSize: 11,
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w600,
               letterSpacing: 2.5,
             ),
           ),
@@ -1095,7 +1104,7 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
             textAlign: TextAlign.center,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: kTitle(),
+            style: kPageTitle().copyWith(fontSize: 30),
           ),
           const SizedBox(height: 12),
           Wrap(
@@ -1114,7 +1123,7 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
                         rating.toStringAsFixed(1),
                         style: TextStyle(
                           color: gold,
-                          fontWeight: FontWeight.w800,
+                          fontWeight: FontWeight.w600,
                           fontSize: 12.5,
                         ),
                       ),
@@ -1127,7 +1136,7 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
                     year,
                     style: TextStyle(
                       color: textHi,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w500,
                       fontSize: 12.5,
                     ),
                   ),
@@ -1156,8 +1165,10 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
             ),
           ],
           const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+          Wrap(
+            alignment: WrapAlignment.center,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            runSpacing: 10,
             children: [
               PillButton(
                 icon: Icons.play_arrow_rounded,
@@ -1169,6 +1180,7 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
               HoverScale(
                 child: RemoteTap(
                   onTap: () => widget.onOpen(m),
+                  semanticLabel: 'Details',
                   child: Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 20,
@@ -1193,6 +1205,9 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
                 builder: (_, __) {
                   final fav = Library.instance.isFav(_ref(m).key);
                   return RemoteTap(
+                    semanticLabel: fav
+                        ? 'Remove from My List'
+                        : 'Add to My List',
                     onTap: () => Library.instance.toggleFav(_ref(m)),
                     child: Container(
                       padding: const EdgeInsets.all(14),
@@ -1222,10 +1237,9 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 clipBehavior: Clip.none,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 6,
-                ),
+                // The hero already owns the page gutter; keep only focus-ring
+                // clearance here rather than doubling the outside margin.
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
                 itemCount: _items.length,
                 separatorBuilder: (_, _) => const SizedBox(width: 12),
                 itemBuilder: (_, i) {
@@ -1280,7 +1294,7 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
         ? (MediaQuery.sizeOf(context).height * 0.64).clamp(455.0, 520.0)
         : (MediaQuery.sizeOf(context).height * 0.63).clamp(500.0, 610.0);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 6, 18, 0),
+      padding: pageInsets(context, top: 6, bottom: 0),
       child: SizedBox(
         height: h,
         child: ClipRRect(
@@ -1292,7 +1306,10 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
               if (heroArt.isNotEmpty)
                 Positioned.fill(
                   child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 550),
+                    duration: lumenMotionDuration(
+                      context,
+                      const Duration(milliseconds: 450),
+                    ),
                     child: MediaImage(
                       key: ValueKey('focus$heroArt'),
                       source: heroArt,
@@ -1366,8 +1383,14 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
                           style: kHero(),
                         )
                         .animate(key: ValueKey('t${m.streamId}'))
-                        .fadeIn(duration: 400.ms)
-                        .slideY(begin: 0.08, end: 0),
+                        .fadeIn(duration: lumenMotionDuration(context, 400.ms))
+                        .slideY(
+                          duration: lumenMotionDuration(context, 400.ms),
+                          begin: MediaQuery.disableAnimationsOf(context)
+                              ? 0
+                              : 0.08,
+                          end: 0,
+                        ),
                     const SizedBox(height: 12),
                     Wrap(
                       spacing: 16,
@@ -1384,7 +1407,7 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
                                 rating.toStringAsFixed(1),
                                 style: TextStyle(
                                   color: textHi,
-                                  fontWeight: FontWeight.w700,
+                                  fontWeight: FontWeight.w500,
                                   fontSize: 13,
                                 ),
                               ),
@@ -1409,7 +1432,7 @@ class _SpotlightHeroState extends State<_SpotlightHero> {
                             m.sourceLabel,
                             style: TextStyle(
                               color: accentInk,
-                              fontWeight: FontWeight.w700,
+                              fontWeight: FontWeight.w500,
                               fontSize: 13,
                             ),
                           ),
@@ -1638,7 +1661,7 @@ class _RailThumb extends StatelessWidget {
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 10,
-                          fontWeight: FontWeight.w800,
+                          fontWeight: FontWeight.w600,
                           letterSpacing: 1,
                         ),
                       ),
@@ -1655,7 +1678,7 @@ class _RailThumb extends StatelessWidget {
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 11.5,
-                            fontWeight: FontWeight.w800,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ),
@@ -1709,7 +1732,7 @@ class _HistoryDialogOption extends StatelessWidget {
                   label,
                   style: TextStyle(
                     color: textHi,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w500,
                     fontSize: 14,
                   ),
                 ),
@@ -1828,7 +1851,7 @@ class _ContinueWatchingCard extends StatelessWidget {
                                             fontSize: DeviceProfile.isTelevision
                                                 ? 14
                                                 : 13,
-                                            fontWeight: FontWeight.w800,
+                                            fontWeight: FontWeight.w600,
                                             height: 1.15,
                                           ),
                                         ),
@@ -1848,7 +1871,7 @@ class _ContinueWatchingCard extends StatelessWidget {
                                     style: TextStyle(
                                       color: active ? accentInk : muted,
                                       fontSize: 11.5,
-                                      fontWeight: FontWeight.w700,
+                                      fontWeight: FontWeight.w500,
                                     ),
                                   ),
                                 ],
@@ -1873,8 +1896,19 @@ class _ContinueWatchingCard extends StatelessWidget {
                 ),
               )
               .animate()
-              .fadeIn(duration: 320.ms, delay: (index.clamp(0, 12) * 30).ms)
-              .slideY(begin: 0.1, end: 0, curve: Curves.easeOutCubic),
+              .fadeIn(
+                duration: lumenMotionDuration(context, 320.ms),
+                delay: lumenMotionDuration(
+                  context,
+                  (index.clamp(0, 12) * 30).ms,
+                ),
+              )
+              .slideY(
+                duration: lumenMotionDuration(context, 320.ms),
+                begin: MediaQuery.disableAnimationsOf(context) ? 0 : 0.1,
+                end: 0,
+                curve: Curves.easeOutCubic,
+              ),
     );
   }
 }
@@ -1964,7 +1998,7 @@ class _RecentChannelCard extends StatelessWidget {
                                   style: TextStyle(
                                     color: Colors.white,
                                     fontSize: 9,
-                                    fontWeight: FontWeight.w900,
+                                    fontWeight: FontWeight.w600,
                                   ),
                                 ),
                               ),
@@ -1988,7 +2022,7 @@ class _RecentChannelCard extends StatelessWidget {
                                   fontSize: DeviceProfile.isTelevision
                                       ? 14
                                       : 13,
-                                  fontWeight: FontWeight.w800,
+                                  fontWeight: FontWeight.w600,
                                   height: 1.15,
                                 ),
                               ),
@@ -2009,7 +2043,7 @@ class _RecentChannelCard extends StatelessWidget {
                                       style: TextStyle(
                                         color: active ? accent : muted,
                                         fontSize: 11.5,
-                                        fontWeight: FontWeight.w700,
+                                        fontWeight: FontWeight.w500,
                                       ),
                                     ),
                                   ),
@@ -2024,8 +2058,19 @@ class _RecentChannelCard extends StatelessWidget {
                 ),
               )
               .animate()
-              .fadeIn(duration: 320.ms, delay: (index.clamp(0, 12) * 30).ms)
-              .slideY(begin: 0.1, end: 0, curve: Curves.easeOutCubic),
+              .fadeIn(
+                duration: lumenMotionDuration(context, 320.ms),
+                delay: lumenMotionDuration(
+                  context,
+                  (index.clamp(0, 12) * 30).ms,
+                ),
+              )
+              .slideY(
+                duration: lumenMotionDuration(context, 320.ms),
+                begin: MediaQuery.disableAnimationsOf(context) ? 0 : 0.1,
+                end: 0,
+                curve: Curves.easeOutCubic,
+              ),
     );
   }
 }

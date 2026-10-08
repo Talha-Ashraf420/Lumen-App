@@ -29,7 +29,21 @@ import 'viewer_picker_screen.dart';
 typedef ProfileCredentialValidator =
     Future<void> Function(XtreamCredentials credentials);
 
+enum ProfilePage {
+  menu('Settings'),
+  accounts('Accounts & services'),
+  viewers('Viewing profiles'),
+  appearance('Appearance'),
+  playback('Playback'),
+  library('Library & downloads'),
+  support('Help & about');
+
+  const ProfilePage(this.title);
+  final String title;
+}
+
 class ProfileScreen extends StatefulWidget {
+  final ProfilePage page;
   final XtreamClient client;
   final Future<void> Function() onLogout;
   final void Function(XtreamCredentials) onSwitch;
@@ -41,6 +55,7 @@ class ProfileScreen extends StatefulWidget {
   final ProfileCredentialValidator? profileValidator;
   const ProfileScreen({
     super.key,
+    this.page = ProfilePage.menu,
     required this.client,
     required this.onLogout,
     required this.onSwitch,
@@ -56,6 +71,11 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
+  final _backFocus = FocusNode(debugLabel: 'Settings back');
+  final _menuFocus = <ProfilePage, FocusNode>{
+    for (final page in ProfilePage.values.skip(1))
+      page: FocusNode(debugLabel: 'Settings ${page.title}'),
+  };
   final _pageScroll = ScrollController();
   final _entryFocus = FocusNode(debugLabel: 'Profile add account');
   final _viewerManageFocus = FocusNode(debugLabel: 'Switch or manage viewers');
@@ -242,7 +262,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       return KeyEventResult.ignored;
     }
     final target = routes[event.logicalKey];
-    if (target == null || !target.canRequestFocus) {
+    if (target == null || target.context == null || !target.canRequestFocus) {
       return KeyEventResult.ignored;
     }
     target.requestFocus();
@@ -281,7 +301,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       LogicalKeyboardKey.arrowDown => down,
       _ => null,
     };
-    if (target == null || !target.canRequestFocus) {
+    if (target == null || target.context == null || !target.canRequestFocus) {
       return KeyEventResult.ignored;
     }
     target.requestFocus();
@@ -329,6 +349,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       LogicalKeyboardKey.arrowDown: _viewerManageFocus,
     });
     _entryFocusNode.addListener(_restoreTopWhenEntryFocused);
+    if (widget.page != ProfilePage.accounts) return;
     widget.client
         .authenticate()
         .then((i) {
@@ -636,6 +657,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   void dispose() {
+    _backFocus.dispose();
+    for (final node in _menuFocus.values) {
+      node.dispose();
+    }
     _entryFocusNode.removeListener(_restoreTopWhenEntryFocused);
     _entryFocusNode.onKeyEvent = null;
     _viewerManageFocus.dispose();
@@ -677,86 +702,220 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    Theme.of(
-      context,
-    ); // Refresh every cached profile card with the new palette.
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final shellIsWide = isWide(context);
-        final twoColumn = constraints.maxWidth >= 820;
-        final accountColumn = Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _accountCard(),
-            const SizedBox(height: 16),
-            _viewingCard(),
-            const SizedBox(height: 16),
-            _profilesCard(),
-          ],
-        );
-        final settingsColumn = Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _personalizationCard(),
-            const SizedBox(height: 16),
-            _libraryCard(),
-            const SizedBox(height: 16),
-            _privacyCard(),
-            const SizedBox(height: 16),
-            _signOutButton(),
-          ],
-        );
-
-        return Focus(
-          canRequestFocus: false,
-          skipTraversal: true,
-          onKeyEvent: _handlePageKey,
-          child: SingleChildScrollView(
-            controller: _pageScroll,
-            padding: EdgeInsets.fromLTRB(
-              shellIsWide ? 28 : 18,
-              shellIsWide ? 18 : 12,
-              shellIsWide ? 28 : 18,
-              120,
-            ),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 1160),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (!shellIsWide) ...[
-                      Text('Profile', style: kTitle()),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Your account, your Lumen.',
-                        style: TextStyle(color: muted, fontSize: 13),
-                      ),
-                      const SizedBox(height: 18),
-                    ],
-                    if (twoColumn)
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          SizedBox(width: 350, child: accountColumn),
-                          const SizedBox(width: 18),
-                          Expanded(child: settingsColumn),
-                        ],
-                      )
-                    else ...[
-                      accountColumn,
-                      const SizedBox(height: 16),
-                      settingsColumn,
-                    ],
+    Theme.of(context);
+    final menu = widget.page == ProfilePage.menu;
+    final content = FocusTraversalGroup(
+      policy: RemoteFocusTraversalPolicy(),
+      child: Focus(
+        canRequestFocus: false,
+        skipTraversal: true,
+        onKeyEvent: menu ? _handlePageKey : null,
+        child: SingleChildScrollView(
+          controller: _pageScroll,
+          padding: pageInsets(
+            context,
+            bottom: menu ? pageScrollBottom(context) : 24,
+          ),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 760),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: switch (widget.page) {
+                  ProfilePage.menu => _settingsMenu(),
+                  ProfilePage.accounts => [
+                    _accountCard(),
+                    const SizedBox(height: 16),
+                    _viewingCard(),
+                    const SizedBox(height: 16),
+                    _profilesCard(),
+                    const SizedBox(height: 24),
+                    _signOutButton(),
                   ],
-                ),
+                  ProfilePage.viewers => [_viewingCard()],
+                  ProfilePage.appearance => [_personalizationCard()],
+                  ProfilePage.playback => [_playbackCard()],
+                  ProfilePage.library => [_libraryCard()],
+                  ProfilePage.support => [_privacyCard()],
+                },
               ),
             ),
           ),
-        );
-      },
+        ),
+      ),
+    );
+    if (menu) return content;
+    return Scaffold(
+      backgroundColor: bg,
+      appBar: AppBar(
+        leading: IconButton(
+          focusNode: _backFocus,
+          autofocus: true,
+          tooltip: 'Back to Settings',
+          icon: const Icon(Icons.arrow_back_rounded),
+          onPressed: () => Navigator.of(context).maybePop(),
+        ),
+        title: Text(widget.page.title),
+      ),
+      body: SafeArea(top: false, child: content),
     );
   }
+
+  Future<void> _openPage(ProfilePage page) async {
+    final navigator = Navigator.of(context);
+    final ownerRoute = ModalRoute.of(context);
+    void closeSettings() {
+      if (navigator.mounted) {
+        navigator.popUntil((route) => route == ownerRoute || route.isFirst);
+      }
+    }
+
+    await navigator.push(
+      MaterialPageRoute<void>(
+        builder: (_) => ProfileScreen(
+          page: page,
+          client: widget.client,
+          onLogout: () async {
+            await widget.onLogout();
+            closeSettings();
+          },
+          onSwitch: (credentials) {
+            closeSettings();
+            widget.onSwitch(credentials);
+          },
+          onServicesChanged: widget.onServicesChanged,
+          onViewerChanged: (id) async {
+            await widget.onViewerChanged?.call(id);
+            closeSettings();
+          },
+          profileValidator: widget.profileValidator,
+        ),
+      ),
+    );
+    if (mounted) {
+      final node = page == ProfilePage.accounts
+          ? _entryFocusNode
+          : _menuFocus[page]!;
+      node.requestFocus();
+    }
+  }
+
+  List<Widget> _settingsMenu() => [
+    Text('Settings', style: kPageTitle()),
+    const SizedBox(height: 20),
+    AnimatedBuilder(
+      animation: ViewingProfiles.instance,
+      builder: (context, _) {
+        final viewer = ViewingProfiles.instance.active;
+        return Row(
+          children: [
+            LumenAvatar(seed: viewer.id, size: 64),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(viewer.name, style: kTitle()),
+                  const SizedBox(height: 4),
+                  Text('Your space. Your way to watch.', style: kBody()),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    ),
+    for (final (heading, entries) in [
+      (
+        'Your library',
+        [
+          (
+            ProfilePage.accounts,
+            Icons.dns_outlined,
+            'Add, edit, switch, or combine services',
+          ),
+          (
+            ProfilePage.viewers,
+            Icons.people_outline_rounded,
+            'Separate lists and history for each viewer',
+          ),
+        ],
+      ),
+      (
+        'Your experience',
+        [
+          (
+            ProfilePage.appearance,
+            Icons.palette_outlined,
+            'Theme, typeface, colors, and focus',
+          ),
+          (
+            ProfilePage.playback,
+            Icons.play_circle_outline_rounded,
+            'Choose how live streams connect',
+          ),
+          (
+            ProfilePage.library,
+            Icons.video_library_outlined,
+            'Downloads, organization, and history',
+          ),
+        ],
+      ),
+      (
+        'Support',
+        [
+          (
+            ProfilePage.support,
+            Icons.help_outline_rounded,
+            'Diagnostics, updates, and privacy',
+          ),
+        ],
+      ),
+    ]) ...[
+      const SizedBox(height: 22),
+      Padding(
+        padding: const EdgeInsets.only(left: 4, bottom: 9),
+        child: Text(
+          heading,
+          style: TextStyle(
+            color: muted,
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ),
+      Glass(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        child: Column(
+          children: [
+            for (final (page, icon, subtitle) in entries) ...[
+              if (page != entries.first.$1) _divider(),
+              _actionRow(
+                focusNode: page == ProfilePage.accounts
+                    ? _entryFocusNode
+                    : _menuFocus[page],
+                onKeyEvent: (_, event) {
+                  final pages = ProfilePage.values.skip(1).toList();
+                  final index = pages.indexOf(page);
+                  FocusNode node(int i) =>
+                      i == 0 ? _entryFocusNode : _menuFocus[pages[i]]!;
+                  return _moveVertically(
+                    event,
+                    up: index == 0 ? widget.shellTopFocusNode : node(index - 1),
+                    down: index == pages.length - 1 ? null : node(index + 1),
+                  );
+                },
+                icon: icon,
+                title: page.title,
+                subtitle: subtitle,
+                onTap: () => _openPage(page),
+              ),
+            ],
+          ],
+        ),
+      ),
+    ],
+  ];
 
   Widget _viewingCard() => AnimatedBuilder(
     animation: ViewingProfiles.instance,
@@ -770,9 +929,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
           children: [
             Text('VIEWING PROFILE', style: kSection()),
             const SizedBox(height: 10),
+            LumenAvatar(seed: viewer.id, size: 56),
+            const SizedBox(height: 10),
             Text(
               viewer.name,
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w500),
             ),
             const SizedBox(height: 4),
             Text(
@@ -837,30 +998,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const SizedBox(height: 14),
           Row(
             children: [
-              Container(
-                width: 54,
-                height: 54,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: accent,
-                  borderRadius: BorderRadius.circular(lumenCorner(18)),
-                  boxShadow: glow(accent, blur: 18, y: 7),
-                ),
-                child: c.isDemo
-                    ? Icon(
-                        Icons.auto_awesome_rounded,
-                        color: onAccent,
-                        size: 25,
-                      )
-                    : Text(
-                        c.username.isEmpty ? '?' : c.username[0].toUpperCase(),
-                        style: TextStyle(
-                          color: onAccent,
-                          fontSize: 22,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-              ),
+              LumenAvatar(seed: _profileKey(c), size: 54),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
@@ -871,7 +1009,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w600,
                         fontSize: 18,
                       ),
                     ),
@@ -959,7 +1097,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         style: TextStyle(
           color: subtle,
           fontSize: 9.5,
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w500,
           letterSpacing: 1.1,
         ),
       ),
@@ -971,7 +1109,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         style: TextStyle(
           color: valueColor,
           fontSize: 12.5,
-          fontWeight: FontWeight.w800,
+          fontWeight: FontWeight.w600,
         ),
       ),
     ],
@@ -998,7 +1136,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const Expanded(
                   child: Text(
                     'IPTV services',
-                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
                   ),
                 ),
                 RemoteTap(
@@ -1024,7 +1162,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           'Add',
                           style: TextStyle(
                             color: accentInk,
-                            fontWeight: FontWeight.w800,
+                            fontWeight: FontWeight.w600,
                             fontSize: 12,
                           ),
                         ),
@@ -1079,7 +1217,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       const SizedBox(height: 12),
       _ThemeSelector(
         entryFocusNode: _themeEntryFocus,
-        upFocusNode: _lastProfileSwitchFocus ?? _entryFocusNode,
+        upFocusNode: _backFocus,
         downFocusNode: _fontEntryFocus,
         leftExitFocusNode: widget.shellRailFocusNode,
       ),
@@ -1108,8 +1246,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         descriptionOf: (value) => value.description,
         onSelected: ThemeController.instance.setCorners,
         previewBuilder: (value, selected) => Container(
-          width: 28,
-          height: 20,
+          width: 44,
+          height: 32,
           decoration: BoxDecoration(
             color: selected
                 ? accent.withValues(alpha: .28)
@@ -1140,8 +1278,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         descriptionOf: (value) => value.description,
         onSelected: ThemeController.instance.setFocus,
         previewBuilder: (value, selected) => Container(
-          width: 28,
-          height: 20,
+          width: 44,
+          height: 32,
           decoration: BoxDecoration(
             color: surface,
             borderRadius: BorderRadius.circular(lumenCorner(7)),
@@ -1149,15 +1287,61 @@ class _ProfileScreenState extends State<ProfileScreen> {
               color: selected ? accentInk : muted,
               width: value.ringWidth,
             ),
-            boxShadow: value.blurRadius <= 0
-                ? const []
-                : [
-                    BoxShadow(
-                      color: accent.withValues(alpha: .32),
-                      blurRadius: value.blurRadius,
-                    ),
-                  ],
+            boxShadow: lumenFocusShadows(accentInk, style: value),
           ),
+        ),
+      ),
+      const SizedBox(height: 18),
+      AnimatedBuilder(
+        animation: Listenable.merge([
+          ThemeController.instance.corners,
+          ThemeController.instance.focus,
+        ]),
+        builder: (context, _) => Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Focus preview', style: kBody()),
+            const SizedBox(height: 6),
+            Text(
+              'This is how remote or keyboard focus looks. Touch selections stay calm.',
+              style: TextStyle(color: muted, fontSize: 12),
+            ),
+            const SizedBox(height: 16),
+            Center(
+              child: AnimatedScale(
+                scale: MediaQuery.disableAnimationsOf(context)
+                    ? 1
+                    : activeFocusStyle.scale,
+                duration: lumenMotionDuration(context),
+                child: AnimatedContainer(
+                  key: const ValueKey('settings-focus-preview'),
+                  duration: lumenMotionDuration(context),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 18,
+                  ),
+                  decoration: BoxDecoration(
+                    color: surface,
+                    borderRadius: BorderRadius.circular(lumenCorner(18)),
+                    border: Border.all(
+                      color: accentInk,
+                      width: activeFocusStyle.ringWidth,
+                    ),
+                    boxShadow: lumenFocusShadows(accentInk),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.play_arrow_rounded, color: accentInk),
+                      const SizedBox(width: 8),
+                      const Flexible(child: Text('Watch now')),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
         ),
       ),
       const SizedBox(height: 24),
@@ -1169,7 +1353,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _AccentPicker(
         entryFocusNode: _accentEntryFocus,
         upFocusNode: _focusStyleEntryFocus,
-        downFocusNode: _playbackModeFocus,
+        downFocusNode: _backFocus,
         leftExitFocusNode: widget.shellRailFocusNode,
       ),
     ],
@@ -1198,7 +1382,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                   title: Text(
                     mode.label,
-                    style: const TextStyle(fontWeight: FontWeight.w800),
+                    style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
                   subtitle: Text(mode.description),
                   onTap: () => Navigator.pop(dialogContext, mode),
@@ -1218,35 +1402,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await PlaybackModeController.instance.set(selected);
   }
 
-  Widget _libraryCard() => _profileSection(
-    eyebrow: 'VIEWING',
-    icon: Icons.video_library_outlined,
-    title: 'Playback & library',
-    subtitle: 'Tune streaming and manage the catalog stored on this device.',
+  Widget _playbackCard() => _profileSection(
+    eyebrow: 'STREAMING',
+    icon: Icons.play_circle_outline_rounded,
+    title: 'Playback preferences',
+    subtitle: 'Choose a balance between startup speed and buffering tolerance.',
     body: [
       ValueListenableBuilder<PlaybackMode>(
         valueListenable: PlaybackModeController.instance.mode,
         builder: (context, mode, _) => _actionRow(
           focusNode: _playbackModeFocus,
-          onKeyEvent: (_, event) => _moveVertically(
-            event,
-            up: _accentEntryFocus,
-            down: _insightsFocus,
-          ),
+          onKeyEvent: (_, event) =>
+              _moveVertically(event, up: _backFocus, down: _backFocus),
           icon: Icons.network_check_rounded,
           title: 'Live playback · ${mode.label}',
           subtitle: mode.description,
           onTap: _choosePlaybackMode,
         ),
       ),
-      _divider(),
+    ],
+  );
+
+  Widget _libraryCard() => _profileSection(
+    eyebrow: 'YOUR COLLECTION',
+    icon: Icons.video_library_outlined,
+    title: 'Manage your library',
+    subtitle: 'Offline items, category organization, and viewing activity.',
+    body: [
       _actionRow(
         focusNode: _insightsFocus,
-        onKeyEvent: (_, event) => _moveVertically(
-          event,
-          up: _playbackModeFocus,
-          down: _downloadsFocus,
-        ),
+        onKeyEvent: (_, event) =>
+            _moveVertically(event, up: _backFocus, down: _downloadsFocus),
         icon: Icons.insights_rounded,
         title: 'Watch insights',
         subtitle: 'See your viewing activity',
@@ -1347,7 +1533,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         onKeyEvent: (_, event) => _moveVertically(
           event,
           up: DeviceProfile.isMobileApp ? _pairingFocus : _guideSettingsFocus,
-          down: _diagnosticsFocus,
+          down: _backFocus,
         ),
         icon: Icons.history_rounded,
         title: 'Clear watch history',
@@ -1368,7 +1554,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _actionRow(
         focusNode: _diagnosticsFocus,
         onKeyEvent: (_, event) =>
-            _moveVertically(event, up: _historyFocus, down: _communityFocus),
+            _moveVertically(event, up: _backFocus, down: _communityFocus),
         icon: Icons.bug_report_outlined,
         title: 'Diagnostics & feedback',
         subtitle: 'Review a private, redacted support report',
@@ -1394,7 +1580,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         onKeyEvent: (_, event) => _moveVertically(
           event,
           up: _communityFocus,
-          down: Updater.instance.isEnabled ? _updateFocus : _signOutFocus,
+          down: Updater.instance.isEnabled ? _updateFocus : _backFocus,
         ),
         icon: Icons.privacy_tip_outlined,
         title: 'Legal & privacy',
@@ -1410,7 +1596,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _actionRow(
           focusNode: _updateFocus,
           onKeyEvent: (_, event) =>
-              _moveVertically(event, up: _legalFocus, down: _signOutFocus),
+              _moveVertically(event, up: _legalFocus, down: _backFocus),
           icon: Icons.system_update_rounded,
           title: 'App version & updates',
           subtitle: _checkingUpdate
@@ -1466,7 +1652,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     style: TextStyle(
                       color: accentInk,
                       fontSize: 10.5,
-                      fontWeight: FontWeight.w900,
+                      fontWeight: FontWeight.w600,
                       letterSpacing: 1.35,
                     ),
                   ),
@@ -1476,7 +1662,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     style: const TextStyle(
                       fontSize: 22,
                       height: 1.05,
-                      fontWeight: FontWeight.w900,
+                      fontWeight: FontWeight.w600,
                       letterSpacing: -0.35,
                     ),
                   ),
@@ -1512,7 +1698,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     children: [
       Text(
         title,
-        style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800),
+        style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600),
       ),
       const SizedBox(height: 3),
       Text(subtitle, style: TextStyle(color: subtle, fontSize: 11.5)),
@@ -1560,7 +1746,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     title,
                     style: TextStyle(
                       color: danger ? dangerColor : textHi,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w500,
                       fontSize: 14,
                     ),
                   ),
@@ -1591,10 +1777,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _signOutButton() => RemoteTap(
     focusNode: _signOutFocus,
-    onKeyEvent: (_, event) => _moveVertically(
-      event,
-      up: Updater.instance.isEnabled ? _updateFocus : _legalFocus,
-    ),
+    onKeyEvent: (_, event) =>
+        _moveVertically(event, up: _lastProfileSwitchFocus ?? _entryFocusNode),
     onTap: _signingOut ? null : _requestLogout,
     semanticLabel: 'Sign out of Lumen',
     focusRadius: 18,
@@ -1624,7 +1808,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Expanded(
             child: Text(
               _signingOut ? 'Signing out…' : 'Sign out of Lumen',
-              style: TextStyle(color: dangerInk, fontWeight: FontWeight.w800),
+              style: TextStyle(color: dangerInk, fontWeight: FontWeight.w600),
             ),
           ),
           if (!_signingOut)
@@ -1683,24 +1867,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         child: Row(
           children: [
-            Container(
-              width: 38,
-              height: 38,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: surfaceHi,
-                shape: BoxShape.circle,
-              ),
-              child: p.isDemo
-                  ? Icon(Icons.auto_awesome_rounded, color: muted, size: 19)
-                  : Text(
-                      p.username.isNotEmpty ? p.username[0].toUpperCase() : '?',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        color: muted,
-                      ),
-                    ),
-            ),
+            LumenAvatar(seed: key, size: 38),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -1710,7 +1877,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     p.isDemo ? 'Demo Mode' : p.username,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
+                    style: const TextStyle(fontWeight: FontWeight.w500),
                   ),
                   Text(
                     host,
@@ -1726,7 +1893,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       style: TextStyle(
                         color: accentInk,
                         fontSize: 10.5,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                 ],
@@ -2000,7 +2167,7 @@ class _EditServiceDialogState extends State<_EditServiceDialog> {
                   widget.profile.username,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: muted, fontWeight: FontWeight.w700),
+                  style: TextStyle(color: muted, fontWeight: FontWeight.w500),
                 ),
               ),
             ],
@@ -2085,7 +2252,7 @@ class _AccountRemovalDialogState extends State<_AccountRemovalDialog> {
             padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 11),
             child: Text(
               'Cancel',
-              style: TextStyle(color: muted, fontWeight: FontWeight.w700),
+              style: TextStyle(color: muted, fontWeight: FontWeight.w500),
             ),
           ),
         ),
@@ -2106,7 +2273,7 @@ class _AccountRemovalDialogState extends State<_AccountRemovalDialog> {
               'Remove',
               style: TextStyle(
                 color: foregroundFor(danger),
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),
@@ -2192,7 +2359,7 @@ class _FontSelectorState extends State<_FontSelector> {
       valueListenable: ThemeController.instance.font,
       builder: (context, current, _) => LayoutBuilder(
         builder: (context, constraints) {
-          _columns = constraints.maxWidth >= 300 ? LumenFont.values.length : 2;
+          _columns = constraints.maxWidth >= 560 ? LumenFont.values.length : 1;
           const gap = 8.0;
           final itemWidth =
               (constraints.maxWidth - gap * (_columns - 1)) / _columns;
@@ -2239,18 +2406,51 @@ class _FontSelectorState extends State<_FontSelector> {
                             LumenFont.values[index].label,
                             maxLines: 1,
                             style: TextStyle(
-                              fontFamily: LumenFont.values[index].family,
+                              fontFamily:
+                                  LumenFont.values[index].family ??
+                                  ThemeData(
+                                    platform: Theme.of(context).platform,
+                                  ).textTheme.bodyMedium?.fontFamily,
                               color: textHi,
                               fontSize: 15,
-                              fontWeight: FontWeight.w700,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
                           const SizedBox(height: 3),
                           Text(
                             LumenFont.values[index].description,
-                            maxLines: 1,
+                            maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(color: muted, fontSize: 10.5),
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Your next great watch',
+                            style: TextStyle(
+                              fontFamily:
+                                  LumenFont.values[index].family ??
+                                  ThemeData(
+                                    platform: Theme.of(context).platform,
+                                  ).textTheme.bodyMedium?.fontFamily,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w500,
+                              height: 1.2,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Movies, series & live TV · 0123456789',
+                            style: TextStyle(
+                              fontFamily:
+                                  LumenFont.values[index].family ??
+                                  ThemeData(
+                                    platform: Theme.of(context).platform,
+                                  ).textTheme.bodyMedium?.fontFamily,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w400,
+                              height: 1.45,
+                              color: muted,
+                            ),
                           ),
                         ],
                       ),
@@ -2360,9 +2560,10 @@ class _PreferenceSelectorState<T> extends State<_PreferenceSelector<T>> {
     valueListenable: widget.current,
     builder: (context, current, _) => LayoutBuilder(
       builder: (context, constraints) {
-        _columns = constraints.maxWidth >= 300
+        final textScale = MediaQuery.textScalerOf(context).scale(13) / 13;
+        _columns = constraints.maxWidth >= 560 * textScale
             ? widget.values.length
-            : 2.clamp(1, widget.values.length);
+            : 1;
         const gap = 8.0;
         final itemWidth =
             (constraints.maxWidth - gap * (_columns - 1)) / _columns;
@@ -2420,15 +2621,15 @@ class _PreferenceSelectorState<T> extends State<_PreferenceSelector<T>> {
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
                                   fontSize: 13,
-                                  fontWeight: FontWeight.w800,
+                                  fontWeight: FontWeight.w600,
                                 ),
                               ),
                               const SizedBox(height: 2),
                               Text(
                                 widget.descriptionOf(widget.values[index]),
-                                maxLines: 1,
+                                maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
-                                style: TextStyle(color: muted, fontSize: 9.5),
+                                style: TextStyle(color: muted, fontSize: 12),
                               ),
                             ],
                           ),
@@ -2569,7 +2770,7 @@ class _ThemeSelectorState extends State<_ThemeSelector> {
                             _opts[index].label,
                             style: TextStyle(
                               fontSize: 12,
-                              fontWeight: FontWeight.w700,
+                              fontWeight: FontWeight.w500,
                               color: current == _opts[index].mode
                                   ? onAccent
                                   : muted,
@@ -2787,7 +2988,7 @@ class _AccentPickerState extends State<_AccentPicker> {
                     'Cancel',
                     style: TextStyle(
                       color: textHi,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                 ),
@@ -2811,7 +3012,7 @@ class _AccentPickerState extends State<_AccentPicker> {
                     'Apply',
                     style: TextStyle(
                       color: foregroundFor(picked),
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
@@ -2875,7 +3076,7 @@ class _AccentPickerState extends State<_AccentPicker> {
       child: AnimatedBuilder(
         animation: focusNode,
         builder: (context, child) {
-          final focused = focusNode.hasFocus;
+          final focused = lumenShowsNavigationFocus && focusNode.hasFocus;
           return Listener(
             onPointerDown: (_) => focusNode.requestFocus(),
             child: AnimatedContainer(
@@ -2902,7 +3103,7 @@ class _AccentPickerState extends State<_AccentPicker> {
                       style: TextStyle(
                         color: focused ? textHi : muted,
                         fontSize: 12,
-                        fontWeight: focused ? FontWeight.w800 : FontWeight.w600,
+                        fontWeight: focused ? FontWeight.w600 : FontWeight.w600,
                       ),
                     ),
                   ),
@@ -2924,7 +3125,7 @@ class _AccentPickerState extends State<_AccentPicker> {
                       style: TextStyle(
                         color: focused ? textHi : muted,
                         fontSize: 11,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ),
@@ -3030,7 +3231,7 @@ class _AccentPickerState extends State<_AccentPicker> {
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               fontSize: 12,
-                              fontWeight: FontWeight.w700,
+                              fontWeight: FontWeight.w500,
                               color: isCustom ? textHi : muted,
                             ),
                           ),
@@ -3109,7 +3310,7 @@ class _AccentPickerState extends State<_AccentPicker> {
                 style: TextStyle(
                   fontSize: 12,
                   height: 1.1,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w500,
                   color: selected ? textHi : muted,
                 ),
               ),

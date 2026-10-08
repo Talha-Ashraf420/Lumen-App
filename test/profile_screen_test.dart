@@ -13,12 +13,12 @@ import 'package:lumen_tv/screens/profile_screen.dart';
 import 'package:lumen_tv/screens/viewer_picker_screen.dart';
 import 'package:lumen_tv/store.dart';
 import 'package:lumen_tv/theme.dart';
-import 'package:lumen_tv/updater.dart';
 import 'package:lumen_tv/widgets.dart';
 import 'package:lumen_tv/xtream.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class _ProfileTestClient extends XtreamClient {
+  int authenticationCalls = 0;
   _ProfileTestClient()
     : super(
         const XtreamCredentials(
@@ -29,12 +29,15 @@ class _ProfileTestClient extends XtreamClient {
       );
 
   @override
-  Future<Map<String, dynamic>> authenticate() async => {
-    'status': 'Active',
-    'exp_date': '1893456000',
-    'active_cons': 1,
-    'max_connections': 3,
-  };
+  Future<Map<String, dynamic>> authenticate() async {
+    authenticationCalls++;
+    return {
+      'status': 'Active',
+      'exp_date': '1893456000',
+      'active_cons': 1,
+      'max_connections': 3,
+    };
+  }
 }
 
 void main() {
@@ -59,6 +62,8 @@ void main() {
     ValueChanged<XtreamCredentials>? onSwitch,
     Future<void> Function()? onServicesChanged,
     ProfileCredentialValidator? profileValidator,
+    ProfilePage page = ProfilePage.accounts,
+    double textScale = 1,
   }) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = size;
@@ -68,12 +73,19 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         theme: buildTheme(darkPalette),
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: TextScaler.linear(textScale)),
+          child: child!,
+        ),
         home: Scaffold(
           body: Align(
             alignment: Alignment.topLeft,
             child: SizedBox(
               width: contentWidth,
               child: ProfileScreen(
+                page: page,
                 client: client ?? _ProfileTestClient(),
                 onLogout: onLogout ?? () async {},
                 onSwitch: onSwitch ?? (_) {},
@@ -88,41 +100,133 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('compact profile is grouped, scrollable and overflow-free', (
+  testWidgets('compact settings shows only a menu, not every control', (
     tester,
   ) async {
-    await pumpProfile(tester, const Size(390, 844));
+    await pumpProfile(tester, const Size(390, 844), page: ProfilePage.menu);
 
-    expect(find.text('Profile'), findsOneWidget);
-    expect(find.text('CURRENT ACCOUNT'), findsOneWidget);
+    expect(find.text('Settings'), findsOneWidget);
+    expect(find.text('CURRENT ACCOUNT'), findsNothing);
     expect(find.text('Appearance'), findsOneWidget);
-    expect(find.text('Playback & library'), findsOneWidget);
-    expect(find.text('App & support'), findsOneWidget);
+    expect(find.text('Playback'), findsOneWidget);
+    expect(find.text('Help & about'), findsOneWidget);
     expect(find.text('Your Lumen'), findsNothing);
+    expect(find.byType(LumenAvatar), findsOneWidget);
+    expect(find.text('Your library'), findsOneWidget);
+    expect(find.text('Your experience'), findsOneWidget);
+    expect(find.byType(Glass), findsNWidgets(3));
+    // Use the phone's height for useful groups, not a half-empty dashboard.
+    expect(
+      tester.getBottomLeft(find.text('Help & about')).dy,
+      greaterThan(580),
+    );
     expect(tester.takeException(), isNull);
 
-    await tester.scrollUntilVisible(
-      find.text('Sign out of Lumen'),
-      500,
-      scrollable: find.byType(Scrollable).first,
-    );
-    expect(find.text('App version & updates'), findsOneWidget);
-    expect(find.text('Sign out of Lumen'), findsOneWidget);
+    expect(find.text('Color mode'), findsNothing);
+    expect(find.text('Sign out of Lumen'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('TV profile uses account rail and settings column', (
+  testWidgets('wide settings keeps a readable menu instead of a dashboard', (
     tester,
   ) async {
-    await pumpProfile(tester, const Size(1280, 900));
-
-    final accountTopLeft = tester.getTopLeft(find.text('CURRENT ACCOUNT'));
-    final settingsTopLeft = tester.getTopLeft(find.text('Appearance'));
-    expect(accountTopLeft.dx, lessThan(settingsTopLeft.dx));
-    expect((accountTopLeft.dy - settingsTopLeft.dy).abs(), lessThan(80));
+    await pumpProfile(tester, const Size(1280, 900), page: ProfilePage.menu);
+    expect(find.text('Accounts & services'), findsOneWidget);
+    expect(find.text('Color mode'), findsNothing);
     expect(find.text('Profile'), findsNothing);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('appearance fits a small phone with enlarged text', (
+    tester,
+  ) async {
+    await pumpProfile(
+      tester,
+      const Size(320, 740),
+      page: ProfilePage.appearance,
+      textScale: 1.5,
+    );
+    expect(find.text('Your next great watch'), findsNWidgets(3));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'settings destinations are separate routes and restore menu focus',
+    (tester) async {
+      final client = _ProfileTestClient();
+      addTearDown(client.close);
+      await pumpProfile(
+        tester,
+        const Size(390, 844),
+        client: client,
+        page: ProfilePage.menu,
+      );
+      expect(
+        client.authenticationCalls,
+        0,
+        reason: 'The menu must not authenticate a provider.',
+      );
+      for (final page in ProfilePage.values.skip(1)) {
+        await tester.ensureVisible(find.text(page.title));
+        await tester.tap(find.text(page.title));
+        await tester.pumpAndSettle();
+        expect(
+          find.byWidgetPredicate((w) => w is ProfileScreen && w.page == page),
+          findsOneWidget,
+        );
+        expect(find.text('Your space. Your way to watch.'), findsNothing);
+        if (page != ProfilePage.appearance) {
+          expect(find.text('Color mode'), findsNothing);
+        }
+        await tester.tap(find.byTooltip('Back to Settings'));
+        await tester.pumpAndSettle();
+        expect(find.text('Settings'), findsOneWidget);
+        expect(
+          FocusManager.instance.primaryFocus?.debugLabel,
+          page == ProfilePage.accounts
+              ? 'Profile add account'
+              : 'Settings ${page.title}',
+        );
+        expect(tester.takeException(), isNull);
+      }
+      expect(
+        client.authenticationCalls,
+        1,
+        reason: 'Only opening Accounts fetches provider status.',
+      );
+    },
+  );
+
+  testWidgets(
+    'TV remote opens settings pages and Back returns to selected menu row',
+    (tester) async {
+      DeviceProfile.isTelevision = true;
+      addTearDown(() => DeviceProfile.isTelevision = false);
+      await pumpProfile(tester, const Size(1280, 900), page: ProfilePage.menu);
+      FocusManager.instance.rootScope.descendants
+          .firstWhere((node) => node.debugLabel == 'Profile add account')
+          .requestFocus();
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pumpAndSettle();
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        'Settings Viewing profiles',
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pumpAndSettle();
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      expect(find.text('Color mode'), findsOneWidget);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        'Settings Appearance',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('TV D-pad reaches viewer management from account controls', (
     tester,
@@ -149,7 +253,11 @@ void main() {
   testWidgets('phone accent choices form an even three-column grid', (
     tester,
   ) async {
-    await pumpProfile(tester, const Size(390, 844));
+    await pumpProfile(
+      tester,
+      const Size(390, 844),
+      page: ProfilePage.appearance,
+    );
     await tester.scrollUntilVisible(
       find.text('Accent color'),
       450,
@@ -330,12 +438,15 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('narrow desktop keeps shell title and stacks dashboard', (
-    tester,
-  ) async {
-    await pumpProfile(tester, const Size(930, 900), contentWidth: 760);
+  testWidgets('narrow desktop settings remains a single menu', (tester) async {
+    await pumpProfile(
+      tester,
+      const Size(930, 900),
+      contentWidth: 760,
+      page: ProfilePage.menu,
+    );
 
-    final accountsTopLeft = tester.getTopLeft(find.text('IPTV services'));
+    final accountsTopLeft = tester.getTopLeft(find.text('Accounts & services'));
     final settingsTopLeft = tester.getTopLeft(find.text('Appearance'));
     expect(settingsTopLeft.dy, greaterThan(accountsTopLeft.dy));
     expect(find.text('Profile'), findsNothing);
@@ -410,6 +521,7 @@ void main() {
               child: child ?? const SizedBox.shrink(),
             ),
             home: ProfileScreen(
+              page: ProfilePage.appearance,
               client: client,
               onLogout: () async {},
               onSwitch: (_) {},
@@ -481,7 +593,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('TV profile four-way graph reaches every settings control', (
+  testWidgets('TV appearance four-way graph reaches every visual setting', (
     tester,
   ) async {
     DeviceProfile.isTelevision = true;
@@ -521,6 +633,7 @@ void main() {
                     ),
                     Expanded(
                       child: ProfileScreen(
+                        page: ProfilePage.appearance,
                         client: client,
                         onLogout: () async {},
                         onSwitch: (_) {},
@@ -545,9 +658,10 @@ void main() {
       expect(FocusManager.instance.primaryFocus?.debugLabel, expectedLabel);
     }
 
-    entry.requestFocus();
+    FocusManager.instance.rootScope.descendants
+        .firstWhere((node) => node.debugLabel == 'Dark appearance')
+        .requestFocus();
     await tester.pump();
-    await move(LogicalKeyboardKey.arrowDown, 'Dark appearance');
     await move(LogicalKeyboardKey.arrowRight, 'Light appearance');
     await move(LogicalKeyboardKey.arrowRight, 'System appearance');
     await move(LogicalKeyboardKey.arrowDown, 'Lumen font');
@@ -567,53 +681,9 @@ void main() {
       await move(LogicalKeyboardKey.arrowRight, '${scheme.name} accent');
     }
     await move(LogicalKeyboardKey.arrowRight, 'Custom accent');
-    for (final label in <String>[
-      'Live playback mode',
-      'Watch insights',
-      'Downloads',
-      'Refresh library',
-      'Organize library',
-      'TV guide setup',
-      'Clear watch history',
-      'Diagnostics & feedback',
-      'Lumen community',
-      'Legal & privacy',
-      if (Updater.instance.isEnabled) 'Check for updates',
-      'Sign out of Lumen',
-    ]) {
-      await move(LogicalKeyboardKey.arrowDown, label);
-    }
-
-    final profileScrollable = tester.state<ScrollableState>(
-      find
-          .descendant(
-            of: find.byType(SingleChildScrollView),
-            matching: find.byType(Scrollable),
-          )
-          .first,
-    );
-    expect(profileScrollable.position.pixels, greaterThan(0));
-    entry.requestFocus();
-    await tester.pump();
-    await tester.pump();
-    expect(
-      profileScrollable.position.pixels,
-      profileScrollable.position.minScrollExtent,
-    );
-    await move(LogicalKeyboardKey.arrowUp, 'Switch or manage viewers');
-    await move(LogicalKeyboardKey.arrowUp, 'Edit current service');
-    await move(LogicalKeyboardKey.arrowUp, 'Profile test top');
-    expect(
-      profileScrollable.position.pixels,
-      profileScrollable.position.minScrollExtent,
-    );
-    entry.requestFocus();
-    await tester.pump();
+    await move(LogicalKeyboardKey.arrowDown, 'Settings back');
 
     final expected = <String>{
-      'Profile add account',
-      'Switch or manage viewers',
-      'Edit current service',
       'Dark appearance',
       'Light appearance',
       'System appearance',
@@ -622,21 +692,9 @@ void main() {
       for (final option in LumenFocusStyle.values) '${option.label} focus',
       for (final scheme in accentSchemes) '${scheme.name} accent',
       'Custom accent',
-      'Live playback mode',
-      'Watch insights',
-      'Downloads',
-      'Refresh library',
-      'Organize library',
-      'TV guide setup',
-      'Clear watch history',
-      'Diagnostics & feedback',
-      'Lumen community',
-      'Legal & privacy',
-      if (Updater.instance.isEnabled) 'Check for updates',
-      'Sign out of Lumen',
     };
-    final reached = <String>{'Profile add account'};
-    final pending = <String>['Profile add account'];
+    final reached = <String>{'Dark appearance'};
+    final pending = <String>['Dark appearance'];
     const directions = [
       LogicalKeyboardKey.arrowUp,
       LogicalKeyboardKey.arrowDown,
@@ -680,6 +738,8 @@ void main() {
   testWidgets('corner and focus preferences change shared interaction tokens', (
     tester,
   ) async {
+    DeviceProfile.isTelevision = true;
+    addTearDown(() => DeviceProfile.isTelevision = false);
     final node = FocusNode(debugLabel: 'Token preview');
     addTearDown(node.dispose);
     ThemeController.instance.corners.value = LumenCornerStyle.soft;
@@ -726,6 +786,42 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('focus preview exposes distinct treatments on touch screens', (
+    tester,
+  ) async {
+    await pumpProfile(
+      tester,
+      const Size(390, 844),
+      page: ProfilePage.appearance,
+    );
+    BoxDecoration preview() =>
+        tester
+                .widget<AnimatedContainer>(
+                  find.byKey(const ValueKey('settings-focus-preview')),
+                )
+                .decoration!
+            as BoxDecoration;
+    ThemeController.instance.focus.value = LumenFocusStyle.outline;
+    await tester.pumpAndSettle();
+    expect(preview().border!.top.width, 3);
+    expect(preview().boxShadow, isEmpty);
+    ThemeController.instance.focus.value = LumenFocusStyle.lift;
+    await tester.pumpAndSettle();
+    expect(preview().boxShadow!.single.offset.dy, greaterThan(0));
+    ThemeController.instance.focus.value = LumenFocusStyle.glow;
+    await tester.pumpAndSettle();
+    expect(preview().boxShadow!.single.offset, Offset.zero);
+    expect(preview().boxShadow!.single.spreadRadius, greaterThan(0));
+    ThemeController.instance.corners.value = LumenCornerStyle.crisp;
+    await tester.pumpAndSettle();
+    final crisp = preview().borderRadius! as BorderRadius;
+    ThemeController.instance.corners.value = LumenCornerStyle.soft;
+    await tester.pumpAndSettle();
+    final soft = preview().borderRadius! as BorderRadius;
+    expect(soft.topLeft.x, greaterThan(crisp.topLeft.x * 3));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('custom accent dialog is fully operable with a TV D-pad', (
     tester,
   ) async {
@@ -736,7 +832,15 @@ void main() {
       activePalette = darkPaletteFor(originalAccent);
     });
 
-    await pumpProfile(tester, const Size(1280, 900));
+    await pumpProfile(
+      tester,
+      const Size(1280, 900),
+      page: ProfilePage.appearance,
+    );
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('profile-accent-custom')),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('profile-accent-custom')));
     await tester.pumpAndSettle();
 

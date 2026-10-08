@@ -366,6 +366,8 @@ void main() {
   testWidgets('focusing Search in the TV rail does not steal focus', (
     tester,
   ) async {
+    DeviceProfile.isTelevision = true;
+    addTearDown(() => DeviceProfile.isTelevision = false);
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(1920, 1080);
     addTearDown(tester.view.resetDevicePixelRatio);
@@ -894,6 +896,8 @@ void main() {
   testWidgets(
     'TV My List keeps a direct focus path when the first favorite is added',
     (tester) async {
+      DeviceProfile.isTelevision = true;
+      addTearDown(() => DeviceProfile.isTelevision = false);
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = const Size(1920, 1080);
       addTearDown(tester.view.resetDevicePixelRatio);

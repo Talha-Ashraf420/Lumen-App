@@ -27,6 +27,7 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
     private val channelName = "lumen/pip"
     private val media3ChannelName = "lumen/media3"
+    private val tvProbeChannelName = "lumen/tv_playback_probe"
     private val deviceChannelName = "lumen/device"
     private val subtitleChannelName = "lumen/subtitles"
     private val tvTextInputChannelName = "lumen/tv_text_input"
@@ -40,6 +41,13 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, tvProbeChannelName)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "readReport" -> result.success(TvPlaybackProbe.read(this))
+                    else -> result.notImplemented()
+                }
+            }
         methodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
         methodChannel!!.setMethodCallHandler { call, result ->
             when (call.method) {

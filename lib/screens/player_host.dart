@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io' show Platform;
-import 'dart:ui' show ImageFilter;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -15,6 +14,7 @@ import '../library.dart';
 import '../opensubtitles.dart';
 import '../pip.dart';
 import '../playback.dart';
+import '../player_chrome.dart';
 import '../session.dart';
 import '../split.dart';
 import 'live_control_hub.dart';
@@ -1233,45 +1233,65 @@ class _PlayerHostState extends State<PlayerHost> {
 
   Widget _fullLayer() {
     return Positioned.fill(
-      child: MouseRegion(
-        opaque: false,
-        cursor: (_isDesktop && !_controls)
-            ? SystemMouseCursors.none
-            : MouseCursor.defer,
-        onHover: _onHover,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: _tap,
-          onDoubleTapDown: (d) => _doubleTapX = d.localPosition.dx,
-          onDoubleTap: _onDoubleTap,
-          onLongPressStart: _isLive ? null : (_) => _holdSpeedStart(),
-          onLongPressEnd: _isLive ? null : (_) => _holdSpeedEnd(),
-          onScaleStart: _onScaleStart,
-          onScaleUpdate: _onScaleUpdate,
-          onScaleEnd: _onScaleEnd,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              _hudOverlay(),
-              AnimatedOpacity(
-                opacity: _controls ? 1 : 0,
-                duration: const Duration(milliseconds: 220),
-                child: ExcludeFocus(
-                  excluding: !_controls,
-                  child: IgnorePointer(ignoring: !_controls, child: _overlay()),
-                ),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          MouseRegion(
+            opaque: false,
+            cursor: (_isDesktop && !_controls)
+                ? SystemMouseCursors.none
+                : MouseCursor.defer,
+            onHover: _onHover,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _tap,
+              onDoubleTapDown: (d) => _doubleTapX = d.localPosition.dx,
+              onDoubleTap: _onDoubleTap,
+              onLongPressStart: _isLive ? null : (_) => _holdSpeedStart(),
+              onLongPressEnd: _isLive ? null : (_) => _holdSpeedEnd(),
+              onScaleStart: _onScaleStart,
+              onScaleUpdate: _onScaleUpdate,
+              onScaleEnd: _onScaleEnd,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  _hudOverlay(),
+                  AnimatedOpacity(
+                    opacity: _controls ? 1 : 0,
+                    duration: lumenMotionDuration(
+                      context,
+                      const Duration(milliseconds: 180),
+                    ),
+                    child: ExcludeFocus(
+                      excluding: !_controls,
+                      child: IgnorePointer(
+                        ignoring: !_controls,
+                        child: _overlay(),
+                      ),
+                    ),
+                  ),
+                  // Connecting, reconnecting, and ordinary buffering share one
+                  // status lane. Only one transient message can be visible.
+                  if (!_controls && _panelKind == null)
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      child: SafeArea(
+                        bottom: false,
+                        child: _playbackStatusPill(),
+                      ),
+                    ),
+                  // Terminal recovery stays above the complete bottom stack.
+                  _recoveryOverlay(),
+                  // Skip-intro / Up-next prompts (shown regardless of control chrome).
+                  _autoOverlays(),
+                ],
               ),
-              // Connecting, reconnecting, and ordinary buffering share one
-              // status lane. Only one transient message can be visible.
-              _playbackStatusPill(),
-              // Terminal recovery stays above the complete bottom stack.
-              _recoveryOverlay(),
-              // Skip-intro / Up-next prompts (shown regardless of control chrome).
-              _autoOverlays(),
-              if (_panelKind != null) _panel(),
-            ],
+            ),
           ),
-        ),
+          if (_panelKind != null) _panel(),
+        ],
       ),
     );
   }
@@ -1285,10 +1305,8 @@ class _PlayerHostState extends State<PlayerHost> {
         reconnectStatus: pc.reconnectStatus,
         retryExhausted: pc.retryExhausted,
       );
-      return Positioned(
-        top: 88,
-        left: 16,
-        right: 16,
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
         child: IgnorePointer(
           child: AnimatedSwitcher(
             duration: const Duration(milliseconds: 180),
@@ -2232,7 +2250,12 @@ class _PlayerHostState extends State<PlayerHost> {
         data: const IconThemeData(color: Colors.white),
         child: Column(
           children: [
-            _topBar(),
+            PlayerHeaderLane(
+              header: _topBar(),
+              status: _panelKind == null
+                  ? _playbackStatusPill()
+                  : const SizedBox.shrink(),
+            ),
             const Spacer(),
             // Keep transport in the same bottom control stack as the timeline.
             // A floating centre cluster collided with seek/volume feedback and
@@ -2260,6 +2283,7 @@ class _PlayerHostState extends State<PlayerHost> {
         child: Row(
           children: [
             IconButton(
+              tooltip: 'Minimize player',
               onPressed: _minimize,
               icon: const Icon(
                 Icons.keyboard_arrow_down_rounded,
@@ -2305,15 +2329,17 @@ class _PlayerHostState extends State<PlayerHost> {
                     _item.title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      shadows: [Shadow(color: Colors.black, blurRadius: 8)],
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: Colors.white,
+                      shadows: const [
+                        Shadow(color: Colors.black, blurRadius: 8),
+                      ],
                     ),
                   ),
                 ],
               ),
             ),
-            if (_item.favRef != null)
+            if (_item.favRef != null && !DeviceProfile.isMobileApp)
               AnimatedBuilder(
                 animation: Library.instance,
                 builder: (_, __) {
@@ -2330,6 +2356,7 @@ class _PlayerHostState extends State<PlayerHost> {
                 },
               ),
             IconButton(
+              tooltip: 'Close player',
               onPressed: _close,
               icon: const Icon(Icons.close_rounded, color: Colors.white),
             ),
@@ -2340,6 +2367,25 @@ class _PlayerHostState extends State<PlayerHost> {
   }
 
   Widget _transportControls() {
+    if (DeviceProfile.isMobileApp) {
+      return StreamBuilder<bool>(
+        stream: pc.player!.stream.playing,
+        initialData: pc.player!.state.playing,
+        builder: (_, snapshot) => PlayerTransport(
+          playing: snapshot.data ?? false,
+          live: _isLive,
+          playFocusNode: _transportFocus,
+          onPlayPause: () {
+            pc.togglePlayPause();
+            _scheduleHide();
+          },
+          onRewind: () => _seekBy(-10),
+          onForward: () => _seekBy(10),
+          onPrevious: _hasPrev ? () => _go(pc.index - 1) : null,
+          onNext: _hasNext ? () => _go(pc.index + 1) : null,
+        ),
+      );
+    }
     final television = DeviceProfile.isTelevision;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -2529,85 +2575,99 @@ class _PlayerHostState extends State<PlayerHost> {
               const SizedBox(height: 8),
             ],
             if (!_isLive) _seekBar(),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final compact = constraints.maxWidth < 520;
-                return Row(
-                  children: [
-                    _bottomIcon(
-                      _muted
-                          ? Icons.volume_off_rounded
-                          : Icons.volume_up_rounded,
-                      _toggleMute,
-                      compact: compact,
-                    ),
-                    _bottomIcon(
-                      Icons.closed_caption_rounded,
-                      _pickSubtitles,
-                      compact: compact,
-                    ),
-                    if (activeClient != null && !compact)
+            if (DeviceProfile.isMobileApp)
+              PlayerActionBar(
+                fullscreen: _fullscreen,
+                onSubtitles: _pickSubtitles,
+                onMore: _openSettings,
+                onFullscreen: _toggleFullscreen,
+                onChannels: _isLive ? _openLiveHub : null,
+              )
+            else
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final compact = constraints.maxWidth < 520;
+                  return Row(
+                    children: [
                       _bottomIcon(
-                        Icons.splitscreen_rounded,
-                        _openSplitPicker,
-                        tooltip: 'Split view',
-                      ),
-                    _bottomIcon(
-                      Icons.tune_rounded,
-                      _openSettings,
-                      tooltip: 'Playback settings',
-                      compact: compact,
-                    ),
-                    if (!compact)
-                      _bottomIcon(
-                        Icons.info_outline_rounded,
-                        _openDiagnostics,
-                        tooltip: 'Playback information',
-                      ),
-                    if (_isAndroid && !DeviceProfile.isTelevision && !compact)
-                      _bottomIcon(
-                        Icons.picture_in_picture_alt_rounded,
-                        () => Pip.instance.enter(),
-                        tooltip: 'Picture-in-picture',
-                      ),
-                    const Spacer(),
-                    if (_isLive)
-                      _bottomIcon(
-                        Icons.view_sidebar_rounded,
-                        _openLiveHub,
-                        tooltip: 'Live control hub (G)',
+                        _muted
+                            ? Icons.volume_off_rounded
+                            : Icons.volume_up_rounded,
+                        _toggleMute,
+                        tooltip: _muted ? 'Unmute' : 'Mute',
                         compact: compact,
                       ),
-                    if (_isLive)
-                      Padding(
-                        padding: EdgeInsets.only(right: compact ? 2 : 8),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.circle,
-                              color: Color(0xFFFF3B5C),
-                              size: 9,
-                            ),
-                            SizedBox(width: 6),
-                            Text(
-                              'LIVE',
-                              style: TextStyle(fontWeight: FontWeight.w700),
-                            ),
-                          ],
-                        ),
+                      _bottomIcon(
+                        Icons.closed_caption_rounded,
+                        _pickSubtitles,
+                        tooltip: 'Subtitles',
+                        compact: compact,
                       ),
-                    _bottomIcon(
-                      _fullscreen
-                          ? Icons.fullscreen_exit_rounded
-                          : Icons.fullscreen_rounded,
-                      _toggleFullscreen,
-                      compact: compact,
-                    ),
-                  ],
-                );
-              },
-            ),
+                      if (activeClient != null && !compact)
+                        _bottomIcon(
+                          Icons.splitscreen_rounded,
+                          _openSplitPicker,
+                          tooltip: 'Split view',
+                        ),
+                      _bottomIcon(
+                        Icons.tune_rounded,
+                        _openSettings,
+                        tooltip: 'Playback settings',
+                        compact: compact,
+                      ),
+                      if (!compact)
+                        _bottomIcon(
+                          Icons.info_outline_rounded,
+                          _openDiagnostics,
+                          tooltip: 'Playback information',
+                        ),
+                      if (_isAndroid && !DeviceProfile.isTelevision && !compact)
+                        _bottomIcon(
+                          Icons.picture_in_picture_alt_rounded,
+                          () => Pip.instance.enter(),
+                          tooltip: 'Picture-in-picture',
+                        ),
+                      const Spacer(),
+                      if (_isLive)
+                        _bottomIcon(
+                          Icons.view_sidebar_rounded,
+                          _openLiveHub,
+                          tooltip: 'Live control hub (G)',
+                          compact: compact,
+                        ),
+                      if (_isLive)
+                        Padding(
+                          padding: EdgeInsets.only(right: compact ? 2 : 8),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.circle,
+                                color: Color(0xFFFF3B5C),
+                                size: 9,
+                              ),
+                              SizedBox(width: 6),
+                              Text(
+                                'LIVE',
+                                style: TextStyle(fontWeight: FontWeight.w700),
+                              ),
+                            ],
+                          ),
+                        ),
+                      _bottomIcon(
+                        _fullscreen
+                            ? Icons.fullscreen_exit_rounded
+                            : Icons.fullscreen_rounded,
+                        _toggleFullscreen,
+                        tooltip: _fullscreen
+                            ? 'Exit full screen'
+                            : 'Full screen',
+                        compact: compact,
+                      ),
+                    ],
+                  );
+                },
+              ),
           ],
         ),
       ),
@@ -2645,7 +2705,11 @@ class _PlayerHostState extends State<PlayerHost> {
             const SizedBox(width: 4),
             Text(
               _fmt(pos),
-              style: const TextStyle(fontSize: 12, color: Colors.white),
+              style: const TextStyle(
+                fontSize: 12,
+                color: Colors.white70,
+                fontFeatures: [FontFeature.tabularFigures()],
+              ),
             ),
             Expanded(
               child: SliderTheme(
@@ -2662,6 +2726,8 @@ class _PlayerHostState extends State<PlayerHost> {
                   ),
                 ),
                 child: Slider(
+                  semanticFormatterCallback: (value) =>
+                      '${_fmt(Duration(milliseconds: value.round()))} of ${_fmt(dur)}',
                   value: val.toDouble(),
                   max: max <= 0 ? 1 : max,
                   onChanged: max <= 0
@@ -2674,7 +2740,11 @@ class _PlayerHostState extends State<PlayerHost> {
             ),
             Text(
               _fmt(dur),
-              style: const TextStyle(fontSize: 12, color: Colors.white),
+              style: const TextStyle(
+                fontSize: 12,
+                color: Colors.white70,
+                fontFeatures: [FontFeature.tabularFigures()],
+              ),
             ),
             const SizedBox(width: 4),
           ],
@@ -2874,96 +2944,58 @@ class _PlayerHostState extends State<PlayerHost> {
     _scheduleHide();
   }
 
-  Widget _panel() {
-    final w = MediaQuery.sizeOf(context).width;
-    final panelW = w < 640 ? w * 0.88 : 380.0;
-    // A dark, glassy side panel over the video (never the app's light surface),
-    // with a hidden scrollbar and white content.
-    return FocusScope(
-      node: _panelFocusScope,
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: _closePanel,
-              child: const ColoredBox(color: Colors.black54),
+  Widget _panel() => FocusScope(
+    node: _panelFocusScope,
+    child: PlayerSidePanel(
+      onClose: _closePanel,
+      child: DefaultTextStyle.merge(
+        style: const TextStyle(color: Colors.white),
+        child: IconTheme.merge(
+          data: const IconThemeData(color: Colors.white),
+          child: ListTileTheme(
+            data: const ListTileThemeData(
+              textColor: Colors.white,
+              iconColor: Colors.white,
+              contentPadding: EdgeInsets.symmetric(horizontal: 20),
             ),
-          ),
-          Positioned(
-            top: 0,
-            bottom: 0,
-            right: 0,
-            width: panelW,
-            child: ClipRRect(
-              borderRadius: BorderRadius.horizontal(
-                left: Radius.circular(lumenCorner(22)),
-              ),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
-                child: Container(
-                  decoration: const BoxDecoration(
-                    color: Color(0xF00C1512),
-                    border: Border(left: BorderSide(color: Colors.white24)),
-                  ),
-                  child: SafeArea(
-                    child: DefaultTextStyle.merge(
-                      style: const TextStyle(color: Colors.white),
-                      child: IconTheme.merge(
-                        data: const IconThemeData(color: Colors.white),
-                        child: ListTileTheme(
-                          data: const ListTileThemeData(
-                            textColor: Colors.white,
-                            iconColor: Colors.white,
-                          ),
-                          child: _panelKind == 'live-hub'
-                              ? LiveControlHub(
-                                  controller: pc,
-                                  client: activeClient,
-                                  onSelect: _selectLiveHubItem,
-                                  onClose: _closePanel,
-                                )
-                              : _panelKind == 'split'
-                              ? (activeClient == null
-                                    ? const Center(
-                                        child: Text(
-                                          'Not available.',
-                                          style: TextStyle(
-                                            color: Colors.white54,
-                                          ),
-                                        ),
-                                      )
-                                    : SplitPicker(
-                                        client: activeClient!,
-                                        onPick: (it) {
-                                          _closePanel();
-                                          _openSplitWith(it);
-                                        },
-                                      ))
-                              : ScrollConfiguration(
-                                  behavior: ScrollConfiguration.of(
-                                    context,
-                                  ).copyWith(scrollbars: false),
-                                  child: SingleChildScrollView(
-                                    child: _panelKind == 'subs'
-                                        ? _subsContent()
-                                        : _panelKind == 'diagnostics'
-                                        ? _diagnosticsContent()
-                                        : _settingsContent(),
-                                  ),
-                                ),
-                        ),
-                      ),
+            child: _panelKind == 'live-hub'
+                ? LiveControlHub(
+                    controller: pc,
+                    client: activeClient,
+                    onSelect: _selectLiveHubItem,
+                    onClose: _closePanel,
+                  )
+                : _panelKind == 'split'
+                ? (activeClient == null
+                      ? const Center(child: Text('Not available.'))
+                      : SplitPicker(
+                          client: activeClient!,
+                          onClose: _closePanel,
+                          primaryUrl: _item.url,
+                          secondaryUrl: sc.item?.url,
+                          onPick: (it) {
+                            _closePanel();
+                            _openSplitWith(it);
+                          },
+                        ))
+                : ScrollConfiguration(
+                    behavior: ScrollConfiguration.of(
+                      context,
+                    ).copyWith(scrollbars: false),
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.only(bottom: 20),
+                      child: _panelKind == 'subs'
+                          ? _subsContent()
+                          : _panelKind == 'diagnostics'
+                          ? _diagnosticsContent()
+                          : _settingsContent(),
                     ),
                   ),
-                ),
-              ),
-            ),
           ),
-        ],
+        ),
       ),
-    );
-  }
+    ),
+  );
 
   Widget _subsContent() {
     final current = pc.player!.state.track.subtitle;
@@ -3096,8 +3128,10 @@ class _PlayerHostState extends State<PlayerHost> {
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(lumenCorner(12)),
                   borderSide: BorderSide(
-                    color: accent,
-                    width: activeFocusStyle.ringWidth,
+                    color: lumenShowsNavigationFocus ? accent : Colors.white24,
+                    width: lumenShowsNavigationFocus
+                        ? activeFocusStyle.ringWidth
+                        : 1,
                   ),
                 ),
                 suffixIcon: IconButton(
@@ -3515,6 +3549,28 @@ class _PlayerHostState extends State<PlayerHost> {
                 ),
               );
             },
+          ),
+        ],
+        if (DeviceProfile.isMobileApp) ...[
+          if (activeClient != null)
+            ListTile(
+              leading: const Icon(Icons.splitscreen_rounded),
+              title: const Text('Split view'),
+              onTap: _openSplitPicker,
+            ),
+          if (_isAndroid)
+            ListTile(
+              leading: const Icon(Icons.picture_in_picture_alt_rounded),
+              title: const Text('Picture-in-picture'),
+              onTap: () {
+                _closePanel();
+                Pip.instance.enter();
+              },
+            ),
+          ListTile(
+            leading: const Icon(Icons.info_outline_rounded),
+            title: const Text('Playback information'),
+            onTap: _openDiagnostics,
           ),
         ],
         _settingLabel('Volume'),

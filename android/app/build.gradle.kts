@@ -24,6 +24,9 @@ val requiresReleaseSigning = gradle.startParameter.taskNames.any {
 val isCommunityBuild = providers.gradleProperty("lumenCommunityBuild")
     .orNull
     ?.toBooleanStrictOrNull() == true
+val isDiagnosticBuild = providers.gradleProperty("lumenDiagnosticBuild")
+    .orNull
+    ?.toBooleanStrictOrNull() == true
 if (requiresReleaseSigning && !hasKeystore) {
     throw GradleException(
         "Release Android artifacts require android/key.properties and a private signing keystore."
@@ -45,7 +48,9 @@ android {
     }
 
     defaultConfig {
-        applicationId = if (isCommunityBuild) {
+        applicationId = if (isDiagnosticBuild) {
+            "com.talhaashraf.lumen.test"
+        } else if (isCommunityBuild) {
             "com.talhaashraf.lumen.community"
         } else {
             "com.talhaashraf.lumen"
@@ -53,7 +58,7 @@ android {
         resValue(
             "string",
             "app_name",
-            if (isCommunityBuild) "Lumen Community" else "Lumen",
+            if (isDiagnosticBuild) "Lumen Test" else if (isCommunityBuild) "Lumen Community" else "Lumen",
         )
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.

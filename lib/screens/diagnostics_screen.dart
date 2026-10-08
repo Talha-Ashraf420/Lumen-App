@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -7,6 +9,8 @@ import '../diagnostics.dart';
 import '../legal.dart';
 import '../models.dart';
 import '../theme.dart';
+import '../responsive.dart';
+import '../tv_playback_probe.dart';
 import '../widgets.dart';
 
 class DiagnosticsScreen extends StatefulWidget {
@@ -23,11 +27,16 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
   String _report = '';
   bool _loading = true;
   bool _sharing = false;
+  Map<String, Object?>? _tvReport;
+  String? _tvReportStatus;
 
   @override
   void initState() {
     super.initState();
     _refreshReport();
+    if (tvPlaybackProbeEnabled && DeviceProfile.isTelevision) {
+      _refreshTvReport();
+    }
   }
 
   @override
@@ -105,6 +114,33 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
       );
   }
 
+  Future<void> _refreshTvReport() async {
+    try {
+      final report = await TvPlaybackProbe.read();
+      if (mounted) setState(() => _tvReport = report);
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () => _tvReportStatus = 'Could not read the TV playback trace.',
+        );
+      }
+    }
+  }
+
+  Future<void> _copyTvReport() async {
+    final report = _tvReport;
+    if (report == null) return;
+    await Clipboard.setData(
+      ClipboardData(text: const JsonEncoder.withIndent('  ').convert(report)),
+    );
+    if (mounted) {
+      setState(
+        () => _tvReportStatus =
+            'Playback trace copied. Share it only if you choose.',
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final compact = MediaQuery.sizeOf(context).width < 720;
@@ -120,9 +156,9 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
                 Expanded(
                   child: SingleChildScrollView(
                     padding: EdgeInsets.fromLTRB(
-                      compact ? 16 : 24,
+                      pageGutter(context),
                       4,
-                      compact ? 16 : 24,
+                      pageGutter(context),
                       40,
                     ),
                     child: Center(
@@ -138,6 +174,11 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
                             ],
                             const SizedBox(height: 14),
                             _actions(compact),
+                            if (tvPlaybackProbeEnabled &&
+                                DeviceProfile.isTelevision) ...[
+                              const SizedBox(height: 14),
+                              _tvPlaybackCard(),
+                            ],
                             const SizedBox(height: 14),
                             _reportPreview(),
                           ],
@@ -155,7 +196,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
   }
 
   Widget _header() => Padding(
-    padding: const EdgeInsets.fromLTRB(14, 10, 18, 12),
+    padding: pageInsets(context, bottom: 20),
     child: Row(
       children: [
         RemoteTap(
@@ -387,6 +428,60 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
               height: 1.45,
             ),
           ),
+        ),
+      ],
+    ),
+  );
+
+  Widget _tvPlaybackCard() => Glass(
+    radius: 22,
+    padding: const EdgeInsets.all(18),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'TV playback test',
+          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'After a channel fails, press Back and return here. Only the player states, '
+          'track counts, error codes and timing below can be copied if you choose. '
+          'No channel name, stream address or account details are included.',
+          style: TextStyle(color: muted, height: 1.4),
+        ),
+        const SizedBox(height: 12),
+        SelectableText(
+          _tvReport == null
+              ? 'No TV playback trace yet. Try a channel first.'
+              : const JsonEncoder.withIndent('  ').convert(_tvReport),
+          style: TextStyle(
+            color: textHi,
+            fontFamily: 'monospace',
+            fontSize: 12,
+          ),
+        ),
+        if (_tvReportStatus != null) ...[
+          const SizedBox(height: 10),
+          Text(_tvReportStatus!, style: TextStyle(color: textHi)),
+        ],
+        const SizedBox(height: 14),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            _actionButton(
+              icon: Icons.refresh_rounded,
+              label: 'Refresh trace',
+              onTap: _refreshTvReport,
+            ),
+            _actionButton(
+              icon: Icons.copy_rounded,
+              label: 'Copy playback trace',
+              primary: true,
+              onTap: _tvReport == null ? null : _copyTvReport,
+            ),
+          ],
         ),
       ],
     ),

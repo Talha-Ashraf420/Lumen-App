@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'device_profile.dart';
+
+/// Remote/desktop focus is navigation feedback, not a touch selection state.
+bool get lumenShowsNavigationFocus => !DeviceProfile.isMobileApp;
 
 // Lumen's "night cinema" system. The canvas stays neutral so artwork remains
 // the loudest thing on screen; the user-selected accent behaves like a small
@@ -47,12 +50,17 @@ const lumenRadiusLg = 24.0;
 const lumenMotionFast = Duration(milliseconds: 140);
 const lumenMotion = Duration(milliseconds: 190);
 
+Duration lumenMotionDuration(
+  BuildContext context, [
+  Duration duration = lumenMotion,
+]) => MediaQuery.disableAnimationsOf(context) ? Duration.zero : duration;
+
 /// A proportional corner scale keeps component hierarchy intact while letting
 /// the viewer choose how crisp or soft the entire interface feels.
 enum LumenCornerStyle {
-  crisp('Crisp', 'Tighter, more precise corners', .58),
+  crisp('Crisp', 'Nearly square, precise corners', .25),
   balanced('Balanced', 'Lumen’s default shape language', 1),
-  soft('Soft', 'Rounder, more relaxed surfaces', 1.42);
+  soft('Soft', 'Generously rounded surfaces', 1.8);
 
   const LumenCornerStyle(this.label, this.description, this.multiplier);
 
@@ -64,9 +72,9 @@ enum LumenCornerStyle {
 /// Focus treatments remain visible on every background while offering a calm
 /// desktop mode and stronger ten-foot TV choices.
 enum LumenFocusStyle {
-  outline('Outline', 'A clean two-pixel indicator', 1, 2, 0),
-  lift('Lift', 'Outline with a subtle scale and shadow', 1.025, 2, 8),
-  glow('Glow', 'The strongest signal for TV viewing', 1.04, 2.5, 14);
+  outline('Outline', 'Crisp border, no shadow or zoom', 1, 3, 0),
+  lift('Lift', 'Raised edge with a drop shadow', 1.035, 1.5, 12),
+  glow('Glow', 'Bright border with an accent halo', 1.02, 2.5, 18);
 
   const LumenFocusStyle(
     this.label,
@@ -94,13 +102,23 @@ double lumenCorner(double base) {
   return (base * activeCornerStyle.multiplier).clamp(3.5, 48.0);
 }
 
-List<BoxShadow> lumenFocusShadows(Color color) {
-  final style = activeFocusStyle;
+List<BoxShadow> lumenFocusShadows(Color color, {LumenFocusStyle? style}) {
+  style ??= activeFocusStyle;
   if (style.blurRadius <= 0) return const [];
+  if (style == LumenFocusStyle.lift) {
+    return [
+      BoxShadow(
+        color: Colors.black.withValues(alpha: isDark ? .55 : .22),
+        blurRadius: style.blurRadius,
+        offset: const Offset(0, 6),
+      ),
+    ];
+  }
   return [
     BoxShadow(
-      color: color.withValues(alpha: isDark ? .34 : .24),
+      color: color.withValues(alpha: isDark ? .40 : .25),
       blurRadius: style.blurRadius,
+      spreadRadius: 2,
     ),
   ];
 }
@@ -110,7 +128,7 @@ WidgetStateProperty<BorderSide?> lumenControlSide({
   BorderSide? resting,
   Color? focused,
 }) => WidgetStateProperty.resolveWith((states) {
-  if (states.contains(WidgetState.focused)) {
+  if (lumenShowsNavigationFocus && states.contains(WidgetState.focused)) {
     return BorderSide(
       color: focused ?? accentInk,
       width: activeFocusStyle.ringWidth,
@@ -123,7 +141,7 @@ WidgetStateProperty<BorderSide?> lumenControlSide({
 /// handheld screens. The device option deliberately has no family so Flutter
 /// uses the platform's native UI font.
 enum LumenFont {
-  lumen('Lumen', 'SpaceGrotesk', 'Cinematic and compact'),
+  lumen('Lumen', 'SpaceGrotesk', 'Geometric, open letterforms'),
   inter('Inter', 'Inter', 'Clean and highly readable'),
   device('Device', null, 'Use the system font');
 
@@ -306,13 +324,20 @@ List<BoxShadow> glow(
 
 String? get activeFontFamily => ThemeController.instance.font.value.family;
 
-TextStyle _appFontStyle(TextStyle style) {
-  final selected = ThemeController.instance.font.value;
-  if (selected == LumenFont.lumen) {
-    return GoogleFonts.spaceGrotesk(textStyle: style);
-  }
-  return style.copyWith(fontFamily: selected.family);
-}
+TextStyle _appFontStyle(TextStyle style) =>
+    style.copyWith(fontFamily: activeFontFamily);
+
+String? get activeBodyFontFamily => activeFontFamily;
+
+TextStyle kPageTitle({Color? color}) => _appFontStyle(
+  TextStyle(
+    fontSize: 28,
+    fontWeight: FontWeight.w500,
+    letterSpacing: -0.8,
+    height: 1.15,
+    color: color ?? textHi,
+  ),
+);
 
 TextStyle kHero({Color? color}) => _appFontStyle(
   TextStyle(
@@ -326,7 +351,7 @@ TextStyle kHero({Color? color}) => _appFontStyle(
 TextStyle kDisplay({Color? color}) => _appFontStyle(
   TextStyle(
     fontSize: 38,
-    fontWeight: FontWeight.w600,
+    fontWeight: FontWeight.w500,
     letterSpacing: -1.2,
     height: 1.02,
     color: color ?? textHi,
@@ -334,9 +359,10 @@ TextStyle kDisplay({Color? color}) => _appFontStyle(
 );
 TextStyle kTitle({Color? color}) => _appFontStyle(
   TextStyle(
-    fontSize: 23,
-    fontWeight: FontWeight.w600,
+    fontSize: 22,
+    fontWeight: FontWeight.w500,
     letterSpacing: -0.6,
+    height: 1.2,
     color: color ?? textHi,
   ),
 );
@@ -348,23 +374,43 @@ TextStyle kSection({Color? color}) => _appFontStyle(
     color: color ?? muted,
   ),
 );
-TextStyle kBody({Color? color}) => _appFontStyle(
-  TextStyle(
-    fontSize: 15,
-    fontWeight: FontWeight.w400,
-    height: 1.55,
-    color: color ?? muted,
-  ),
+TextStyle kBody({Color? color}) => TextStyle(
+  fontFamily: activeBodyFontFamily,
+  fontSize: 15,
+  fontWeight: FontWeight.w400,
+  height: 1.5,
+  color: color ?? muted,
 );
 
 ThemeData buildTheme(Palette p) {
   final base = ThemeData(brightness: p.brightness, useMaterial3: true);
-  final family = activeFontFamily;
-  final text =
-      (ThemeController.instance.font.value == LumenFont.lumen
-              ? GoogleFonts.spaceGroteskTextTheme(base.textTheme)
-              : base.textTheme.apply(fontFamily: family))
-          .apply(bodyColor: p.textHi, displayColor: p.textHi);
+  final reading = base.textTheme.apply(
+    fontFamily: activeBodyFontFamily,
+    bodyColor: p.textHi,
+    displayColor: p.textHi,
+  );
+  final text = reading.copyWith(
+    headlineLarge: kDisplay(color: p.textHi),
+    headlineMedium: kPageTitle(color: p.textHi),
+    headlineSmall: kTitle(color: p.textHi),
+    titleLarge: kTitle(color: p.textHi),
+    titleMedium: reading.titleMedium?.copyWith(
+      fontSize: 16,
+      fontWeight: FontWeight.w600,
+      height: 1.3,
+    ),
+    bodyLarge: reading.bodyLarge?.copyWith(fontSize: 16, height: 1.5),
+    bodyMedium: reading.bodyMedium?.copyWith(fontSize: 14, height: 1.4),
+    labelLarge: reading.labelLarge?.copyWith(
+      fontWeight: FontWeight.w600,
+      letterSpacing: 0,
+    ),
+    labelSmall: reading.labelSmall?.copyWith(
+      fontSize: 11,
+      fontWeight: FontWeight.w600,
+      letterSpacing: .1,
+    ),
+  );
   final raised = Color.alphaBlend(
     Colors.white.withValues(
       alpha: p.brightness == Brightness.dark ? .045 : .42,
@@ -381,7 +427,7 @@ ThemeData buildTheme(Palette p) {
   );
   WidgetStateProperty<BorderSide?> focusSide({bool outlined = false}) =>
       WidgetStateProperty.resolveWith((states) {
-        if (states.contains(WidgetState.focused)) {
+        if (lumenShowsNavigationFocus && states.contains(WidgetState.focused)) {
           return BorderSide(color: p.accentInk, width: focusStyle.ringWidth);
         }
         return outlined ? BorderSide(color: p.line) : null;
@@ -424,7 +470,7 @@ ThemeData buildTheme(Palette p) {
       titleTextStyle: _appFontStyle(
         TextStyle(
           fontSize: 22,
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w500,
           color: p.textHi,
           letterSpacing: -0.5,
         ),
@@ -459,7 +505,10 @@ ThemeData buildTheme(Palette p) {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(lumenCorner(16)),
-        borderSide: BorderSide(color: p.accentInk, width: focusStyle.ringWidth),
+        borderSide: BorderSide(
+          color: lumenShowsNavigationFocus ? p.accentInk : p.line,
+          width: lumenShowsNavigationFocus ? focusStyle.ringWidth : 1,
+        ),
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(lumenCorner(16)),
@@ -475,7 +524,7 @@ ThemeData buildTheme(Palette p) {
           color: p.brightness == Brightness.dark
               ? const Color(0xFFFF7A9A)
               : const Color(0xFFA5193C),
-          width: focusStyle.ringWidth,
+          width: lumenShowsNavigationFocus ? focusStyle.ringWidth : 1,
         ),
       ),
     ),
@@ -558,7 +607,9 @@ ThemeData buildTheme(Palette p) {
         fontWeight: FontWeight.w700,
       ),
     ),
-    focusColor: p.accent.withValues(alpha: 0.30),
+    focusColor: lumenShowsNavigationFocus
+        ? p.accent.withValues(alpha: 0.30)
+        : Colors.transparent,
     hoverColor: p.accent.withValues(alpha: 0.12),
     splashColor: p.accent.withValues(alpha: 0.08),
     highlightColor: p.accent.withValues(alpha: 0.05),

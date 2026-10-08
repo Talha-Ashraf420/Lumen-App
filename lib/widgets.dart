@@ -8,6 +8,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'device_profile.dart';
 import 'library.dart';
+import 'responsive.dart';
 import 'theme.dart';
 
 /// Directional traversal for TV remotes. Flutter can only traverse to widgets
@@ -710,7 +711,7 @@ class _TvKeyboardDialogState extends State<_TvKeyboardDialog> {
                               ? onAccent
                               : textHi,
                           fontSize: key.label.length > 2 ? 11 : 17,
-                          fontWeight: FontWeight.w800,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
@@ -960,6 +961,8 @@ class _FocusableTapState extends State<FocusableTap> {
   Widget build(BuildContext context) {
     Theme.of(context);
     final focusStyle = activeFocusStyle;
+    final motion = lumenMotionDuration(context, lumenMotionFast);
+    final visuallyFocused = _focus && lumenShowsNavigationFocus;
     final detector = FocusableActionDetector(
       focusNode: _effectiveFocusNode,
       autofocus: widget.autofocus,
@@ -988,16 +991,18 @@ class _FocusableTapState extends State<FocusableTap> {
           onTap: widget.onTap,
           onLongPress: widget.onLongPress,
           child: AnimatedScale(
-            scale: _focus
+            scale: motion == Duration.zero
+                ? 1
+                : visuallyFocused
                 ? focusStyle.scale
                 : _hover
                 ? 1.015
                 : 1,
-            duration: lumenMotionFast,
+            duration: motion,
             curve: Curves.easeOut,
             child: AnimatedContainer(
-              duration: lumenMotionFast,
-              foregroundDecoration: widget.showFocusRing && _focus
+              duration: motion,
+              foregroundDecoration: widget.showFocusRing && visuallyFocused
                   ? BoxDecoration(
                       borderRadius: BorderRadius.circular(
                         lumenCorner(widget.focusRadius),
@@ -1009,7 +1014,7 @@ class _FocusableTapState extends State<FocusableTap> {
                       boxShadow: lumenFocusShadows(accent),
                     )
                   : null,
-              child: widget.builder(context, _hover || _focus),
+              child: widget.builder(context, _hover || visuallyFocused),
             ),
           ),
         ),
@@ -1044,6 +1049,10 @@ class RemoteTap extends StatefulWidget {
   final double focusRadius;
   final Color? focusRingColor;
   final bool showFocusRing;
+
+  /// Touch controls can retain logical focus after a popup closes. Only paint
+  /// that focus when Flutter is in keyboard/remote highlight mode.
+  final bool respectFocusHighlightMode;
   final ValueChanged<bool>? onFocusChange;
   final FocusOnKeyEventCallback? onKeyEvent;
 
@@ -1058,6 +1067,7 @@ class RemoteTap extends StatefulWidget {
     this.focusRadius = 16,
     this.focusRingColor,
     this.showFocusRing = true,
+    this.respectFocusHighlightMode = false,
     this.onFocusChange,
     this.onKeyEvent,
   });
@@ -1104,6 +1114,7 @@ class LumenBackButton extends StatelessWidget {
 
 class _RemoteTapState extends State<RemoteTap> {
   bool _focused = false;
+  bool _showFocusHighlight = false;
   bool _hovered = false;
   FocusNode? _ownedFocusNode;
 
@@ -1158,6 +1169,11 @@ class _RemoteTapState extends State<RemoteTap> {
     final focusStyle = activeFocusStyle;
     final enabled = widget.onTap != null;
     final focusColor = widget.focusRingColor ?? accentInk;
+    final visuallyFocused =
+        lumenShowsNavigationFocus &&
+        _focused &&
+        (!widget.respectFocusHighlightMode || _showFocusHighlight);
+    final motion = lumenMotionDuration(context, lumenMotionFast);
     final detector = FocusableActionDetector(
       enabled: enabled,
       focusNode: _effectiveFocusNode,
@@ -1173,6 +1189,8 @@ class _RemoteTapState extends State<RemoteTap> {
         ),
       },
       onShowHoverHighlight: (value) => setState(() => _hovered = value),
+      onShowFocusHighlight: (value) =>
+          setState(() => _showFocusHighlight = value),
       onFocusChange: _onFocusChange,
       child: Semantics(
         button: true,
@@ -1180,16 +1198,18 @@ class _RemoteTapState extends State<RemoteTap> {
         label: widget.semanticLabel,
         onTap: widget.onTap,
         child: AnimatedScale(
-          scale: _focused
+          scale: motion == Duration.zero
+              ? 1
+              : visuallyFocused
               ? focusStyle.scale
               : _hovered
               ? 1.015
               : 1,
-          duration: lumenMotionFast,
+          duration: motion,
           curve: Curves.easeOut,
           child: AnimatedContainer(
-            duration: lumenMotionFast,
-            foregroundDecoration: widget.showFocusRing && _focused
+            duration: motion,
+            foregroundDecoration: widget.showFocusRing && visuallyFocused
                 ? BoxDecoration(
                     borderRadius: BorderRadius.circular(
                       lumenCorner(widget.focusRadius),
@@ -1268,7 +1288,7 @@ class Wordmark extends StatelessWidget {
                     'TV',
                     style: GoogleFonts.spaceGrotesk(
                       fontSize: size * 0.28,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w600,
                       color: onAccent,
                       height: 1,
                     ),
@@ -1398,6 +1418,86 @@ class _HoverScaleState extends State<HoverScale> {
 }
 
 /// Frosted "liquid glass" surface (used for nav / menus / sheets).
+/// Local, deterministic avatar artwork. Never downloads or exposes the seed.
+class LumenAvatar extends StatelessWidget {
+  const LumenAvatar({super.key, required this.seed, this.size = 48});
+
+  final String seed;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    var hash = 0;
+    for (final unit in seed.codeUnits) {
+      hash = (hash * 31 + unit) & 0x7fffffff;
+    }
+    const colors = [
+      Color(0xFFC7F36B),
+      Color(0xFF82D9E8),
+      Color(0xFFD0B5FA),
+      Color(0xFFFFCC96),
+      Color(0xFFF4ACC9),
+    ];
+    final color = colors[hash % colors.length];
+    return ExcludeSemantics(
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color.lerp(color, Colors.white, .25)!, color],
+          ),
+        ),
+        child: CustomPaint(painter: _AvatarFacePainter(hash % 3)),
+      ),
+    );
+  }
+}
+
+class _AvatarFacePainter extends CustomPainter {
+  const _AvatarFacePainter(this.variant);
+  final int variant;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.save();
+    canvas.scale(size.width, size.height);
+    final ink = Paint()..color = const Color(0xFF20252B);
+    if (variant == 1) {
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          const Rect.fromLTWH(.22, .32, .56, .19),
+          const Radius.circular(.07),
+        ),
+        ink,
+      );
+      final shine = Paint()
+        ..color = Colors.white.withValues(alpha: .75)
+        ..strokeWidth = .025;
+      canvas.drawLine(const Offset(.3, .38), const Offset(.42, .38), shine);
+    } else {
+      canvas.drawOval(const Rect.fromLTWH(.29, .33, .065, .115), ink);
+      canvas.drawOval(const Rect.fromLTWH(.645, .33, .065, .115), ink);
+    }
+    ink
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = .035
+      ..strokeCap = StrokeCap.round;
+    final smile = Path()
+      ..moveTo(.34, .60)
+      ..quadraticBezierTo(.5, variant == 2 ? .69 : .80, .66, .60);
+    canvas.drawPath(smile, ink);
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_AvatarFacePainter oldDelegate) =>
+      oldDelegate.variant != variant;
+}
+
 class Glass extends StatelessWidget {
   final Widget child;
   final double blur;
@@ -1437,7 +1537,7 @@ class Glass extends StatelessWidget {
           ],
         ),
         borderRadius: BorderRadius.circular(lumenCorner(radius)),
-        border: Border.all(color: lineStrong),
+        border: Border.all(color: line),
       ),
       child: child,
     );
@@ -1467,7 +1567,7 @@ class EditorialPageHeader extends StatelessWidget {
   final IconData icon;
   final VoidCallback? onBack;
   final Widget? trailing;
-  final EdgeInsetsGeometry padding;
+  final EdgeInsetsGeometry? padding;
 
   const EditorialPageHeader({
     super.key,
@@ -1477,12 +1577,12 @@ class EditorialPageHeader extends StatelessWidget {
     required this.icon,
     this.onBack,
     this.trailing,
-    this.padding = const EdgeInsets.fromLTRB(20, 14, 20, 18),
+    this.padding,
   });
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: padding,
+    padding: padding ?? pageInsets(context, bottom: 20),
     child: Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
@@ -1635,7 +1735,7 @@ class LumenEmptyState extends StatelessWidget {
                   textAlign: TextAlign.center,
                   style: const TextStyle(
                     fontSize: 20,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w600,
                     letterSpacing: -0.35,
                   ),
                 ),
@@ -1663,7 +1763,7 @@ class LumenEmptyState extends StatelessWidget {
                         actionLabel!,
                         style: TextStyle(
                           color: onAccent,
-                          fontWeight: FontWeight.w800,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
@@ -1729,7 +1829,7 @@ class LumenFilterPill extends StatelessWidget {
             style: TextStyle(
               color: selected ? onAccent : textHi,
               fontSize: 12.5,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w500,
             ),
           ),
         ],
@@ -1802,7 +1902,8 @@ class _SearchFieldState extends State<SearchField> {
 
   @override
   Widget build(BuildContext context) {
-    final focused = !widget.readOnly && _focusNode.hasFocus;
+    final focused =
+        lumenShowsNavigationFocus && !widget.readOnly && _focusNode.hasFocus;
     final field = Container(
       height: 50,
       padding: const EdgeInsets.fromLTRB(17, 0, 7, 0),
@@ -2139,7 +2240,7 @@ class GridLoading extends StatelessWidget {
           final cols = (c.maxWidth / tile).floor().clamp(2, 8);
           return GridView.builder(
             physics: const NeverScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            padding: pageInsets(context, top: 12),
             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: cols,
               childAspectRatio: channel ? 0.76 : 0.66,
@@ -2231,7 +2332,7 @@ class PillButton extends StatelessWidget {
                 label,
                 style: TextStyle(
                   color: fg,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w500,
                   fontSize: 14.5,
                   letterSpacing: -0.2,
                 ),
@@ -2244,7 +2345,7 @@ class PillButton extends StatelessWidget {
   }
 }
 
-/// Editorial section marker: a signal bar, a generous title and a quiet link.
+/// Consistent section heading with a quiet, accessible collection action.
 class SectionHeader extends StatelessWidget {
   final String title;
   final VoidCallback? onSeeAll;
@@ -2252,19 +2353,10 @@ class SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 18, 14),
+      padding: pageInsets(context, top: 0, bottom: 14),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Container(
-            width: 3,
-            height: 29,
-            margin: const EdgeInsets.only(right: 12, bottom: 1),
-            decoration: BoxDecoration(
-              color: accentInk,
-              borderRadius: BorderRadius.circular(lumenCorner(2)),
-            ),
-          ),
           Expanded(
             child: Text(
               title,
@@ -2276,24 +2368,27 @@ class SectionHeader extends StatelessWidget {
           const SizedBox(width: 12),
           if (onSeeAll != null)
             RemoteTap(
+              semanticLabel: 'See all $title',
               onTap: onSeeAll,
               behavior: HitTestBehavior.opaque,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+              child: Container(
+                constraints: const BoxConstraints(minHeight: 48),
+                alignment: Alignment.center,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      'Open collection',
+                      'See all',
                       style: TextStyle(
-                        color: muted,
+                        color: accentInk,
                         fontWeight: FontWeight.w600,
                         fontSize: 12.5,
                       ),
                     ),
                     const SizedBox(width: 5),
                     Icon(
-                      Icons.arrow_outward_rounded,
+                      Icons.chevron_right_rounded,
                       color: accentInk,
                       size: 15,
                     ),
@@ -2354,7 +2449,9 @@ class PosterCard extends StatelessWidget {
       builder: (context, active) => _visual(context, active),
     );
     // Animate the first viewport, not an entire 50+ item result page at once.
-    if (index >= 12) return interactive;
+    if (index >= 12 || MediaQuery.disableAnimationsOf(context)) {
+      return interactive;
+    }
     return interactive
         .animate()
         .fadeIn(duration: 320.ms, delay: (index * 30).ms)
@@ -2410,7 +2507,7 @@ class PosterCard extends StatelessWidget {
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 13,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w500,
                       height: 1.15,
                     ),
                   ),
@@ -2454,7 +2551,7 @@ class PosterCard extends StatelessWidget {
                         style: TextStyle(
                           color: gold,
                           fontSize: 10.5,
-                          fontWeight: FontWeight.w800,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ],
@@ -2635,7 +2732,7 @@ class ChannelCard extends StatelessWidget {
                           'LIVE',
                           style: TextStyle(
                             fontSize: 8.5,
-                            fontWeight: FontWeight.w800,
+                            fontWeight: FontWeight.w600,
                             letterSpacing: 0.4,
                             color: Colors.white,
                           ),
@@ -2692,7 +2789,7 @@ class ChannelCard extends StatelessWidget {
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 8.5,
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
                     ),
@@ -2724,7 +2821,7 @@ class ChannelCard extends StatelessWidget {
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 10.5,
-                              fontWeight: FontWeight.w700,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
                           if (programmeProgress case final value?) ...[
@@ -2753,7 +2850,7 @@ class ChannelCard extends StatelessWidget {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           textAlign: TextAlign.center,
-          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
+          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500),
         ),
         if (nextTitle.isNotEmpty) ...[
           const SizedBox(height: 2),
@@ -2794,7 +2891,9 @@ class ChannelCard extends StatelessWidget {
         ),
       ),
     );
-    if (index >= 12) return interactive;
+    if (index >= 12 || MediaQuery.disableAnimationsOf(context)) {
+      return interactive;
+    }
     return interactive
         .animate()
         .fadeIn(duration: 300.ms, delay: (index * 28).ms)

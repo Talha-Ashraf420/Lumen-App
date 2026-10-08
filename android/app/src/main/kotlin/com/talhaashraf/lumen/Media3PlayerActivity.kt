@@ -315,6 +315,7 @@ class Media3PlayerActivity : Activity() {
                     openedAtMs > 0L &&
                     now - openedAtMs >= FIRST_VIDEO_FRAME_TIMEOUT_MS
                 ) {
+                    TvPlaybackProbe.event(this@Media3PlayerActivity, "first_frame_timeout")
                     // Never leave the viewer listening to audio over a black
                     // SurfaceView. Stop sound immediately and retry the native
                     // decoder; after bounded attempts the visible error panel
@@ -326,6 +327,7 @@ class Media3PlayerActivity : Activity() {
                     openedAtMs > 0L &&
                     now - openedAtMs >= STARTUP_TIMEOUT_MS
                 ) {
+                    TvPlaybackProbe.event(this@Media3PlayerActivity, "startup_timeout")
                     scheduleRetry("The provider took too long to start this stream.")
                 } else if (
                     isLive &&
@@ -333,6 +335,7 @@ class Media3PlayerActivity : Activity() {
                     player.playbackState == Player.STATE_BUFFERING &&
                     now - lastProgressAtMs >= LIVE_STALL_TIMEOUT_MS
                 ) {
+                    TvPlaybackProbe.event(this@Media3PlayerActivity, "live_stall")
                     scheduleRetry("The live stream stopped sending data.")
                 }
             }
@@ -349,6 +352,7 @@ class Media3PlayerActivity : Activity() {
         playbackMode = Media3PlaybackMode.from(
             intent.getStringExtra(EXTRA_PLAYBACK_MODE)
         )
+        TvPlaybackProbe.begin(this, isLive, playbackMode.name)
         accentColor = intent.getIntExtra(EXTRA_ACCENT_COLOR, accentColor)
         playlistUrls = intent.getStringArrayListExtra(EXTRA_PLAYLIST_URLS)
             ?.filter { it.isNotBlank() }
@@ -503,6 +507,14 @@ class Media3PlayerActivity : Activity() {
         player.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 updateTransportUi()
+                val stateName = when (state) {
+                    Player.STATE_IDLE -> "idle"
+                    Player.STATE_BUFFERING -> "buffering"
+                    Player.STATE_READY -> "ready"
+                    Player.STATE_ENDED -> "ended"
+                    else -> "unknown"
+                }
+                TvPlaybackProbe.event(this@Media3PlayerActivity, "state", stateName)
                 if (isInBackground) return
                 when (state) {
                     Player.STATE_BUFFERING -> showBufferingStatus(
@@ -524,6 +536,12 @@ class Media3PlayerActivity : Activity() {
             }
 
             override fun onPlayerError(error: PlaybackException) {
+                TvPlaybackProbe.event(
+                    this@Media3PlayerActivity,
+                    "player_error",
+                    error.errorCodeName,
+                    responseCode(error),
+                )
                 if (isInBackground) return
                 if (responseCode(error) == 429) {
                     showError(friendlyError(error), allowEngineFallback = false)
@@ -550,11 +568,23 @@ class Media3PlayerActivity : Activity() {
             }
 
             override fun onTracksChanged(tracks: Tracks) {
+                val audio = tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
+                val video = tracks.groups.filter { it.type == C.TRACK_TYPE_VIDEO }
+                TvPlaybackProbe.event(
+                    this@Media3PlayerActivity,
+                    "tracks",
+                    "audio=${audio.sumOf { it.length }},video=${video.sumOf { it.length }}",
+                )
                 updateTrackButtons(tracks)
             }
 
             override fun onRenderedFirstFrame() {
                 hasRenderedVideoFrame = true
+                TvPlaybackProbe.event(
+                    this@Media3PlayerActivity,
+                    "first_frame",
+                    value = (SystemClock.elapsedRealtime() - openedAtMs).toInt(),
+                )
                 // Do not let audio run ahead over a black surface. Sound is
                 // released only when Android confirms that a video frame has
                 // actually reached the television display.
@@ -911,35 +941,33 @@ class Media3PlayerActivity : Activity() {
     private fun showSplitChannelDialog(targetSecondary: Boolean = true) {
         if (!isLive || playlistUrls.size <= 1) return
         handler.removeCallbacks(hideControls)
-        val blockedIndex = if (targetSecondary) playlistIndex else secondaryIndex
+        val blockedIndex = if (targetSecondary || splitFocusedPane == 1) playlistIndex else secondaryIndex
         val candidates = playlistUrls.indices.filter { it != blockedIndex }
-        val labels = candidates.map(::splitTitle).toTypedArray()
         val title = if (targetSecondary) "Add a second channel" else {
             if (splitFocusedPane == 0) "Change main channel" else "Change second channel"
         }
-        val dialog = AlertDialog.Builder(this)
-            .setTitle(title)
-            .setItems(labels) { activeDialog, itemIndex ->
-                activeDialog.dismiss()
-                val selected = candidates[itemIndex]
+        val current = if (targetSecondary || splitFocusedPane == 1) secondaryIndex else playlistIndex
+        SplitChannelDialog.show(
+            activity = this,
+            title = title,
+            channels = candidates.map { index ->
+                SplitChannelDialog.Channel(index, splitTitle(index),
+                    playlistFavoriteStates.getOrNull(index) == true,
+                    splitActive && index == current)
+            },
+            accent = accentColor,
+            onPick = { selected ->
                 if (targetSecondary || splitFocusedPane == 1) {
                     openSecondary(selected)
                 } else {
                     openPlaylistItem(selected)
                 }
-            }
-            .setNegativeButton("Cancel", null)
-            .create()
-        dialog.setOnShowListener {
-            dialog.window?.setBackgroundDrawable(
-                roundedRect(0xFF111511.toInt(), 0xFF596157.toInt(), 1, 18)
-            )
-        }
-        dialog.setOnDismissListener {
-            showControls()
-            splitButton.post { splitButton.requestFocus() }
-        }
-        dialog.show()
+            },
+            onDismiss = {
+                showControls()
+                splitButton.post { splitButton.requestFocus() }
+            },
+        )
     }
 
     private fun openSecondary(index: Int) {
@@ -2054,6 +2082,10 @@ class Media3PlayerActivity : Activity() {
 
     private fun showPlaylistDialog() {
         if (playlistUrls.size <= 1) return
+        if (splitActive) {
+            showSplitChannelDialog(targetSecondary = false)
+            return
+        }
         handler.removeCallbacks(hideControls)
         val fallbackName = if (isLive) "Channel" else "Episode"
         val selectedIndex = if (splitActive && splitFocusedPane == 1) {
@@ -2723,6 +2755,7 @@ class Media3PlayerActivity : Activity() {
 
     private fun open() {
         if (isInBackground) return
+        TvPlaybackProbe.event(this, "prepare", if (usingAlternateSource) "alternate" else "primary")
         recordCurrentProgress()
         terminalError = false
         openedAtMs = SystemClock.elapsedRealtime()
@@ -2788,6 +2821,7 @@ class Media3PlayerActivity : Activity() {
             )
         ) {
             usingAlternateSource = true
+            TvPlaybackProbe.event(this, "alternate_source")
             url = alternateUrl
             retryScheduled = true
             hideControls(force = true)
@@ -2806,6 +2840,7 @@ class Media3PlayerActivity : Activity() {
         retryScheduled = true
         hideControls(force = true)
         val delay = RETRY_DELAYS_MS[retryAttempt++]
+        TvPlaybackProbe.event(this, "retry", value = retryAttempt)
         errorPanel.visibility = View.GONE
         showBufferingStatus(
             if (isLive) {
@@ -2833,6 +2868,7 @@ class Media3PlayerActivity : Activity() {
         // the same item automatically instead of stranding the viewer.
         if (allowEngineFallback &&
             (intent.getBooleanExtra(EXTRA_IS_LIVE, false) || hasStarted)) {
+            TvPlaybackProbe.event(this, "embedded_fallback")
             hideControls(force = true)
             terminalError = true
             errorPanel.visibility = View.GONE
@@ -2848,6 +2884,7 @@ class Media3PlayerActivity : Activity() {
         }
         hideControls(force = true)
         terminalError = true
+        TvPlaybackProbe.event(this, "terminal_error")
         hideBufferingStatus()
         errorText.text = message
         errorPanel.visibility = View.VISIBLE
@@ -3097,6 +3134,7 @@ class Media3PlayerActivity : Activity() {
     }
 
     override fun onDestroy() {
+        TvPlaybackProbe.event(this, "closed")
         handler.removeCallbacks(recoverAfterNetworkChange)
         handler.removeCallbacksAndMessages(null)
         if (screenReceiverRegistered) {

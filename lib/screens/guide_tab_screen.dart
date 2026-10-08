@@ -490,11 +490,15 @@ class _GuideTabScreenState extends State<GuideTabScreen>
             vertical: 9,
           ),
           decoration: BoxDecoration(
-            color: _sourceFocus.hasFocus
+            color: (lumenShowsNavigationFocus && _sourceFocus.hasFocus)
                 ? accent.withValues(alpha: .2)
                 : surface,
             borderRadius: BorderRadius.circular(lumenCorner(11)),
-            border: Border.all(color: _sourceFocus.hasFocus ? accentInk : line),
+            border: Border.all(
+              color: (lumenShowsNavigationFocus && _sourceFocus.hasFocus)
+                  ? accentInk
+                  : line,
+            ),
           ),
           child: Icon(Icons.dns_outlined, color: accentInk, size: 18),
         ),

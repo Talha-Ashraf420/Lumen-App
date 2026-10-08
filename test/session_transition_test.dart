@@ -206,14 +206,18 @@ void main() {
 
     await tester.tap(find.byTooltip('Profile'));
     await tester.pump();
-    await tester.scrollUntilVisible(find.text('Sign out of Lumen'), 280);
+    await tester.tap(find.text('Accounts & services'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.ensureVisible(find.text('Sign out of Lumen'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Sign out of Lumen'));
     await tester.pump();
     expect(find.byType(AlertDialog), findsOneWidget);
     await tester.tap(find.text('Sign out').last);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
-
+    await tester.pump(const Duration(milliseconds: 400));
     expect(find.byType(LoginScreen), findsOneWidget);
     expect(find.text('SIGNING OUT SECURELY'), findsNothing);
     expect(

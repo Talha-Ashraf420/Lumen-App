@@ -94,13 +94,7 @@ class ViewerPickerScreen extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(12, 18, 12, 12),
                 child: Column(
                   children: [
-                    CircleAvatar(
-                      radius: 28,
-                      child: Text(
-                        profile.name.characters.first.toUpperCase(),
-                        style: const TextStyle(fontSize: 22),
-                      ),
-                    ),
+                    LumenAvatar(seed: profile.id, size: 56),
                     const SizedBox(height: 10),
                     Text(
                       profile.name,
